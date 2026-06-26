@@ -1,0 +1,28 @@
+plugins {
+    id 'org.jetbrains.kotlin.jvm' version '1.9.22'
+    id 'io.ktor.plugin' version '2.3.7'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+}
+
+group 'com.streamlink.backend'
+version '1.0.0'
+
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib"
+    implementation "io.ktor:ktor-server-core-jvm:2.3.7"
+    implementation "io.ktor:ktor-server-netty-jvm:2.3.7"
+    implementation "io.ktor:ktor-server-websockets-jvm:2.3.7"
+    implementation "io.ktor:ktor-server-content-negotiation-jvm:2.3.7"
+    implementation "io.ktor:ktor-serialization-kotlinx-json-jvm:2.3.7"
+    implementation "ch.qos.logback:logback-classic:1.4.14"
+    implementation "io.lettuce:lettuce-core:6.3.1.RELEASE"
+    implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2"
+    
+    testImplementation "io.ktor:ktor-server-tests-jvm:2.3.7"
+    testImplementation "org.jetbrains.kotlin:kotlin-test-junit:1.9.22"
+}
+
+application {
+    mainClass.set("com.streamlink.backend.ApplicationKt")
+}

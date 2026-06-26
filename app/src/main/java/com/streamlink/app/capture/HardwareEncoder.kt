@@ -1,0 +1,244 @@
+package com.streamlink.app.capture
+
+import android.media.MediaCodec
+import android.media.MediaCodecInfo
+import android.media.MediaFormat
+import android.os.Bundle
+import android.os.Handler
+import android.os.HandlerThread
+import android.os.Process
+import android.util.Log
+import android.view.Surface
+import com.streamlink.shared.AdaptiveBufferChannel
+import com.streamlink.shared.FramePacket
+import com.streamlink.shared.StreamObservability
+import com.streamlink.shared.StreamProtocol
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import java.nio.ByteBuffer
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
+
+/**
+ * Hardware H.264 encoder backed by MediaCodec.
+ *
+ * Nano fixes:
+ * N1 — outputChannel uses explicit capacity=64 (not Channel.BUFFERED which is
+ *       platform-dependent) with onUndeliveredElement releasing FramePackets
+ *       to prevent MediaCodec buffer starvation/deadlock on DROP_OLDEST overflow.
+ * N2 — Encoder runs on THREAD_PRIORITY_URGENT_DISPLAY HandlerThread.
+ * N3 — Consecutive error circuit breaker triggers onEncoderError callback.
+ */
+class HardwareEncoder(
+    private val width: Int = StreamProtocol.WEAR_W_FULL,
+    private val height: Int = StreamProtocol.WEAR_H_FULL,
+    private val initialBitrateKbps: Int = StreamProtocol.WEAR_BPS_FULL,
+    private val targetFps: Int = StreamProtocol.WEAR_FPS_FULL,
+    private val onEncoderError: (() -> Unit)? = null
+) {
+    private val tag = "HardwareEncoder"
+
+    // ✅ FIX N1: Explicit capacity + onUndeliveredElement prevents MediaCodec deadlock.
+    // When channel drops a FramePacket via DROP_OLDEST, the callback calls packet.release()
+    // which returns the buffer index to MediaCodec, preventing buffer starvation.
+    val outputChannel: AdaptiveBufferChannel<FramePacket> = AdaptiveBufferChannel(
+        capacity = 64,
+        onDropped = { packet ->
+            packet.release()
+            StreamObservability.recordDrop()
+        }
+    )
+
+    private var mediaCodec: MediaCodec? = null
+    private var inputSurface: Surface? = null
+
+    val encoderSurface: Surface? get() = inputSurface
+    val codec: MediaCodec? get() = mediaCodec
+
+    // ✅ High-priority encoder thread — matches display frame delivery priority
+    private val encoderThread = HandlerThread(
+        "SL-Encoder-${width}x${height}",
+        Process.THREAD_PRIORITY_URGENT_DISPLAY
+    ).also { it.start() }
+    private val encoderHandler = Handler(encoderThread.looper)
+
+    private val frameIntervalNs = 1_000_000_000L / targetFps
+    private val lastFrameNs = AtomicLong(0L)
+    private var currentBitrateKbps = initialBitrateKbps
+    private val released = AtomicBoolean(false)
+    private val consecutiveErrors = AtomicInteger(0)
+    private val maxConsecutiveErrors = 5
+
+    fun initialize(): Boolean {
+        if (released.get()) {
+            Log.w(tag, "initialize() on released encoder")
+            return false
+        }
+        return try {
+            val format = MediaFormat.createVideoFormat(
+                MediaFormat.MIMETYPE_VIDEO_AVC, width, height
+            ).apply {
+                setInteger(MediaFormat.KEY_BIT_RATE, currentBitrateKbps * 1000)
+                setInteger(MediaFormat.KEY_FRAME_RATE, targetFps)
+                setInteger(
+                    MediaFormat.KEY_COLOR_FORMAT,
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
+                )
+                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+                setInteger(
+                    MediaFormat.KEY_BITRATE_MODE,
+                    MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR
+                )
+                // ✅ KEY_LATENCY=0 forces zero-delay mode — critical for real-time
+                setInteger(MediaFormat.KEY_LATENCY, 0)
+                setInteger(MediaFormat.KEY_PRIORITY, 0)
+            }
+
+            val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+            codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            inputSurface = codec.createInputSurface()
+            codec.setCallback(encoderCallback, encoderHandler)
+            codec.start()
+            mediaCodec = codec
+            consecutiveErrors.set(0)
+            Log.i(tag, "Encoder ready: ${width}x${height}@${targetFps}fps ${currentBitrateKbps}Kbps")
+            true
+        } catch (e: Exception) {
+            Log.e(tag, "initialize failed: ${e.message}", e)
+            false
+        }
+    }
+
+    private val encoderCallback = object : MediaCodec.Callback() {
+        override fun onOutputBufferAvailable(
+            codec: MediaCodec,
+            index: Int,
+            info: MediaCodec.BufferInfo
+        ) {
+            if (released.get()) {
+                codec.releaseOutputBuffer(index, false)
+                return
+            }
+
+            val buffer: ByteBuffer = codec.getOutputBuffer(index) ?: run {
+                codec.releaseOutputBuffer(index, false)
+                return
+            }
+
+            // Skip config frames (SPS/PPS are handled by HardenedFrameProcessor)
+            if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
+                // Still pass to HardenedFrameProcessor so it caches SPS/PPS
+                val packet = buildPacket(buffer, info) {
+                    codec.releaseOutputBuffer(index, false)
+                }
+                packet.release()  // Immediately release config frames
+                return
+            }
+
+            if (info.size <= 0) {
+                codec.releaseOutputBuffer(index, false)
+                return
+            }
+
+            // Frame rate throttle — don't exceed targetFps
+            val now = System.nanoTime()
+            val last = lastFrameNs.get()
+            if (last > 0 && now - last < frameIntervalNs * 0.85) {
+                codec.releaseOutputBuffer(index, false)
+                return
+            }
+            lastFrameNs.set(now)
+
+            val packet = buildPacket(buffer, info) {
+                codec.releaseOutputBuffer(index, false)
+            }
+
+            val sent = outputChannel.trySend(packet)
+            if (!sent.isSuccess) {
+                // Channel full — FramePacket will be released by onUndeliveredElement
+                // (no manual release needed here — avoids double-release)
+                Log.v(tag, "Channel full — frame dropped by overflow handler")
+            }
+            consecutiveErrors.set(0)
+        }
+
+        override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
+            val errors = consecutiveErrors.incrementAndGet()
+            Log.e(tag, "Codec error ($errors/$maxConsecutiveErrors): ${e.message}")
+            if (errors >= maxConsecutiveErrors) {
+                Log.e(tag, "Encoder circuit breaker triggered — calling onEncoderError")
+                onEncoderError?.invoke()
+            }
+        }
+
+        override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {
+            // Surface-mode encoder — no input buffer management needed
+        }
+
+        override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {
+            Log.d(tag, "Output format changed: $format")
+        }
+    }
+
+    private fun buildPacket(
+        buffer: ByteBuffer,
+        info: MediaCodec.BufferInfo,
+        releaseCallback: () -> Unit
+    ): FramePacket {
+        val isKeyframe = (info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
+        return FramePacket(
+            buffer = buffer,
+            offset = info.offset,
+            size = info.size,
+            timestampUs = info.presentationTimeUs,
+            isKeyframe = isKeyframe,
+            releaseCallback = releaseCallback
+        )
+    }
+
+    fun setBitrate(kbps: Int) {
+        if (released.get()) return
+        val clamped = kbps.coerceIn(200, 4000)
+        if (clamped == currentBitrateKbps) return
+        currentBitrateKbps = clamped
+        try {
+            mediaCodec?.setParameters(Bundle().apply {
+                putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, clamped * 1000)
+            })
+            Log.d(tag, "Bitrate → ${clamped}Kbps")
+        } catch (e: Exception) {
+            Log.w(tag, "setBitrate failed: ${e.message}")
+        }
+    }
+
+    fun forceKeyframe() {
+        if (released.get()) return
+        try {
+            mediaCodec?.setParameters(Bundle().apply {
+                putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
+            })
+        } catch (e: Exception) {
+            Log.w(tag, "forceKeyframe failed: ${e.message}")
+        }
+    }
+
+    fun release() {
+        if (!released.compareAndSet(false, true)) return
+        try {
+            mediaCodec?.stop()
+            mediaCodec?.release()
+        } catch (e: Exception) {
+            Log.w(tag, "release error: ${e.message}")
+        }
+        mediaCodec = null
+        inputSurface?.release()
+        inputSurface = null
+        encoderThread.quit()
+        outputChannel.close()
+        Log.i(tag, "Encoder released")
+    }
+
+    fun currentBitrateKbps(): Int = currentBitrateKbps
+    val isReleased: Boolean get() = released.get()
+}

@@ -1,0 +1,77 @@
+# ===================================================
+# StreamLinkWear — .gitignore
+# ===================================================
+
+# ── Build outputs (أكبر سبب للحجم الكبير) ─────────
+build/
+*/build/
+**/build/
+.gradle/
+*/.gradle/
+**/.gradle/
+local.properties
+
+# ── Android Studio / IntelliJ ──────────────────────
+.idea/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+
+# ── Kotlin / Java ──────────────────────────────────
+*.class
+*.jar
+*.war
+*.aar
+
+# ── APK / AAB ──────────────────────────────────────
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# ── Signing (مهم جداً — لا ترفع keystore) ─────────
+*.jks
+*.keystore
+*.p12
+keystore.properties
+signing.properties
+
+# ── NDK ─────────────────────────────────────────────
+.cxx/
+*.so
+
+# ── Captures / Profiling ────────────────────────────
+captures/
+*.hprof
+
+# ── Backend Kotlin build ─────────────────────────────
+backend/build/
+backend/.gradle/
+
+# ── Node / Python ────────────────────────────────────
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+dist/
+
+# ── TFLite model (كبير — اتدرب محلياً) ─────────────
+*.tflite
+ai_training/stream_predict_model.tflite
+
+# ── Logs ─────────────────────────────────────────────
+*.log
+logs/
+
+# ── Environment ──────────────────────────────────────
+.env
+.env.local
+secrets.properties
+
+# ── Gradle Wrapper (ارفع الملف بس مش الـ jar) ───────
+!gradle/wrapper/gradle-wrapper.properties
+!gradlew
+!gradlew.bat
