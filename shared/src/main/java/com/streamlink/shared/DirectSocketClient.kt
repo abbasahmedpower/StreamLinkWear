@@ -79,22 +79,37 @@ class DirectSocketClient(
         stream: InputStream,
         onChunk: ((WireChunk) -> Unit)?
     ) {
-        val headerBuf = ByteArray(StreamProtocol.WIRE_HEADER_SIZE)   // 20 bytes
-        val dataBuf   = ByteArray(StreamProtocol.CHUNK_MTU)          // Reused every iteration — NO per-chunk alloc
+        val headerBuf = ByteArray(StreamProtocol.WIRE_HEADER_SIZE)
+        val dataBuf   = ByteArray(StreamProtocol.CHUNK_MTU)
 
         try {
             while (!closed.get()) {
                 // 1. Read fixed-size header
                 if (!readExact(stream, headerBuf, StreamProtocol.WIRE_HEADER_SIZE)) return
 
+                val buffer = java.nio.ByteBuffer.wrap(headerBuf).order(java.nio.ByteOrder.BIG_ENDIAN)
+
+                val magic = buffer.getInt()
+                if (magic != StreamProtocol.MAGIC_NUMBER) {
+                    Log.e(tag, "Invalid MAGIC_NUMBER. Expected ${StreamProtocol.MAGIC_NUMBER}, got $magic")
+                    return
+                }
+                
+                val version = buffer.get()
+                if (version != StreamProtocol.PROTOCOL_VERSION) {
+                    Log.e(tag, "Unsupported Protocol Version: $version")
+                    return
+                }
+
                 // 2. Parse header fields
-                val nalSeq      = readInt(headerBuf, StreamProtocol.HDR_NAL_SEQ)
-                val chunkIdx    = readShort(headerBuf, StreamProtocol.HDR_CHUNK_IDX).toInt() and 0xFFFF
-                val totalChunks = readShort(headerBuf, StreamProtocol.HDR_TOTAL_CHUNKS).toInt() and 0xFFFF
-                val isKeyframe  = (headerBuf[StreamProtocol.HDR_FLAGS].toInt() and 0x01) != 0
-                val nalType     = headerBuf[StreamProtocol.HDR_NAL_TYPE].toInt() and 0xFF
-                val payloadSize = readShort(headerBuf, StreamProtocol.HDR_PAYLOAD_SIZE).toInt() and 0xFFFF  // ✅ ACTUAL size
-                val timestampUs = readLong(headerBuf, StreamProtocol.HDR_TIMESTAMP_US)   // ✅ From sender
+                val nalSeq      = buffer.getInt()
+                val chunkIdx    = buffer.getShort().toInt() and 0xFFFF
+                val totalChunks = buffer.getShort().toInt() and 0xFFFF
+                val flags       = buffer.get().toInt()
+                val isKeyframe  = (flags and 0x01) != 0
+                val nalType     = buffer.get().toInt() and 0xFF
+                val payloadSize = buffer.getShort().toInt() and 0xFFFF
+                val timestampUs = buffer.getLong()
 
                 // 3. Validate before reading
                 if (payloadSize <= 0 || payloadSize > dataBuf.size) {

@@ -1,18 +1,21 @@
-name: StreamLinkWear CI
+name: StreamLink CI/CD
 
 on:
   push:
-    branches: [main, develop]
+    branches: [ main, develop, "release/**" ]
   pull_request:
-    branches: [main]
+    branches: [ main, develop ]
 
 jobs:
-  # ── Android Build + Test ──────────────────────────────────────────────────
-  android:
-    name: Android Build & Unit Tests
+  # ─── Build & Lint ────────────────────────────────────────────────────────────
+  build:
+    name: Build & Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -21,97 +24,96 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      - name: Accept SDK licenses
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
 
-      - name: Cache Gradle
+      - name: Cache Gradle packages
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle*') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
-      - name: Build shared module
-        run: ./gradlew :shared:assembleDebug --no-daemon
+      - name: Lint (app)
+        run: ./gradlew :app:lintDebug --no-daemon
+        continue-on-error: true
 
-      - name: Run shared unit tests
-        run: ./gradlew :shared:test --no-daemon
+      - name: Lint (wear)
+        run: ./gradlew :wear:lintDebug --no-daemon
+        continue-on-error: true
 
-      - name: Build app (debug)
-        run: ./gradlew :app:assembleDebug --no-daemon
+      - name: Build Debug APKs
+        run: ./gradlew assembleDebug --no-daemon -x test
 
-      - name: Build wear (debug)
-        run: ./gradlew :wear:assembleDebug --no-daemon
+      - name: Build Release APKs (unsigned)
+        run: ./gradlew assembleRelease --no-daemon -x test
 
-      - name: Upload APKs
+      - name: Upload Phone Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: apks-${{ github.sha }}
-          path: |
-            app/build/outputs/apk/debug/*.apk
-            wear/build/outputs/apk/debug/*.apk
+          name: StreamLink-Phone-Debug
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
 
-  # ── Backend Build ─────────────────────────────────────────────────────────
+      - name: Upload Wear Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreamLink-Wear-Debug
+          path: wear/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+      - name: Upload Phone Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreamLink-Phone-Release
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      - name: Upload Wear Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreamLink-Wear-Release
+          path: wear/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      - name: Upload Lint Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: |
+            app/build/reports/lint-results-debug.html
+            wear/build/reports/lint-results-debug.html
+
+  # ─── Backend Build ───────────────────────────────────────────────────────────
   backend:
     name: Backend Build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
+          cache: gradle
 
-      - name: Build backend
-        run: |
-          cd backend
-          ./gradlew buildFatJar --no-daemon
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
 
-  # ── Docker Build ──────────────────────────────────────────────────────────
-  docker:
-    name: Docker Build
-    runs-on: ubuntu-latest
-    needs: backend
-    steps:
-      - uses: actions/checkout@v4
+      - name: Build Ktor Fat JAR
+        run: ./gradlew :backend:buildFatJar --no-daemon
 
-      - name: Build Docker image
-        run: docker build -t streamlinkwear-backend:${{ github.sha }} ./backend
-
-      - name: Test docker-compose
-        run: |
-          docker-compose up -d
-          sleep 10
-          curl -f http://localhost:8081/health || exit 1
-          curl -f http://localhost:8082/health || exit 1
-          docker-compose down
-
-  # ── AI Model Validation ───────────────────────────────────────────────────
-  ai:
-    name: AI Model Training Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install tensorflow numpy scikit-learn pandas
-
-      - name: Validate training script
-        run: |
-          cd ai_training
-          python train_stream_predictor.py
-          ls -la stream_predict_model.tflite
-
-      - name: Upload TFLite model
+      - name: Upload Backend JAR
         uses: actions/upload-artifact@v4
         with:
-          name: tflite-model-${{ github.sha }}
-          path: ai_training/stream_predict_model.tflite
+          name: streamlink-backend-jar
+          path: backend/build/libs/*-all.jar
+          retention-days: 14

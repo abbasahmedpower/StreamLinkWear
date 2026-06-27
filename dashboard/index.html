@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StreamLink Dashboard — Live Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:        #090912;
+      --surface:   #12121e;
+      --surface2:  #1a1a2e;
+      --border:    #2a2a45;
+      --primary:   #7c4dff;
+      --primary2:  #9c6dff;
+      --green:     #4caf50;
+      --yellow:    #ffb300;
+      --red:       #ef5350;
+      --cyan:      #00e5ff;
+      --text:      #e8e8f0;
+      --muted:     #888899;
+      --font:      'Inter', sans-serif;
+      --mono:      'JetBrains Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 28px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon {
+      width: 38px; height: 38px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--primary), var(--cyan));
+      display: grid; place-items: center; font-size: 20px;
+    }
+    .logo-text { font-weight: 700; font-size: 18px; letter-spacing: -0.3px; }
+    .logo-sub  { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .status-badge {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 14px; border-radius: 20px;
+      background: var(--surface2); border: 1px solid var(--border);
+      font-size: 12px; font-weight: 600;
+    }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted);
+      transition: background .4s;
+    }
+    .dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse-dot 1.8s infinite; }
+    .dot.error { background: var(--red); }
+    @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── Layout ─────────────────────────────────────────────────────────── */
+    main {
+      padding: 24px 28px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: auto auto auto;
+      gap: 18px;
+    }
+
+    /* ── Stat Cards ──────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px 22px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color .3s, box-shadow .3s;
+    }
+    .card:hover { border-color: var(--primary); box-shadow: 0 0 24px rgba(124,77,255,.12); }
+    .card::before {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(ellipse at top left, rgba(124,77,255,.06) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .card-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 10px; }
+    .card-value { font-size: 36px; font-weight: 800; font-family: var(--mono); line-height: 1; }
+    .card-unit  { font-size: 13px; color: var(--muted); margin-left: 4px; font-weight: 400; }
+    .card-sub   { margin-top: 8px; font-size: 11px; color: var(--muted); }
+    .card-icon  { position: absolute; top: 18px; right: 18px; font-size: 22px; opacity: .4; }
+
+    /* value color states */
+    .val-green  { color: var(--green); }
+    .val-yellow { color: var(--yellow); }
+    .val-red    { color: var(--red); }
+    .val-cyan   { color: var(--cyan); }
+    .val-white  { color: var(--text); }
+    .val-purple { color: var(--primary2); }
+
+    /* ── Charts (2-column span each) ────────────────────────────────────── */
+    .chart-card {
+      grid-column: span 2;
+    }
+    .chart-title {
+      font-size: 13px; font-weight: 600; margin-bottom: 14px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .chart-title .badge {
+      font-size: 10px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 2px 7px; color: var(--muted); font-family: var(--mono);
+    }
+    canvas { max-height: 180px; }
+
+    /* ── Device Panel ────────────────────────────────────────────────────── */
+    .device-panel {
+      grid-column: span 4;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 18px;
+    }
+    .device-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .device-icon { font-size: 28px; }
+    .device-info h4 { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+    .device-info span { font-size: 11px; color: var(--muted); }
+    .connection-line {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; font-size: 11px; color: var(--muted); margin-top: 8px;
+    }
+    .connection-bar {
+      flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+    }
+    .connection-fill {
+      height: 100%; background: linear-gradient(90deg, var(--primary), var(--cyan));
+      border-radius: 2px; transition: width .5s ease;
+    }
+
+    /* ── Log Panel ───────────────────────────────────────────────────────── */
+    .log-panel { grid-column: span 4; }
+    .log-box {
+      background: #0a0a10; border: 1px solid var(--border); border-radius: 12px;
+      padding: 14px 16px; height: 130px; overflow-y: auto;
+      font-family: var(--mono); font-size: 11px; line-height: 1.7; color: #7a7a9a;
+    }
+    .log-box::-webkit-scrollbar { width: 4px; }
+    .log-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .log-entry { display: flex; gap: 10px; }
+    .log-time  { color: var(--primary); white-space: nowrap; }
+    .log-ok    { color: var(--green); }
+    .log-warn  { color: var(--yellow); }
+    .log-err   { color: var(--red); }
+
+    /* ── Settings bar ────────────────────────────────────────────────────── */
+    .settings-bar {
+      padding: 10px 28px 20px;
+      display: flex; gap: 12px; align-items: center;
+    }
+    .ws-input {
+      flex: 1; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 9px 14px; color: var(--text);
+      font-family: var(--mono); font-size: 12px; outline: none;
+    }
+    .ws-input:focus { border-color: var(--primary); }
+    .btn {
+      padding: 9px 20px; border-radius: 10px; border: none; cursor: pointer;
+      font-family: var(--font); font-size: 13px; font-weight: 600;
+      transition: opacity .2s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-ghost   { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <div>
+      <div class="logo-text">StreamLink Dashboard</div>
+      <div class="logo-sub">Real-time monitoring — Horus el Fardos</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:12px;align-items:center">
+    <div class="status-badge">
+      <div class="dot" id="connDot"></div>
+      <span id="connLabel">Disconnected</span>
+    </div>
+    <div class="status-badge">
+      <span style="color:var(--muted);font-size:11px">Node</span>
+      <span id="nodeId" style="color:var(--primary2);font-family:var(--mono)">—</span>
+    </div>
+  </div>
+</header>
+
+<div class="settings-bar">
+  <input class="ws-input" id="wsUrl" value="ws://localhost/metrics" placeholder="ws://host/metrics" />
+  <button class="btn btn-primary" onclick="connect()">Connect</button>
+  <button class="btn btn-ghost" onclick="disconnect()">Disconnect</button>
+  <span style="font-size:11px;color:var(--muted)" id="lastUpdate">—</span>
+</div>
+
+<main>
+  <!-- Stat Cards -->
+  <div class="card">
+    <div class="card-icon">🎬</div>
+    <div class="card-label">Frame Rate</div>
+    <div class="card-value val-green" id="fps">—<span class="card-unit">fps</span></div>
+    <div class="card-sub" id="fpsQuality">Waiting for data…</div>
+  </div>
+
+  <div class="card">
+    <div class="card-icon">⏱️</div>
+    <div class="card-label">Latency</div>
+    <div class="card-value val-cyan" id="latency">—<span class="card-unit">ms</span></div>
+    <div class="card-sub" id="latencyQuality">Glass-to-glass</div>
+  </div>
+
+  <div class="card">
+    <div class="card-icon">📡</div>
+    <div class="card-label">Bitrate</div>
+    <div class="card-value val-purple" id="bitrate">—<span class="card-unit">kbps</span></div>
+    <div class="card-sub" id="bitrateAI">AI-controlled</div>
+  </div>
+
+  <div class="card">
+    <div class="card-icon">📉</div>
+    <div class="card-label">Packet Loss</div>
+    <div class="card-value val-white" id="loss">—<span class="card-unit">%</span></div>
+    <div class="card-sub">Network health</div>
+  </div>
+
+  <!-- Charts -->
+  <div class="card chart-card">
+    <div class="chart-title">FPS Timeline <span class="badge">60s window</span></div>
+    <canvas id="fpsChart"></canvas>
+  </div>
+
+  <div class="card chart-card">
+    <div class="chart-title">Latency Timeline <span class="badge">60s window</span></div>
+    <canvas id="latencyChart"></canvas>
+  </div>
+
+  <!-- Device Panel -->
+  <div class="device-panel">
+    <div class="card">
+      <div class="card-label">Connected Devices</div>
+      <div style="margin-top:14px">
+        <div class="device-row">
+          <div class="device-icon">📱</div>
+          <div class="device-info">
+            <h4>Phone (Broadcaster)</h4>
+            <span id="phoneStatus">Waiting…</span>
+          </div>
+        </div>
+        <div class="device-row">
+          <div class="device-icon">⌚</div>
+          <div class="device-info">
+            <h4>Wear OS (Receiver)</h4>
+            <span id="watchStatus">Waiting…</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Session Info</div>
+      <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Active Peers</div>
+          <div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--primary2)" id="peers">0</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Active Pairs</div>
+          <div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--cyan)" id="pairs">0</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Total Sessions</div>
+          <div style="font-size:22px;font-weight:700;font-family:var(--mono)" id="totalSessions">0</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Uptime</div>
+          <div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--green)" id="uptime">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div class="card log-panel">
+    <div class="card-label" style="margin-bottom:12px">Event Log</div>
+    <div class="log-box" id="logBox"></div>
+  </div>
+</main>
+
+<script>
+  // ── Chart setup ──────────────────────────────────────────────────────────
+  const MAX_POINTS = 60;
+  const labels = Array.from({length: MAX_POINTS}, () => '');
+
+  function makeChart(id, color, label) {
+    const ctx = document.getElementById(id).getContext('2d');
+    return new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [...labels],
+        datasets: [{
+          label,
+          data: Array(MAX_POINTS).fill(null),
+          borderColor: color,
+          backgroundColor: color + '18',
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: true,
+          tension: 0.4,
+        }]
+      },
+      options: {
+        responsive: true, animation: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: {
+            grid: { color: '#2a2a45' },
+            ticks: { color: '#888899', font: { family: 'JetBrains Mono', size: 10 } }
+          }
+        }
+      }
+    });
+  }
+
+  const fpsChart     = makeChart('fpsChart',     '#4caf50', 'FPS');
+  const latencyChart = makeChart('latencyChart', '#00e5ff', 'Latency ms');
+
+  function pushChart(chart, value) {
+    chart.data.datasets[0].data.push(value);
+    chart.data.datasets[0].data.shift();
+    chart.update('none');
+  }
+
+  // ── WebSocket ─────────────────────────────────────────────────────────────
+  let ws = null;
+  let startTime = null;
+  let uptimeTimer = null;
+
+  function connect() {
+    if (ws) ws.close();
+    const url = document.getElementById('wsUrl').value.trim();
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      setStatus('live');
+      addLog('Connected to ' + url, 'ok');
+      startTime = Date.now();
+      uptimeTimer = setInterval(updateUptime, 1000);
+    };
+
+    ws.onclose = () => {
+      setStatus('disconnected');
+      addLog('Disconnected', 'warn');
+      clearInterval(uptimeTimer);
+      document.getElementById('uptime').textContent = '—';
+    };
+
+    ws.onerror = () => {
+      setStatus('error');
+      addLog('WebSocket error', 'err');
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        update(d);
+      } catch (_) {}
+    };
+  }
+
+  function disconnect() {
+    if (ws) { ws.close(); ws = null; }
+  }
+
+  function setStatus(state) {
+    const dot   = document.getElementById('connDot');
+    const label = document.getElementById('connLabel');
+    dot.className = 'dot';
+    if (state === 'live')         { dot.classList.add('live'); label.textContent = 'LIVE'; }
+    else if (state === 'error')   { dot.classList.add('error'); label.textContent = 'Error'; }
+    else                          { label.textContent = 'Disconnected'; }
+  }
+
+  // ── Data update ───────────────────────────────────────────────────────────
+  function update(d) {
+    // Node
+    if (d.nodeId) document.getElementById('nodeId').textContent = d.nodeId;
+
+    // FPS
+    const fps = d.fps ?? 0;
+    const fpsEl = document.getElementById('fps');
+    fpsEl.innerHTML = `${fps}<span class="card-unit">fps</span>`;
+    fpsEl.className = 'card-value ' + (fps >= 55 ? 'val-green' : fps >= 30 ? 'val-yellow' : 'val-red');
+    document.getElementById('fpsQuality').textContent = fps >= 55 ? '✅ Smooth' : fps >= 30 ? '⚠️ Degraded' : '❌ Low';
+    pushChart(fpsChart, fps);
+
+    // Latency
+    const lat = d.latencyMs ?? 0;
+    const latEl = document.getElementById('latency');
+    latEl.innerHTML = `${lat}<span class="card-unit">ms</span>`;
+    latEl.className = 'card-value ' + (lat < 60 ? 'val-cyan' : lat < 120 ? 'val-yellow' : 'val-red');
+    document.getElementById('latencyQuality').textContent = lat < 60 ? '🚀 Ultra-low' : lat < 120 ? '⚡ Good' : '🐢 High';
+    pushChart(latencyChart, lat);
+
+    // Bitrate
+    const br = d.bitrateKbps ?? 0;
+    document.getElementById('bitrate').innerHTML = `${br}<span class="card-unit">kbps</span>`;
+    document.getElementById('bitrateAI').textContent = `AI-controlled • ${br < 800 ? 'ECO' : br < 2000 ? 'BALANCED' : 'HIGH'}`;
+
+    // Packet Loss
+    const loss = (d.packetLossPercent ?? 0).toFixed(1);
+    const lossEl = document.getElementById('loss');
+    lossEl.innerHTML = `${loss}<span class="card-unit">%</span>`;
+    lossEl.className = 'card-value ' + (loss < 1 ? 'val-green' : loss < 5 ? 'val-yellow' : 'val-red');
+
+    // Session
+    document.getElementById('peers').textContent = d.activePeers ?? 0;
+    document.getElementById('pairs').textContent = d.activePairs ?? 0;
+    document.getElementById('totalSessions').textContent = d.totalPairedSessions ?? 0;
+
+    // Device status
+    const hasPhone = (d.activePeers ?? 0) >= 1;
+    const hasPair  = (d.activePairs ?? 0) >= 1;
+    document.getElementById('phoneStatus').textContent = hasPhone ? '🟢 Connected' : '🔴 Not connected';
+    document.getElementById('watchStatus').textContent = hasPair  ? '🟢 Paired & streaming' : '🔴 Not paired';
+
+    // Timestamp
+    document.getElementById('lastUpdate').textContent = 'Last update: ' + new Date().toLocaleTimeString();
+  }
+
+  function updateUptime() {
+    if (!startTime) return;
+    const s = Math.floor((Date.now() - startTime) / 1000);
+    const m = Math.floor(s / 60);
+    const h = Math.floor(m / 60);
+    document.getElementById('uptime').textContent =
+      h > 0 ? `${h}h ${m%60}m` : m > 0 ? `${m}m ${s%60}s` : `${s}s`;
+  }
+
+  // ── Log ───────────────────────────────────────────────────────────────────
+  function addLog(msg, type = '') {
+    const box = document.getElementById('logBox');
+    const now = new Date().toLocaleTimeString();
+    const div = document.createElement('div');
+    div.className = 'log-entry';
+    div.innerHTML = `<span class="log-time">${now}</span><span class="log-${type || 'ok'}">${msg}</span>`;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+    // Keep max 200 entries
+    while (box.children.length > 200) box.removeChild(box.firstChild);
+  }
+
+  // Auto-connect on load if URL looks valid
+  window.onload = () => {
+    addLog('Dashboard ready — enter backend URL and click Connect', '');
+  };
+</script>
+</body>
+</html>

@@ -126,54 +126,42 @@ object NalChunker {
         }
     }
 
-    /**
-     * Fixed wire frame encoder.
-     * Header (20 bytes): nalSeq(4) | chunkIdx(2) | totalChunks(2) | flags(1) | nalType(1) | payloadSize(2) | timestampUs(8)
-     */
     private fun encodeWireFrame(
         wire: ByteArray, src: ByteArray, srcOffset: Int, payloadSize: Int,
         nalSeq: Int, chunkIdx: Int, totalChunks: Int,
         timestampUs: Long, isKey: Boolean, nalType: Int
     ): Int {
-        var pos = 0
-
+        val buffer = java.nio.ByteBuffer.wrap(wire).order(java.nio.ByteOrder.BIG_ENDIAN)
+        
+        // HORU Magic Number & Version
+        buffer.putInt(StreamProtocol.MAGIC_NUMBER)
+        buffer.put(StreamProtocol.PROTOCOL_VERSION)
+        
         // nalSeq (4)
-        wire[pos++] = ((nalSeq shr 24) and 0xFF).toByte()
-        wire[pos++] = ((nalSeq shr 16) and 0xFF).toByte()
-        wire[pos++] = ((nalSeq shr  8) and 0xFF).toByte()
-        wire[pos++] =  (nalSeq and 0xFF).toByte()
-
+        buffer.putInt(nalSeq)
+        
         // chunkIdx (2)
-        wire[pos++] = ((chunkIdx shr 8) and 0xFF).toByte()
-        wire[pos++] =  (chunkIdx and 0xFF).toByte()
-
+        buffer.putShort(chunkIdx.toShort())
+        
         // totalChunks (2)
-        wire[pos++] = ((totalChunks shr 8) and 0xFF).toByte()
-        wire[pos++] =  (totalChunks and 0xFF).toByte()
-
+        buffer.putShort(totalChunks.toShort())
+        
         // flags (1) — bit0 = isKeyframe
-        wire[pos++] = (if (isKey) 0x01 else 0x00).toByte()
-
+        buffer.put(if (isKey) 0x01.toByte() else 0x00.toByte())
+        
         // nalType (1)
-        wire[pos++] = (nalType and 0xFF).toByte()
-
-        // payloadSize (2) ✅ FIXED — receiver now knows exact bytes to read
-        wire[pos++] = ((payloadSize shr 8) and 0xFF).toByte()
-        wire[pos++] =  (payloadSize and 0xFF).toByte()
-
-        // timestampUs (8) ✅ FIXED — decoder now has correct PTS
-        wire[pos++] = ((timestampUs shr 56) and 0xFF).toByte()
-        wire[pos++] = ((timestampUs shr 48) and 0xFF).toByte()
-        wire[pos++] = ((timestampUs shr 40) and 0xFF).toByte()
-        wire[pos++] = ((timestampUs shr 32) and 0xFF).toByte()
-        wire[pos++] = ((timestampUs shr 24) and 0xFF).toByte()
-        wire[pos++] = ((timestampUs shr 16) and 0xFF).toByte()
-        wire[pos++] = ((timestampUs shr  8) and 0xFF).toByte()
-        wire[pos++] =  (timestampUs and 0xFF).toByte()
-
+        buffer.put(nalType.toByte())
+        
+        // payloadSize (2)
+        buffer.putShort(payloadSize.toShort())
+        
+        // timestampUs (8)
+        buffer.putLong(timestampUs)
+        
         // payload
-        System.arraycopy(src, srcOffset, wire, pos, payloadSize)
-        return pos + payloadSize
+        System.arraycopy(src, srcOffset, wire, StreamProtocol.WIRE_HEADER_SIZE, payloadSize)
+        
+        return StreamProtocol.WIRE_HEADER_SIZE + payloadSize
     }
 
     private fun readInt(data: ByteArray, i: Int): Int =

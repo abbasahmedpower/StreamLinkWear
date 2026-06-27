@@ -21,11 +21,23 @@ class DirectSocketServer {
     private var serverSocket: ServerSocket? = null
     private var clientSocket: Socket? = null
     private val running = AtomicBoolean(false)
-    class SendTask {
+    class SendTask : Comparable<SendTask> {
         var wire: ByteArray? = null
         var size: Int = 0
+        var isKeyframe: Boolean = false
+        var sequence: Long = 0L
+
+        override fun compareTo(other: SendTask): Int {
+            if (this.isKeyframe && !other.isKeyframe) return -1
+            if (!this.isKeyframe && other.isKeyframe) return 1
+            return this.sequence.compareTo(other.sequence)
+        }
     }
-    private val sendQueue = LinkedBlockingQueue<SendTask>(256)
+    
+    private val sendQueue = java.util.concurrent.PriorityBlockingQueue<SendTask>(256)
+    private val sendQueueCapacity = 256
+    private val taskSeq = AtomicLong(0)
+    
     private val freeTasks = LinkedBlockingQueue<SendTask>(256).apply {
         repeat(256) { offer(SendTask()) }
     }
@@ -111,21 +123,43 @@ class DirectSocketServer {
             WireBufferPool.release(wire)
             return false
         }
-        val task = freeTasks.poll()
-        if (task == null) {
-            // Backpressure: no free tasks
-            WireBufferPool.release(wire)
-            return false
-        }
+        
+        // Extract isKeyframe from header (offset 13 is HDR_FLAGS)
+        val flags = wire[StreamProtocol.HDR_FLAGS].toInt()
+        val isKeyframe = (flags and 0x01) != 0
+
+        val task = freeTasks.poll() ?: SendTask() // create new if pool empty
+
         task.wire = wire
         task.size = size
-        val offered = sendQueue.offer(task)
-        if (!offered) {
-            task.wire = null
-            freeTasks.offer(task)
-            WireBufferPool.release(wire)
+        task.isKeyframe = isKeyframe
+        task.sequence = taskSeq.getAndIncrement()
+
+        synchronized(sendQueue) {
+            if (sendQueue.size >= sendQueueCapacity) {
+                if (!isKeyframe) {
+                    // Drop this P-frame immediately to protect queue
+                    task.wire = null
+                    freeTasks.offer(task)
+                    WireBufferPool.release(wire)
+                    return false
+                } else {
+                    // Critical IDR frame: try to remove an old P-frame to make room
+                    val removed = sendQueue.removeIf { !it.isKeyframe }
+                    if (!removed) {
+                        // Extreme emergency: drop the oldest frame anyway
+                        val old = sendQueue.poll()
+                        if (old != null && old.wire != null) {
+                            WireBufferPool.release(old.wire!!)
+                            old.wire = null
+                            freeTasks.offer(old)
+                        }
+                    }
+                }
+            }
+            sendQueue.offer(task)
+            return true
         }
-        return offered
     }
 
     private fun closeClient() {

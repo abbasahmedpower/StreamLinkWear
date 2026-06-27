@@ -5,17 +5,23 @@ object StreamProtocol {
     const val DIRECT_SOCKET_PORT = 8999
     const val CHUNK_MTU = 3900
 
-    // Wire header: nalSeq(4) | chunkIdx(2) | totalChunks(2) | flags(1) | nalType(1) | payloadSize(2) | timestampUs(8)
-    const val WIRE_HEADER_SIZE = 20
+    // Wire header: HORU(4) | VERSION(1) | nalSeq(4) | chunkIdx(2) | totalChunks(2) | flags(1) | nalType(1) | payloadSize(2) | timestampUs(8)
+    const val WIRE_HEADER_SIZE = 25
+    
+    // Horus Protocol Identifiers
+    const val MAGIC_NUMBER = 0x484F5255 // "HORU"
+    const val PROTOCOL_VERSION: Byte = 1
 
     // Header field offsets (للـ receiver)
-    const val HDR_NAL_SEQ       = 0   // Int  (4 bytes)
-    const val HDR_CHUNK_IDX     = 4   // Short (2 bytes)
-    const val HDR_TOTAL_CHUNKS  = 6   // Short (2 bytes)
-    const val HDR_FLAGS         = 8   // Byte  (1 byte)  bit0=keyframe
-    const val HDR_NAL_TYPE      = 9   // Byte  (1 byte)
-    const val HDR_PAYLOAD_SIZE  = 10  // Short (2 bytes)
-    const val HDR_TIMESTAMP_US  = 12  // Long  (8 bytes)
+    const val HDR_MAGIC         = 0   // Int   (4 bytes)
+    const val HDR_VERSION       = 4   // Byte  (1 byte)
+    const val HDR_NAL_SEQ       = 5   // Int   (4 bytes)
+    const val HDR_CHUNK_IDX     = 9   // Short (2 bytes)
+    const val HDR_TOTAL_CHUNKS  = 11  // Short (2 bytes)
+    const val HDR_FLAGS         = 13  // Byte  (1 byte)  bit0=keyframe
+    const val HDR_NAL_TYPE      = 14  // Byte  (1 byte)
+    const val HDR_PAYLOAD_SIZE  = 15  // Short (2 bytes)
+    const val HDR_TIMESTAMP_US  = 17  // Long  (8 bytes)
 
     // Wire buffer pool
     const val WIRE_BUFFER_SIZE = CHUNK_MTU + WIRE_HEADER_SIZE + 8

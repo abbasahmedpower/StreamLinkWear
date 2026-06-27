@@ -5,6 +5,9 @@ import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -21,14 +24,39 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.content.Context
 
 @AndroidEntryPoint
 class WearMainActivity : ComponentActivity() {
 
     @Inject lateinit var streamPlayer: DirectStreamPlayer
+    @Inject lateinit var uxEngine: com.streamlink.wear.ai.SmartWatchUXEngine
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var isAmbient = false
+    private var sensorManager: SensorManager? = null
+    private var accelSensor: Sensor? = null
+    private var gyroSensor: Sensor? = null
+
+    private var lastRotationX = 0f
+    private var lastAccelZ = 0f
+
+    private val sensorListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent?) {
+            if (event == null) return
+            if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+                lastAccelZ = event.values[2]
+            } else if (event.sensor.type == Sensor.TYPE_GYROSCOPE) {
+                lastRotationX = event.values[0]
+            }
+            uxEngine.processWristMetrics(lastRotationX, lastAccelZ)
+        }
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
 
     /**
      * Ambient mode observer — activates when watch screen dims.
@@ -69,38 +97,65 @@ class WearMainActivity : ComponentActivity() {
         // Start background service immediately
         WearForegroundService.start(this)
 
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        gyroSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+
         setContent {
             var surfaceReady by remember { mutableStateOf(false) }
+            var overlayVisible by remember { mutableStateOf(true) }
 
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { context ->
-                    SurfaceView(context).apply {
-                        holder.addCallback(object : android.view.SurfaceHolder.Callback {
-                            override fun surfaceCreated(holder: android.view.SurfaceHolder) {
-                                streamPlayer.setSurface(holder.surface)
-                                streamPlayer.start(scope)
-                                surfaceReady = true
-                                Log.i("WearMain", "Surface ready — streaming started")
-                            }
-                            override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, w: Int, h: Int) {
-                                Log.d("WearMain", "Surface changed ${w}x${h}")
-                            }
-                            override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
-                                streamPlayer.setSurface(null)
-                                surfaceReady = false
-                            }
-                        })
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { overlayVisible = !overlayVisible }
+            ) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { context ->
+                        SurfaceView(context).apply {
+                            holder.addCallback(object : android.view.SurfaceHolder.Callback {
+                                override fun surfaceCreated(holder: android.view.SurfaceHolder) {
+                                    streamPlayer.setSurface(holder.surface)
+                                    streamPlayer.start(scope)
+                                    surfaceReady = true
+                                    Log.i("WearMain", "Surface ready — streaming started")
+                                }
+                                override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, w: Int, h: Int) {
+                                    Log.d("WearMain", "Surface changed ${w}x${h}")
+                                }
+                                override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
+                                    streamPlayer.setSurface(null)
+                                    surfaceReady = false
+                                }
+                            })
+                        }
                     }
-                }
-            )
+                )
+
+                // HUD Overlay — tap to show/hide
+                WearStreamOverlay(
+                    visible = overlayVisible,
+                    onHide  = { overlayVisible = false }
+                )
+            }
         }
     }
 
     override fun onResume() {
         super.onResume()
+        sensorManager?.registerListener(sensorListener, accelSensor, SensorManager.SENSOR_DELAY_UI)
+        sensorManager?.registerListener(sensorListener, gyroSensor, SensorManager.SENSOR_DELAY_UI)
         // Wrist raise restores from ambient — no action needed,
         // AmbientLifecycleObserver.onExitAmbient() handles it
+    }
+
+    override fun onPause() {
+        super.onPause()
+        sensorManager?.unregisterListener(sensorListener)
     }
 
     override fun onStop() {

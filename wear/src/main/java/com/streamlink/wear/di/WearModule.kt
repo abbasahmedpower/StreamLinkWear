@@ -52,4 +52,14 @@ object WearModule {
     fun provideAITrainingDao(db: AppDatabase): AITrainingDao {
         return db.aiTrainingDao()
     }
+
+    @Provides
+    @Singleton
+    fun provideSmartWatchUXEngine(): com.streamlink.wear.ai.SmartWatchUXEngine {
+        return com.streamlink.wear.ai.SmartWatchUXEngine { bitrate, fps ->
+            // In a real app we would send this over the socket back to the phone.
+            // For now, log it.
+            android.util.Log.i("SmartWatchUXEngine", "Dynamic params: ${bitrate}bps, ${fps}fps")
+        }
+    }
 }
