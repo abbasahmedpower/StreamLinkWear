@@ -2,29 +2,30 @@ package com.streamlink.shared
 
 import java.nio.ByteBuffer
 import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Zero-allocation H.264 NAL Unit chunker.
+ * Zero-allocation H.264 NAL chunker.
  *
- * Improvements vs previous version:
- * - 4-byte getInt() scan instead of byte-by-byte (×3 speed, cache-line friendly)
- * - Pipeline pattern: no List<Chunk> allocation (callback-based delivery)
- * - Bounded NAL buffer pool (prevents OOM)
- * - Inline NAL type extraction
+ * Fixed:
+ * - nalSeq: global counter per NAL unit (enables receiver reassembly)
+ * - payloadSize: written to wire header byte 10-11
+ * - timestampUs: written to wire header bytes 12-19
+ * - chunkIdx: now correctly sequential (not always 0)
  */
 object NalChunker {
-    @PublishedApi internal const val START_CODE_3 = 0x00000001  // 00 00 00 01 in big-endian
+    @PublishedApi internal const val START_CODE_3 = 0x00000001
     @PublishedApi internal const val START_CODE_MASK = 0xFFFFFF00.toInt()
-    @PublishedApi internal const val START_CODE_3B = 0x00000100  // 00 00 01 (3-byte prefix)
+    @PublishedApi internal const val START_CODE_3B = 0x00000100
+
+    // Global NAL sequence number — unique per NAL emitted (wraps at Int.MAX_VALUE, handled by receiver)
+    private val globalNalSeq = AtomicInteger(0)
 
     private val nalPool = ArrayBlockingQueue<ByteArray>(StreamProtocol.NAL_POOL_CAPACITY)
-    private val wirePool = WireBufferPool
 
     /**
      * Pipeline mode — zero List allocation.
-     * Calls [onChunkReady] for each wire chunk directly.
-     * 
-     * @param onChunkReady (wire: ByteArray, wireSize: Int, payloadSize: Int) — wire buffer from pool
+     * onChunkReady(wire, wireSize, payloadSize)
      */
     fun chunkFramePipeline(
         hardened: HardenedFrame,
@@ -51,11 +52,7 @@ object NalChunker {
 
             if (isStartCode4 || isStartCode3) {
                 if (nalStart != -1) {
-                    emitNal(
-                        data, nalStart, i - nalStart,
-                        hardened.timestampUs, hardened.isKeyframe,
-                        onChunkReady
-                    )
+                    emitNal(data, nalStart, i - nalStart, hardened.timestampUs, hardened.isKeyframe, onChunkReady)
                 }
                 nalStart = i + (if (isStartCode4) 4 else 3)
                 i += if (isStartCode4) 4 else 3
@@ -65,15 +62,11 @@ object NalChunker {
         }
 
         if (nalStart != -1 && nalStart < limit) {
-            emitNal(
-                data, nalStart, limit - nalStart,
-                hardened.timestampUs, hardened.isKeyframe,
-                onChunkReady
-            )
+            emitNal(data, nalStart, limit - nalStart, hardened.timestampUs, hardened.isKeyframe, onChunkReady)
         }
     }
 
-    /** Direct view mode — truly zero copy (passes offset + size, no copy). */
+    /** Direct zero-copy view mode */
     inline fun chunkDirect(
         buffer: ByteBuffer,
         size: Int,
@@ -81,15 +74,12 @@ object NalChunker {
     ) {
         val limit = minOf(size, buffer.limit())
         if (limit < 4) return
-
         var nalStart = -1
         var i = buffer.position()
-
         while (i <= limit - 4) {
             val word = buffer.getInt(i)
             val is4 = (word == START_CODE_3)
             val is3 = !is4 && (word and START_CODE_MASK) == START_CODE_3B
-
             if (is4 || is3) {
                 if (nalStart != -1) {
                     val nalEnd = i
@@ -100,11 +90,8 @@ object NalChunker {
                 }
                 nalStart = i + (if (is4) 4 else 3)
                 i += if (is4) 4 else 3
-            } else {
-                i++
-            }
+            } else { i++ }
         }
-
         if (nalStart != -1 && nalStart < limit) {
             val nalType = (buffer.get(nalStart).toInt() and 0x1F)
             onNal(buffer, nalStart, limit - nalStart, nalType)
@@ -112,63 +99,90 @@ object NalChunker {
     }
 
     private fun emitNal(
-        data: ByteArray,
-        offset: Int,
-        size: Int,
-        timestampUs: Long,
-        isKeyframe: Boolean,
+        data: ByteArray, offset: Int, size: Int,
+        timestampUs: Long, isKeyframe: Boolean,
         onChunkReady: (ByteArray, Int, Int) -> Unit
     ) {
         val nalType = data[offset].toInt() and 0x1F
-        var seq = 0
+        val totalChunks = (size + StreamProtocol.CHUNK_MTU - 1) / StreamProtocol.CHUNK_MTU
+        val nalSeq = globalNalSeq.getAndIncrement()  // ✅ Global unique ID per NAL
+
         var chunkOffset = offset
         var remaining = size
+        var chunkIdx = 0
 
         while (remaining > 0) {
             val chunkPayload = minOf(remaining, StreamProtocol.CHUNK_MTU)
-            val wire = wirePool.acquire()
+            val wire = WireBufferPool.acquire()
             val wireSize = encodeWireFrame(
                 wire, data, chunkOffset, chunkPayload,
-                seq++, (size + StreamProtocol.CHUNK_MTU - 1) / StreamProtocol.CHUNK_MTU,
+                nalSeq, chunkIdx, totalChunks,
                 timestampUs, isKeyframe, nalType
             )
             onChunkReady(wire, wireSize, chunkPayload)
             chunkOffset += chunkPayload
             remaining -= chunkPayload
+            chunkIdx++
         }
     }
 
+    /**
+     * Fixed wire frame encoder.
+     * Header (20 bytes): nalSeq(4) | chunkIdx(2) | totalChunks(2) | flags(1) | nalType(1) | payloadSize(2) | timestampUs(8)
+     */
     private fun encodeWireFrame(
-        wire: ByteArray, src: ByteArray, offset: Int, size: Int,
-        seq: Int, total: Int, ts: Long, isKey: Boolean, nalType: Int
+        wire: ByteArray, src: ByteArray, srcOffset: Int, payloadSize: Int,
+        nalSeq: Int, chunkIdx: Int, totalChunks: Int,
+        timestampUs: Long, isKey: Boolean, nalType: Int
     ): Int {
         var pos = 0
-        // Header: seq(4) total(2) idx(2) flags(1) nalType(1)
-        wire[pos++] = ((seq shr 24) and 0xFF).toByte()
-        wire[pos++] = ((seq shr 16) and 0xFF).toByte()
-        wire[pos++] = ((seq shr 8) and 0xFF).toByte()
-        wire[pos++] = (seq and 0xFF).toByte()
-        wire[pos++] = ((total shr 8) and 0xFF).toByte()
-        wire[pos++] = (total and 0xFF).toByte()
-        wire[pos++] = 0  // chunk index (simplified)
-        wire[pos++] = 0
+
+        // nalSeq (4)
+        wire[pos++] = ((nalSeq shr 24) and 0xFF).toByte()
+        wire[pos++] = ((nalSeq shr 16) and 0xFF).toByte()
+        wire[pos++] = ((nalSeq shr  8) and 0xFF).toByte()
+        wire[pos++] =  (nalSeq and 0xFF).toByte()
+
+        // chunkIdx (2)
+        wire[pos++] = ((chunkIdx shr 8) and 0xFF).toByte()
+        wire[pos++] =  (chunkIdx and 0xFF).toByte()
+
+        // totalChunks (2)
+        wire[pos++] = ((totalChunks shr 8) and 0xFF).toByte()
+        wire[pos++] =  (totalChunks and 0xFF).toByte()
+
+        // flags (1) — bit0 = isKeyframe
         wire[pos++] = (if (isKey) 0x01 else 0x00).toByte()
+
+        // nalType (1)
         wire[pos++] = (nalType and 0xFF).toByte()
-        System.arraycopy(src, offset, wire, pos, size)
-        return pos + size
+
+        // payloadSize (2) ✅ FIXED — receiver now knows exact bytes to read
+        wire[pos++] = ((payloadSize shr 8) and 0xFF).toByte()
+        wire[pos++] =  (payloadSize and 0xFF).toByte()
+
+        // timestampUs (8) ✅ FIXED — decoder now has correct PTS
+        wire[pos++] = ((timestampUs shr 56) and 0xFF).toByte()
+        wire[pos++] = ((timestampUs shr 48) and 0xFF).toByte()
+        wire[pos++] = ((timestampUs shr 40) and 0xFF).toByte()
+        wire[pos++] = ((timestampUs shr 32) and 0xFF).toByte()
+        wire[pos++] = ((timestampUs shr 24) and 0xFF).toByte()
+        wire[pos++] = ((timestampUs shr 16) and 0xFF).toByte()
+        wire[pos++] = ((timestampUs shr  8) and 0xFF).toByte()
+        wire[pos++] =  (timestampUs and 0xFF).toByte()
+
+        // payload
+        System.arraycopy(src, srcOffset, wire, pos, payloadSize)
+        return pos + payloadSize
     }
 
     private fun readInt(data: ByteArray, i: Int): Int =
         ((data[i].toInt() and 0xFF) shl 24) or
-        ((data[i + 1].toInt() and 0xFF) shl 16) or
-        ((data[i + 2].toInt() and 0xFF) shl 8) or
-        (data[i + 3].toInt() and 0xFF)
+        ((data[i+1].toInt() and 0xFF) shl 16) or
+        ((data[i+2].toInt() and 0xFF) shl  8) or
+         (data[i+3].toInt() and 0xFF)
 
-    private fun acquireNalBuffer(size: Int): ByteArray {
-        val pooled = nalPool.poll()
-        return if (pooled != null && pooled.size >= size) pooled else ByteArray(size)
-    }
-
+    fun acquireNalBuffer(size: Int): ByteArray = nalPool.poll()?.takeIf { it.size >= size } ?: ByteArray(size)
     fun releaseNalBuffer(buf: ByteArray) { nalPool.offer(buf) }
 }
 

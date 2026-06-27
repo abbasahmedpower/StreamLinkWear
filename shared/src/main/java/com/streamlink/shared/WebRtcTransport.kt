@@ -21,9 +21,15 @@ class WebRtcTransport(
     private var peerConnectionFactory: PeerConnectionFactory? = null
     private var peerConnection: PeerConnection? = null
     private var dataChannel: DataChannel? = null
-    
     private val scope = CoroutineScope(Dispatchers.IO + Job())
-    private val sendQueue = LinkedBlockingQueue<Pair<ByteArray, Int>>(256)
+    class SendTask {
+        var wire: ByteArray? = null
+        var size: Int = 0
+    }
+    private val sendQueue = LinkedBlockingQueue<SendTask>(256)
+    private val freeTasks = LinkedBlockingQueue<SendTask>(256).apply {
+        repeat(256) { offer(SendTask()) }
+    }
     
     @Volatile var isConnected = false
     var onChunkDelivered: (() -> Unit)? = null
@@ -162,7 +168,10 @@ class WebRtcTransport(
         Thread({
             while (!Thread.currentThread().isInterrupted) {
                 try {
-                    val (wire, size) = sendQueue.take()
+                    val task = sendQueue.take()
+                    val wire = task.wire!!
+                    val size = task.size
+                    
                     val dc = dataChannel
                     if (dc != null && dc.state() == DataChannel.State.OPEN) {
                         val buffer = ByteBuffer.wrap(wire, 0, size)
@@ -171,6 +180,8 @@ class WebRtcTransport(
                         onChunkDelivered?.invoke()
                     }
                     WireBufferPool.release(wire)
+                    task.wire = null
+                    freeTasks.offer(task)
                 } catch (e: Exception) {
                     break
                 }
@@ -183,8 +194,19 @@ class WebRtcTransport(
             WireBufferPool.release(wire)
             return false
         }
-        val offered = sendQueue.offer(Pair(wire, size))
-        if (!offered) WireBufferPool.release(wire)
+        val task = freeTasks.poll()
+        if (task == null) {
+            WireBufferPool.release(wire)
+            return false
+        }
+        task.wire = wire
+        task.size = size
+        val offered = sendQueue.offer(task)
+        if (!offered) {
+            task.wire = null
+            freeTasks.offer(task)
+            WireBufferPool.release(wire)
+        }
         return offered
     }
 

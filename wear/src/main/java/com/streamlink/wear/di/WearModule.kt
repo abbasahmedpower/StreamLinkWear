@@ -4,6 +4,9 @@ import android.content.Context
 import com.streamlink.shared.DirectSocketClient
 import com.streamlink.shared.NetworkDiscovery
 import com.streamlink.wear.player.DirectStreamPlayer
+import androidx.room.Room
+import com.streamlink.wear.db.AppDatabase
+import com.streamlink.wear.db.AITrainingDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -23,9 +26,8 @@ object WearModule {
 
     @Provides
     @Singleton
-    fun provideDirectSocketClient(): DirectSocketClient {
-        // Default IP — will be overridden by NetworkDiscovery when resolved
-        return DirectSocketClient("192.168.1.100")
+    fun provideDirectSocketClient(discovery: NetworkDiscovery): DirectSocketClient {
+        return DirectSocketClient(discovery)
     }
 
     @Provides
@@ -34,5 +36,20 @@ object WearModule {
         client: DirectSocketClient
     ): DirectStreamPlayer {
         return DirectStreamPlayer(client)
+    }
+
+    @Provides
+    @Singleton
+    fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
+        return Room.databaseBuilder(
+            context,
+            AppDatabase::class.java,
+            "streamlink_wear_db"
+        ).build()
+    }
+
+    @Provides
+    fun provideAITrainingDao(db: AppDatabase): AITrainingDao {
+        return db.aiTrainingDao()
     }
 }

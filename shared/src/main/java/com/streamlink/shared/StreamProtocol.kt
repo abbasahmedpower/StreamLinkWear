@@ -4,7 +4,21 @@ object StreamProtocol {
     // TCP Direct Socket
     const val DIRECT_SOCKET_PORT = 8999
     const val CHUNK_MTU = 3900
-    const val WIRE_HEADER_SIZE = 10
+
+    // Wire header: nalSeq(4) | chunkIdx(2) | totalChunks(2) | flags(1) | nalType(1) | payloadSize(2) | timestampUs(8)
+    const val WIRE_HEADER_SIZE = 20
+
+    // Header field offsets (للـ receiver)
+    const val HDR_NAL_SEQ       = 0   // Int  (4 bytes)
+    const val HDR_CHUNK_IDX     = 4   // Short (2 bytes)
+    const val HDR_TOTAL_CHUNKS  = 6   // Short (2 bytes)
+    const val HDR_FLAGS         = 8   // Byte  (1 byte)  bit0=keyframe
+    const val HDR_NAL_TYPE      = 9   // Byte  (1 byte)
+    const val HDR_PAYLOAD_SIZE  = 10  // Short (2 bytes)
+    const val HDR_TIMESTAMP_US  = 12  // Long  (8 bytes)
+
+    // Wire buffer pool
+    const val WIRE_BUFFER_SIZE = CHUNK_MTU + WIRE_HEADER_SIZE + 8
 
     // Video profiles
     const val WEAR_W_FULL = 466

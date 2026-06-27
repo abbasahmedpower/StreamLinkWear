@@ -21,7 +21,14 @@ class DirectSocketServer {
     private var serverSocket: ServerSocket? = null
     private var clientSocket: Socket? = null
     private val running = AtomicBoolean(false)
-    private val sendQueue = LinkedBlockingQueue<Pair<ByteArray, Int>>(256)
+    class SendTask {
+        var wire: ByteArray? = null
+        var size: Int = 0
+    }
+    private val sendQueue = LinkedBlockingQueue<SendTask>(256)
+    private val freeTasks = LinkedBlockingQueue<SendTask>(256).apply {
+        repeat(256) { offer(SendTask()) }
+    }
     private val bytesSent = AtomicLong(0L)
 
     @Volatile var isClientConnected = false
@@ -69,10 +76,15 @@ class DirectSocketServer {
     private fun runSender() {
         while (!Thread.currentThread().isInterrupted) {
             try {
-                val (wire, size) = sendQueue.take()
+                val task = sendQueue.take()
+                val wire = task.wire!!
+                val size = task.size
+                
                 val socket = clientSocket
                 if (socket == null || socket.isClosed) {
                     WireBufferPool.release(wire)
+                    task.wire = null
+                    freeTasks.offer(task)
                     continue
                 }
                 try {
@@ -85,6 +97,8 @@ class DirectSocketServer {
                     isClientConnected = false
                     WireBufferPool.release(wire)
                 }
+                task.wire = null
+                freeTasks.offer(task)
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
                 break
@@ -92,14 +106,25 @@ class DirectSocketServer {
         }
     }
 
-    /** Non-blocking enqueue. Returns false if queue is full (backpressure signal). */
     fun sendPooledWire(wire: ByteArray, size: Int): Boolean {
         if (!isClientConnected) {
             WireBufferPool.release(wire)
             return false
         }
-        val offered = sendQueue.offer(Pair(wire, size))
-        if (!offered) WireBufferPool.release(wire)
+        val task = freeTasks.poll()
+        if (task == null) {
+            // Backpressure: no free tasks
+            WireBufferPool.release(wire)
+            return false
+        }
+        task.wire = wire
+        task.size = size
+        val offered = sendQueue.offer(task)
+        if (!offered) {
+            task.wire = null
+            freeTasks.offer(task)
+            WireBufferPool.release(wire)
+        }
         return offered
     }
 
