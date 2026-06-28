@@ -29,6 +29,10 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.content.Context
+import android.os.VibrationEffect
+import android.os.Vibrator
+import com.streamlink.shared.GlobalStreamState
+import androidx.lifecycle.repeatOnLifecycle
 
 @AndroidEntryPoint
 class WearMainActivity : ComponentActivity() {
@@ -100,6 +104,32 @@ class WearMainActivity : ComponentActivity() {
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         gyroSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+        
+        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        
+        lifecycleScope.launch {
+            this@WearMainActivity.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                var previousState = GlobalStreamState.current
+                GlobalStreamState.snapshot.collect { snapshot ->
+                    val newState = snapshot.state
+                    if (newState != previousState) {
+                        when (newState) {
+                            GlobalStreamState.State.STREAMING -> {
+                                vibrator.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+                            }
+                            GlobalStreamState.State.FAILED -> {
+                                vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 100, 50, 100), -1))
+                            }
+                            GlobalStreamState.State.DEGRADED -> {
+                                vibrator.vibrate(VibrationEffect.createOneShot(20, VibrationEffect.DEFAULT_AMPLITUDE))
+                            }
+                            else -> {}
+                        }
+                        previousState = newState
+                    }
+                }
+            }
+        }
 
         setContent {
             var surfaceReady by remember { mutableStateOf(false) }

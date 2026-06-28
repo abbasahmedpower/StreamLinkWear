@@ -80,13 +80,13 @@ object StreamProtocol {
     val TURN_SERVERS: List<TurnServer> = listOf(
         TurnServer(
             url        = "turn:turn.streamlink.local:3478",
-            username   = "streamlink",
-            credential = "supersecret"
+            username   = BuildConfig.TURN_USERNAME,
+            credential = BuildConfig.TURN_PASSWORD
         ),
         TurnServer(
             url        = "turn:turn.streamlink.local:3478?transport=tcp",
-            username   = "streamlink",
-            credential = "supersecret"
+            username   = BuildConfig.TURN_USERNAME,
+            credential = BuildConfig.TURN_PASSWORD
         )
     )
 

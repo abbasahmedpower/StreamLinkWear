@@ -11,6 +11,15 @@ android {
     defaultConfig {
         minSdk 28
         targetSdk 34
+        buildConfigField "String", "TURN_USERNAME", "\"streamlink\""
+        buildConfigField "String", "TURN_PASSWORD", "\"supersecret\""
+        buildConfigField "String", "HORUS_SECRET_TOKEN", "\"NASA_GRADE_SECRET_TOKEN_HORUS\""
+    }
+    buildFeatures {
+        buildConfig = true
+    }
+    testOptions {
+        unitTests.returnDefaultValues = true
     }
     kotlinOptions { jvmTarget = "17" }
     compileOptions {
@@ -29,4 +38,14 @@ dependencies {
 
     implementation 'io.getstream:stream-webrtc-android:1.1.0'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    
+    // Testing
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.0'
+    testImplementation 'io.mockk:mockk:1.13.8'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
+}
+
+tasks.withType(Test) {
+    useJUnitPlatform()
 }

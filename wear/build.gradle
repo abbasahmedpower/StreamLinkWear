@@ -15,9 +15,16 @@ android {
         versionCode 4
         versionName "4.0-ultra"
     }
-    buildFeatures { compose true }
-    lint { abortOnError false }
-    composeOptions { kotlinCompilerExtensionVersion "1.5.8" }
+    buildFeatures {
+        compose true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion '1.5.8'
+    }
+    sourceSets {
+        main.java.srcDirs += 'src/main/java'
+        main.kotlin.srcDirs += 'src/main/java'
+    }
     kotlinOptions { jvmTarget = "17" }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -34,6 +41,7 @@ dependencies {
     implementation "androidx.activity:activity-compose:1.8.2"
     implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0"
     implementation "androidx.lifecycle:lifecycle-runtime-compose:2.7.0"
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.7.0"
 
     implementation "com.google.android.gms:play-services-wearable:18.2.0"
     implementation "com.google.android.exoplayer:exoplayer-core:2.19.1"

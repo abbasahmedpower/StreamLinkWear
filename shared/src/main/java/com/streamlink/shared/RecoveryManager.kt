@@ -116,7 +116,7 @@ class RecoveryManager(
      * Pick recovery strategy based on attempt number and failure cause.
      * Escalates from light (ICE restart) → medium (codec reset) → heavy (full reconnect).
      */
-    private fun pickStrategy(attempt: Int, cause: String): Strategy {
+    internal fun pickStrategy(attempt: Int, cause: String): Strategy {
         if (attempt >= MAX_ATTEMPTS) return Strategy.GIVE_UP
         return when {
             cause.contains("ice", ignoreCase = true) && attempt <= 3 -> Strategy.ICE_RESTART
@@ -134,7 +134,7 @@ class RecoveryManager(
      *
      * Delays: 500, 1000, 2000, 4000, 8000, 16000, 30000ms (capped)
      */
-    private fun nextDelay(attempt: Int): Long {
+    internal fun nextDelay(attempt: Int): Long {
         val base = BASE_DELAY_MS * (1L shl (attempt - 1).coerceAtMost(6))
         val capped = min(base, MAX_DELAY_MS)
         val jitter = (capped * 0.2 * (Random.nextDouble() * 2.0 - 1.0)).toLong()

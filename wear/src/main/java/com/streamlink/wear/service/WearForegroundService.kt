@@ -98,7 +98,7 @@ class WearForegroundService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("StreamLink Active")
             .setContentText("Streaming from phone")
-            //.setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(android.R.drawable.ic_media_play) // Mandatory for foreground service
             .setContentIntent(openIntent)
             .setOngoing(true)
             .build()

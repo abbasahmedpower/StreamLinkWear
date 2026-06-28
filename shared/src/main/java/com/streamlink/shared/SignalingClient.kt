@@ -25,7 +25,10 @@ class SignalingClient(
 
     fun connect() {
         val url = "$backendUrl/signal/$userId/$deviceType"
-        val request = Request.Builder().url(url).build()
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("X-Horus-Authorization", BuildConfig.HORUS_SECRET_TOKEN)
+            .build()
         
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {

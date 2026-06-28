@@ -11,10 +11,8 @@ import io.ktor.server.websocket.*
 import io.ktor.websocket.*
 import io.lettuce.core.RedisClient
 import io.lettuce.core.api.StatefulRedisConnection
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.consumeEach
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -77,13 +75,22 @@ fun Application.module(nodeId: String, redisUrl: String) {
 
     // Redis for cross-node session sharing
     val redisClient: RedisClient = RedisClient.create(redisUrl)
-    val redis: StatefulRedisConnection<String, String> = redisClient.connect()
+    var redis: StatefulRedisConnection<String, String>? = null
+    try {
+        redis = redisClient.connect()
+        log.info("Connected to Redis successfully.")
+    } catch (e: Exception) {
+        log.error("Failed to connect to Redis. Proceeding without cluster sync.", e)
+    }
 
     val registry = PeerRegistry()
     val orchestrator = HandoffOrchestrator(registry, redis, nodeId)
 
+    val expectedToken = System.getenv("HORUS_SECRET_TOKEN") ?: "NASA_GRADE_SECRET_TOKEN_HORUS"
+
     // Background: broadcast metrics to dashboard every 500ms
-    launch {
+    val monitorScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    monitorScope.launch {
         while (isActive) {
             delay(500)
             val stats = registry.stats()
@@ -110,7 +117,7 @@ fun Application.module(nodeId: String, redisUrl: String) {
 
     routing {
         get("/health") {
-            call.respondText("OK node=$nodeId redis=${redis.isOpen}")
+            call.respondText("OK node=$nodeId redis=${redis?.isOpen == true}")
         }
 
         // ── Real-time metrics for Dashboard ──────────────────────────────────
@@ -136,8 +143,13 @@ fun Application.module(nodeId: String, redisUrl: String) {
             
             // X-Horus-Authorization Security Check
             val authToken = call.request.headers["X-Horus-Authorization"]
-            if (authToken != "NASA_GRADE_SECRET_TOKEN_HORUS") { 
+            if (authToken != expectedToken) { 
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Unauthorized Access Attempt"))
+                return@webSocket
+            }
+
+            if (userId.length > 64 || !userId.matches(Regex("^[a-zA-Z0-9_-]+$"))) {
+                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Invalid userId format"))
                 return@webSocket
             }
 
@@ -179,8 +191,13 @@ fun Application.module(nodeId: String, redisUrl: String) {
             
             // X-Horus-Authorization Security Check
             val authToken = call.request.headers["X-Horus-Authorization"]
-            if (authToken != "NASA_GRADE_SECRET_TOKEN_HORUS") { 
+            if (authToken != expectedToken) { 
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Unauthorized Access Attempt"))
+                return@webSocket
+            }
+
+            if (roomId.length > 64 || !roomId.matches(Regex("^[a-zA-Z0-9_-]+$"))) {
+                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Invalid roomId format"))
                 return@webSocket
             }
 

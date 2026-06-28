@@ -71,6 +71,12 @@ class QualityController(
         monitorJob?.cancel()
     }
 
+    fun downgradeQuality() {
+        packetLossRate = packetLossRate.coerceAtLeast(0.25f)
+        currentRttMs = currentRttMs.coerceAtLeast(500L)
+        evaluate()
+    }
+
     private fun evaluate() {
         val current = _profile.value
 

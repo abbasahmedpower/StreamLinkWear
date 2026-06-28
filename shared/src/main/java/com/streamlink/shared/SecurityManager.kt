@@ -1,6 +1,6 @@
 package com.streamlink.shared
 
-import android.util.Base64
+import java.util.Base64
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
@@ -36,6 +36,21 @@ object SecurityManager {
         keyRef.set(keyBytes.copyOf())
     }
 
+    fun encrypt(data: ByteArray, key: ByteArray, timestamp: Long = System.currentTimeMillis()): ByteArray {
+        val iv = ByteArray(StreamProtocol.GCM_IV_BYTES).also { secureRandom.nextBytes(it) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(
+            Cipher.ENCRYPT_MODE,
+            SecretKeySpec(key, "AES"),
+            GCMParameterSpec(StreamProtocol.GCM_TAG_BITS, iv)
+        )
+        cipher.updateAAD(iv)
+        val ciphertext = cipher.doFinal(data)
+        
+        // Return raw IV + ciphertext (no Base64 for binary efficiency)
+        return iv + ciphertext
+    }
+
     fun encrypt(payload: String, keyBytes: ByteArray, sequenceNumber: Int = 0): String {
         val timestamp = System.currentTimeMillis()
         val iv = ByteArray(StreamProtocol.GCM_IV_BYTES).also { secureRandom.nextBytes(it) }
@@ -49,13 +64,13 @@ object SecurityManager {
         val ciphertext = cipher.doFinal(
             "$payload|TS|$timestamp|SEQ|$sequenceNumber".toByteArray(Charsets.UTF_8)
         )
-        return Base64.encodeToString(iv + ciphertext, Base64.NO_WRAP)
+        return Base64.getEncoder().encodeToString(iv + ciphertext)
     }
 
     fun decrypt(encoded: String, keyBytes: ByteArray): String? {
         if (encoded.isEmpty()) return null
         return try {
-            val combined = Base64.decode(encoded, Base64.NO_WRAP)
+            val combined = java.util.Base64.getDecoder().decode(encoded)
             if (combined.size <= StreamProtocol.GCM_IV_BYTES) return null
 
             val iv = combined.copyOfRange(0, StreamProtocol.GCM_IV_BYTES)
@@ -63,10 +78,8 @@ object SecurityManager {
             val ivKey = sha256Key(iv, 0)
             val now = System.currentTimeMillis()
 
-            // ✅ FIX: Evict nonce cache BEFORE check to bound memory usage
             evictNonceCache(now)
 
-            // ✅ FIX: Hard cap — reject if cache still too large after eviction
             if (nonceCache.size >= NONCE_MAX_SIZE) {
                 android.util.Log.e("SecurityManager", "Nonce cache at hard cap — dropping packet")
                 return null
@@ -76,6 +89,7 @@ object SecurityManager {
                 android.util.Log.w("SecurityManager", "Replay: duplicate nonce")
                 return null
             }
+            
             nonceCacheInserts.incrementAndGet()
 
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -104,6 +118,7 @@ object SecurityManager {
                 android.util.Log.w("SecurityManager", "Seq replay: $seq")
                 return null
             }
+            
             url
         } catch (e: Exception) {
             android.util.Log.w("SecurityManager", "Decrypt failed: ${e.javaClass.simpleName}")
@@ -146,10 +161,17 @@ object SecurityManager {
         val digest = MessageDigest.getInstance("SHA-256")
         digest.update(iv)
         digest.update(sequenceNumber.toString().toByteArray())
-        return Base64.encodeToString(digest.digest(), Base64.NO_WRAP)
+        return java.util.Base64.getEncoder().withoutPadding().encodeToString(digest.digest())
     }
 
     // Monitoring
     fun nonceCacheSize(): Int = nonceCache.size
     fun totalNonceInserts(): Long = nonceCacheInserts.get()
+
+    // For Unit Tests Only
+    fun resetForTest() {
+        nonceCache.clear()
+        nonceCacheInserts.set(0L)
+        seqWindow.clear()
+    }
 }
