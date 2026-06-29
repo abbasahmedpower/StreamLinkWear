@@ -89,6 +89,25 @@ TCP socket → DirectSocketClient.receiveLoop()
              MediaCodec (HW H.264 decoder)
                      ↓
              Surface → SurfaceView (full screen)
+
+### Layer 5.5: Reverse Touch Channel (Wear → Phone)
+
+```
+SurfaceView (Compose pointerInput)
+                     ↓
+TouchInputController (Slot allocation & Velocity prediction)
+                     ↓
+HOTC Protocol (32-byte frame, Float→UInt16 quantization)
+                     ↓
+DirectSocketClient (AES-256-GCM Encrypted)
+                     ↓
+[TCP]
+                     ↓
+DirectSocketServer (Decryption)
+                     ↓
+RemoteControlAccessibilityService (Hybrid Injection)
+   ├── InputManager.injectInputEvent (Ultra-low latency reflection, if permitted)
+   └── GestureDescription (Standard AccessibilityService fallback)
 ```
 
 ---

@@ -119,6 +119,10 @@ fun StreamLinkPhoneScreen(
             .fillMaxSize()
             .background(bgBrush)
     ) {
+        if (isStreaming) {
+            PhoneRenderSurface(modifier = Modifier.fillMaxSize())
+        }
+
         // Info Button (Top Right)
         IconButton(
             onClick = onInfoClick,

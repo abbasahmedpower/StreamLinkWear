@@ -1,7 +1,10 @@
 package com.streamlink.app.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,17 +16,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamlink.app.R
+import com.streamlink.app.about.AboutStrings
 
 @Composable
 fun InfoScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     val bgBrush = Brush.verticalGradient(
-        colors = listOf(Color(0xFF0A0A12), Color(0xFF13131F))
+        colors = listOf(Color(0xFF040B16), Color(0xFF0A192F))
     )
 
     Box(
@@ -38,17 +44,18 @@ fun InfoScreen(onBack: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Horus el fardos Logo
+            // Horus Al-Ferdous Logo
             Surface(
                 modifier = Modifier
                     .size(160.dp)
                     .clip(CircleShape),
-                color = Color(0xFF1C1C2E),
-                tonalElevation = 8.dp
+                color = Color(0xFF112240),
+                tonalElevation = 12.dp,
+                shadowElevation = 8.dp
             ) {
                 Image(
                     painter = painterResource(id = R.drawable.horus_logo),
-                    contentDescription = "Horus el fardos Logo",
+                    contentDescription = "Horus Al-Ferdous Logo",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
@@ -58,10 +65,10 @@ fun InfoScreen(onBack: () -> Unit) {
 
             // Company Name
             Text(
-                text = "Horus el fardos",
+                text = AboutStrings.get("app_name"),
                 fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFFF9A826), // Golden tone
+                fontWeight = FontWeight.ExtraBold,
+                color = Color(0xFF64FFDA), // Cyan/Teal tone
                 textAlign = TextAlign.Center
             )
 
@@ -70,7 +77,7 @@ fun InfoScreen(onBack: () -> Unit) {
             // Developer Info
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C2E)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF112240)),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(
@@ -78,17 +85,52 @@ fun InfoScreen(onBack: () -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "Developed by",
-                        fontSize = 14.sp,
-                        color = Color(0xFF888899)
+                        text = AboutStrings.get("developer"),
+                        fontSize = 16.sp,
+                        color = Color(0xFF8892B0)
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "Eng/Abbas AboAlatta",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFE6F1FF)
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Actions Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                // Email
+                Button(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_SENDTO).apply {
+                            data = Uri.parse("mailto:support@horus-alferdous.com")
+                            putExtra(Intent.EXTRA_SUBJECT, "StreamLinkWear Support")
+                        }
+                        context.startActivity(Intent.createChooser(intent, "Send Email"))
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF233554)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(AboutStrings.get("contact"), color = Color(0xFF64FFDA))
+                }
+
+                // Website
+                Button(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://horus-alferdous.com"))
+                        context.startActivity(intent)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF233554)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(AboutStrings.get("website"), color = Color(0xFF64FFDA))
                 }
             }
 
@@ -96,9 +138,9 @@ fun InfoScreen(onBack: () -> Unit) {
 
             // Version Info
             Text(
-                text = "Version 26.1.0.1",
+                text = "${AboutStrings.get("version")} 4.0-ultra",
                 fontSize = 14.sp,
-                color = Color(0xFF555566),
+                color = Color(0xFF8892B0),
                 fontWeight = FontWeight.Medium
             )
 
@@ -110,10 +152,10 @@ fun InfoScreen(onBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF64FFDA)),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Text("Back to Home", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("Back to Home", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0A192F))
             }
         }
     }

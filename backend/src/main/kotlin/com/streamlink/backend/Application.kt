@@ -21,14 +21,51 @@ import java.util.Collections
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import io.ktor.network.tls.certificates.generateCertificate
+import java.io.File
+import java.security.KeyStore
+import org.slf4j.LoggerFactory
 
 fun main() {
     val nodeId  = System.getenv("NODE_ID")  ?: "NODE_1"
     val redisUrl = System.getenv("REDIS_URL") ?: "redis://localhost:6379"
 
-    embeddedServer(Netty, port = 8080, host = "0.0.0.0") {
-        module(nodeId, redisUrl)
-    }.start(wait = true)
+    val keystoreFile = File("build/keystore.jks")
+    if (!keystoreFile.exists()) {
+        keystoreFile.parentFile.mkdirs()
+        generateCertificate(
+            file = keystoreFile,
+            keyAlias = "streamlink",
+            keyPassword = "horus_tls_2026",
+            jksPassword = "horus_tls_2026"
+        )
+    }
+
+    val keystore = KeyStore.getInstance(KeyStore.getDefaultType())
+    keystore.load(keystoreFile.inputStream(), "horus_tls_2026".toCharArray())
+
+    val env = applicationEngineEnvironment {
+        log = LoggerFactory.getLogger("ktor.application")
+        connector {
+            port = 8080
+            host = "0.0.0.0"
+        }
+        sslConnector(
+            keyStore = keystore,
+            keyAlias = "streamlink",
+            keyStorePassword = { "horus_tls_2026".toCharArray() },
+            privateKeyPassword = { "horus_tls_2026".toCharArray() }
+        ) {
+            port = 8443
+            host = "0.0.0.0"
+            keyStorePath = keystoreFile
+        }
+        module {
+            module(nodeId, redisUrl)
+        }
+    }
+
+    embeddedServer(Netty, env).start(wait = true)
 }
 
 // ─── Metrics model ────────────────────────────────────────────────────────────
@@ -86,7 +123,7 @@ fun Application.module(nodeId: String, redisUrl: String) {
     val registry = PeerRegistry()
     val orchestrator = HandoffOrchestrator(registry, redis, nodeId)
 
-    val expectedToken = System.getenv("HORUS_SECRET_TOKEN") ?: "NASA_GRADE_SECRET_TOKEN_HORUS"
+    val expectedToken = System.getenv("HORUS_SECRET") ?: throw IllegalStateException("HORUS_SECRET env var is missing")
 
     // Background: broadcast metrics to dashboard every 500ms
     val monitorScope = CoroutineScope(Dispatchers.IO + SupervisorJob())

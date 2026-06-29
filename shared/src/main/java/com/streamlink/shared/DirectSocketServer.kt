@@ -45,6 +45,35 @@ class DirectSocketServer {
 
     @Volatile var isClientConnected = false
     var onChunkDelivered: (() -> Unit)? = null
+    var onTouchEvent: ((TouchEvent) -> Unit)? = null
+    private var encryptedChannel: EncryptedChannel? = null
+
+    /** Launched alongside the sender thread when a client connects. */
+    private fun runInputReceiver(socket: java.net.Socket) {
+        val dis = java.io.DataInputStream(socket.inputStream)
+        try {
+            while (running.get() && !socket.isClosed) {
+                // Read 4-byte length prefix
+                val len = dis.readInt()
+                if (len <= 0 || len > 1024) continue // basic sanity check
+                
+                val encryptedBuf = ByteArray(len)
+                dis.readFully(encryptedBuf)
+                
+                val ec = encryptedChannel
+                val decrypted = if (ec != null) ec.decrypt(encryptedBuf) else encryptedBuf
+                if (decrypted == null || decrypted.size < StreamProtocol.INPUT_FRAME_SIZE) continue
+                
+                val event = TouchCodec.decode(decrypted)
+                if (event != null) {
+                    onTouchEvent?.invoke(event)
+                }
+                // If magic doesn't match, it might be noise — skip silently
+            }
+        } catch (e: java.io.IOException) {
+            android.util.Log.w(tag, "Input receive loop ended: ${e.message}")
+        }
+    }
 
     suspend fun start() = withContext(Dispatchers.IO) {
         if (running.getAndSet(true)) return@withContext
@@ -76,7 +105,39 @@ class DirectSocketServer {
                 newClient.tcpNoDelay = true
                 newClient.setPerformancePreferences(0, 1, 2)
                 clientSocket = newClient
+                
+                // ECDH Handshake
+                val dis = java.io.DataInputStream(newClient.inputStream)
+                val dos = java.io.DataOutputStream(newClient.outputStream)
+                
+                // 1. Read Watch's public key
+                val clientLen = dis.readInt()
+                val clientBytes = ByteArray(clientLen)
+                dis.readFully(clientBytes)
+                val clientPub = String(clientBytes, Charsets.UTF_8)
+                
+                // 2. Generate Phone's ephemeral key
+                val kp = KeyExchange.generateEphemeralKeyPair()
+                val pubBytes = kp.publicKeyBase64.toByteArray(Charsets.UTF_8)
+                
+                // 3. Send Phone's public key
+                dos.writeInt(pubBytes.size)
+                dos.write(pubBytes)
+                dos.flush()
+                
+                // 4. Derive Session Key
+                val sessionKey = KeyExchange.deriveSessionKey(kp.privateKey, clientPub)
+                encryptedChannel = EncryptedChannel(sessionKey)
+                Log.i(tag, "✅ Handshake complete with Watch")
+
                 isClientConnected = true
+
+                // Launch touch receiver thread alongside the sender thread
+                Thread({ runInputReceiver(newClient) }, "SL-InputReceiver").apply {
+                    priority = Thread.MAX_PRIORITY - 2
+                    isDaemon = true
+                    start()
+                }
             }
 
             senderThread.interrupt()
@@ -135,31 +196,29 @@ class DirectSocketServer {
         task.isKeyframe = isKeyframe
         task.sequence = taskSeq.getAndIncrement()
 
-        synchronized(sendQueue) {
-            if (sendQueue.size >= sendQueueCapacity) {
-                if (!isKeyframe) {
-                    // Drop this P-frame immediately to protect queue
-                    task.wire = null
-                    freeTasks.offer(task)
-                    WireBufferPool.release(wire)
-                    return false
-                } else {
-                    // Critical IDR frame: try to remove an old P-frame to make room
-                    val removed = sendQueue.removeIf { !it.isKeyframe }
-                    if (!removed) {
-                        // Extreme emergency: drop the oldest frame anyway
-                        val old = sendQueue.poll()
-                        if (old != null && old.wire != null) {
-                            WireBufferPool.release(old.wire!!)
-                            old.wire = null
-                            freeTasks.offer(old)
-                        }
+        if (sendQueue.size >= sendQueueCapacity) {
+            if (!isKeyframe) {
+                // Drop this P-frame immediately to protect queue
+                task.wire = null
+                freeTasks.offer(task)
+                WireBufferPool.release(wire)
+                return false
+            } else {
+                // Critical IDR frame: try to remove an old P-frame to make room
+                val removed = sendQueue.removeIf { !it.isKeyframe }
+                if (!removed) {
+                    // Extreme emergency: drop the oldest frame anyway
+                    val old = sendQueue.poll()
+                    if (old != null && old.wire != null) {
+                        WireBufferPool.release(old.wire!!)
+                        old.wire = null
+                        freeTasks.offer(old)
                     }
                 }
             }
-            sendQueue.offer(task)
-            return true
         }
+        sendQueue.offer(task)
+        return true
     }
 
     private fun closeClient() {

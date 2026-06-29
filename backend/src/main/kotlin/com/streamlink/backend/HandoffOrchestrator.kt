@@ -16,7 +16,7 @@ data class SignalEnvelope(
 
 class HandoffOrchestrator(
     private val registry: PeerRegistry,
-    private val redis: StatefulRedisConnection<String, String>,
+    private val redis: StatefulRedisConnection<String, String>?,
     private val nodeId: String
 ) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -37,16 +37,16 @@ class HandoffOrchestrator(
         }
 
         // Remote delivery via Redis Pub/Sub
-        redis.async().publish("sl:signal:$userId", raw)
+        redis?.async()?.publish("sl:signal:$userId", raw)
     }
 
     fun onDeviceConnected(userId: String, device: PeerRegistry.DeviceType, peerId: String) {
-        redis.async().set("sl:presence:$userId:${device.name}", peerId)
-        redis.async().expire("sl:presence:$userId:${device.name}", 300)
+        redis?.async()?.set("sl:presence:$userId:${device.name}", peerId)
+        redis?.async()?.expire("sl:presence:$userId:${device.name}", 300)
     }
 
     fun onDeviceDisconnected(userId: String, device: PeerRegistry.DeviceType, peerId: String) {
-        redis.async().del("sl:presence:$userId:${device.name}")
+        redis?.async()?.del("sl:presence:$userId:${device.name}")
     }
 
     // Legacy API (for /stream/handoff endpoint)

@@ -141,3 +141,43 @@ reserved[2..5] = future (encryption nonce, etc.)
 ```
 
 Backward compatibility is maintained by checking `reserved[0..1]` before parsing extended fields.
+
+---
+
+## 9. Reverse Touch Channel (HOTC)
+
+The Reverse Touch Channel transmits touch events from the Watch back to the Phone using the **HOTC** (Hardware Optimized Touch Channel) protocol. It uses a rigid, constant **32-byte frame** size to ensure CPU cache-line alignment and predictable memory access.
+
+```
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+├───────────────────────────────────────────────────────────────┤
+│                 magic (4 bytes) = 0x484F5443                  │
+├───────────────────────┬───────────────────────┬───────────────┤
+│       phase (1)       │     pointerId (1)     │  padding (2)  │
+├───────────────────────┴───────────────────────┴───────────────┤
+│         nx (2 bytes, UInt16)  │       ny (2 bytes, UInt16)    │
+├───────────────────────────────────────────────────────────────┤
+│                          seq (4 bytes)                        │
+├───────────────────────────────────────────────────────────────┤
+│                      timestampUs (8 bytes)                    │
+├───────────────────────────────────────────────────────────────┤
+│                          padding (8 bytes)                    │
+└───────────────────────────────────────────────────────────────┘
+```
+
+### Field Definitions
+
+| Field | Size | Type | Description |
+|-------|------|------|-------------|
+| `magic` | 4 | UInt32 | Magic number `0x484F5443` ("HOTC"). |
+| `phase` | 1 | UInt8 | Touch phase: 0=DOWN, 1=MOVE, 2=UP, 3=CANCEL. |
+| `pointerId`| 1 | UInt8 | Finger slot index (0-9). |
+| `padding1`| 2 | Bytes | Alignment padding. |
+| `nx`, `ny`| 4 | UInt16 | Normalized float coordinates (0.0 - 1.0) quantized into UInt16 (0 - 65535). |
+| `seq` | 4 | Int32 | Sequence number. |
+| `timestamp`| 8 | Int64 | Microsecond timestamp from the Watch. |
+| `padding2`| 8 | Bytes | Alignment padding to reach 32 bytes total. |
+
+### Security (ECDH + AES-256-GCM)
+The socket connection immediately negotiates an Ephemeral Elliptic Curve Diffie-Hellman (ECDH) handshake. The derived session key encrypts the 32-byte HOTC frames using AES-256-GCM to prevent injection attacks over the local network.

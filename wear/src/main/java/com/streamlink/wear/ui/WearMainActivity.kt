@@ -6,11 +6,12 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.viewinterop.AndroidView
 import android.view.SurfaceView
 import androidx.lifecycle.lifecycleScope
@@ -39,6 +40,11 @@ class WearMainActivity : ComponentActivity() {
 
     @Inject lateinit var streamPlayer: DirectStreamPlayer
     @Inject lateinit var uxEngine: com.streamlink.wear.ai.SmartWatchUXEngine
+    @Inject lateinit var socketClient: com.streamlink.shared.DirectSocketClient
+    
+    private val touchController by lazy {
+        com.streamlink.wear.input.TouchInputController(socketClient)
+    }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var isAmbient = false
@@ -138,15 +144,45 @@ class WearMainActivity : ComponentActivity() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { overlayVisible = !overlayVisible }
+                    .pointerInput(overlayVisible) {
+                        if (!overlayVisible) {
+                            // Fixed 60Hz sampling loop using awaitPointerEventScope
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                    val timeUs = System.nanoTime() / 1000L
+                                    for (change in event.changes) {
+                                        val phase = when {
+                                            change.pressed && !change.previousPressed -> com.streamlink.shared.TouchPhase.DOWN
+                                            !change.pressed && change.previousPressed -> com.streamlink.shared.TouchPhase.UP
+                                            change.pressed -> com.streamlink.shared.TouchPhase.MOVE
+                                            else -> continue
+                                        }
+                                        val xNorm = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                        val yNorm = (change.position.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                        
+                                        touchController.processEvent(
+                                            change.id.value, phase, xNorm, yNorm, timeUs
+                                        )
+                                        change.consume()
+                                    }
+                                    // Note: awaitPointerEvent() inherently suspends and returns batched 
+                                    // events per Compose frame (typically 60Hz), so explicit Choreographer
+                                    // suspension here is redundant and would violate @RestrictsSuspension.
+                                }
+                            }
+                        } else {
+                            // When overlay is visible, listen for tap to hide it
+                            detectTapGestures(
+                                onTap = { overlayVisible = false }
+                            )
+                        }
+                    }
             ) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { context ->
-                        SurfaceView(context).apply {
+                        object : SurfaceView(context) {}.apply {
                             holder.addCallback(object : android.view.SurfaceHolder.Callback {
                                 override fun surfaceCreated(holder: android.view.SurfaceHolder) {
                                     streamPlayer.setSurface(holder.surface)

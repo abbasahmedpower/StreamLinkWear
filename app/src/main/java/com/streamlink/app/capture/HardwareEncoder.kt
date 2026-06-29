@@ -3,6 +3,7 @@ package com.streamlink.app.capture
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
@@ -86,6 +87,9 @@ class HardwareEncoder(
                     MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
                 )
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
+                }
                 setInteger(
                     MediaFormat.KEY_BITRATE_MODE,
                     MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR

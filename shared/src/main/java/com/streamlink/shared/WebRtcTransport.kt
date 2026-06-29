@@ -14,7 +14,8 @@ import java.util.concurrent.LinkedBlockingQueue
 class WebRtcTransport(
     private val context: Context,
     private val signalingClient: SignalingClient,
-    private val isOfferer: Boolean
+    private val isOfferer: Boolean,
+    private val hotcChannel: com.streamlink.shared.network.WebRtcHotcChannel? = null
 ) {
     private val tag = "WebRtcTransport"
     
@@ -78,7 +79,11 @@ class WebRtcTransport(
                 override fun onRemoveStream(stream: MediaStream) {}
                 override fun onDataChannel(dc: DataChannel) {
                     Log.i(tag, "Received DataChannel: ${dc.label()}")
-                    setupDataChannel(dc)
+                    if (dc.label() == com.streamlink.shared.network.WebRtcHotcChannel.HOTC_LABEL) {
+                        hotcChannel?.onRemoteDataChannel(dc)
+                    } else {
+                        setupDataChannel(dc)
+                    }
                 }
                 override fun onRenegotiationNeeded() {}
                 override fun onAddTrack(receiver: RtpReceiver, mediaStreams: Array<out MediaStream>) {}
@@ -92,6 +97,10 @@ class WebRtcTransport(
             }
             dataChannel = peerConnection?.createDataChannel("streamlink_video", dcInit)
             dataChannel?.let { setupDataChannel(it) }
+
+            peerConnection?.let { pc ->
+                hotcChannel?.attachToPeerConnection(pc, asOfferer = true)
+            }
             
             peerConnection?.createOffer(object : SdpObserver {
                 override fun onCreateSuccess(desc: SessionDescription) {

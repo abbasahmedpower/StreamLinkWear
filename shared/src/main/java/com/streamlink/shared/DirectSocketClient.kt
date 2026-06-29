@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import java.io.IOException
 import java.io.InputStream
 import java.net.InetSocketAddress
@@ -26,6 +27,7 @@ class DirectSocketClient(
     private val tag = "DirectSocketClient"
     private var socket: Socket? = null
     private val closed = AtomicBoolean(false)
+    private var encryptedChannel: EncryptedChannel? = null
 
     data class WireChunk(
         val nalSeq: Int,           // ✅ Global NAL sequence (for FrameAssembler grouping)
@@ -61,10 +63,33 @@ class DirectSocketClient(
                     setPerformancePreferences(0, 2, 1)  // latency > bandwidth > connection time
                 }
                 socket = s
-                Log.i(tag, "✅ Connected to phone at $host:$port")
+                
+                // ECDH Handshake
+                val kp = KeyExchange.generateEphemeralKeyPair()
+                val pubBytes = kp.publicKeyBase64.toByteArray(Charsets.UTF_8)
+                val dos = java.io.DataOutputStream(s.outputStream)
+                val dis = java.io.DataInputStream(s.inputStream)
+                
+                dos.writeInt(pubBytes.size)
+                dos.write(pubBytes)
+                dos.flush()
+                
+                val theirLen = dis.readInt()
+                val theirBytes = ByteArray(theirLen)
+                dis.readFully(theirBytes)
+                val theirPub = String(theirBytes, Charsets.UTF_8)
+                
+                val sessionKey = KeyExchange.deriveSessionKey(kp.privateKey, theirPub)
+                encryptedChannel = EncryptedChannel(sessionKey)
+                
+                Log.i(tag, "✅ Connected and Handshake complete with $host:$port")
                 onStateChange(true)
                 attempt = 0
+                
+                // Launch touch sender as a sibling coroutine alongside the receive loop
+                startTouchSenderOnce()
                 receiveLoop(s.inputStream, onChunk)
+                
                 onStateChange(false)
             } catch (e: IOException) {
                 Log.w(tag, "Connection failed: ${e.message}")
@@ -149,20 +174,69 @@ class DirectSocketClient(
         return true
     }
 
-    private fun readInt(buf: ByteArray, offset: Int): Int =
-        ((buf[offset  ].toInt() and 0xFF) shl 24) or
-        ((buf[offset+1].toInt() and 0xFF) shl 16) or
-        ((buf[offset+2].toInt() and 0xFF) shl  8) or
-         (buf[offset+3].toInt() and 0xFF)
+    private class TouchTask { var event: TouchEvent? = null }
 
-    private fun readShort(buf: ByteArray, offset: Int): Short =
-        (((buf[offset  ].toInt() and 0xFF) shl 8) or
-          (buf[offset+1].toInt() and 0xFF)).toShort()
+    // Capacity must be power of 2
+    private val touchSendQueue = LockFreeRingBuffer<TouchTask>(64)
+    private val touchFreeTasks = LockFreeRingBuffer<TouchTask>(64).apply {
+        repeat(64) { offer(TouchTask()) }
+    }
+    private val touchSenderStarted = AtomicBoolean(false)
 
-    private fun readLong(buf: ByteArray, offset: Int): Long {
-        var v = 0L
-        for (i in 0..7) v = (v shl 8) or (buf[offset + i].toLong() and 0xFF)
-        return v
+    private fun startTouchSenderOnce() {
+        if (!touchSenderStarted.compareAndSet(false, true)) return
+        Thread({
+            val wire = ByteArray(StreamProtocol.INPUT_FRAME_SIZE)
+            while (!closed.get()) {
+                val task = touchSendQueue.poll()
+                if (task == null) {
+                    Thread.yield()
+                    continue
+                }
+                val event = task.event
+                val s = socket
+                if (event != null && s != null && !s.isClosed) {
+                    try {
+                        TouchCodec.encode(event, wire)
+                        val ec = encryptedChannel
+                        if (ec != null) {
+                            val encrypted = ec.encrypt(wire)
+                            // We need to send size since it's variable (GCM tag overhead)
+                            val dos = java.io.DataOutputStream(s.outputStream)
+                            dos.writeInt(encrypted.size)
+                            dos.write(encrypted)
+                        } else {
+                            s.outputStream.write(wire)
+                        }
+                        // TCP_NODELAY is enabled, so no flush needed
+                    } catch (e: IOException) {
+                        Log.w(tag, "Touch send failed: ${e.message}")
+                    }
+                }
+                task.event = null
+                touchFreeTasks.offer(task)
+            }
+        }, "SL-TouchSender").apply { 
+            priority = Thread.MAX_PRIORITY - 1
+            isDaemon = true
+            start() 
+        }
+    }
+
+    /** Call this to queue a touch packet for reverse-channel delivery to phone. */
+    fun sendTouch(event: TouchEvent) {
+        val task = touchFreeTasks.poll() ?: return // Dropped if pool is exhausted (extreme load)
+        task.event = event
+        if (!touchSendQueue.offer(task)) {
+            task.event = null
+            touchFreeTasks.offer(task)
+        }
+    }
+
+    /** Returns true when TCP socket is open and handshake completed. */
+    fun isConnected(): Boolean {
+        val s = socket
+        return s != null && s.isConnected && !s.isClosed && encryptedChannel != null
     }
 
     fun close() {

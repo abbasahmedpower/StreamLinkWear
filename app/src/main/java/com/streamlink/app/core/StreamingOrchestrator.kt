@@ -26,6 +26,13 @@ class StreamingOrchestrator @Inject constructor(
     private val hardwareEncoder: HardwareEncoder
 ) {
     private val tag = "StreamingOrchestrator"
+    
+    init {
+        socketServer.onTouchEvent = { event ->
+            com.streamlink.shared.ai.TouchPerceptionHub.onRealTouch(event)
+            com.streamlink.app.control.RemoteControlAccessibilityService.instance?.handle(event)
+        }
+    }
 
     fun startStream(
         context: Context,
@@ -82,6 +89,7 @@ class StreamingOrchestrator @Inject constructor(
 
     fun stopStream(context: Context) {
         Log.i(tag, "Stopping stream")
+        com.streamlink.shared.ai.TouchPerceptionHub.reset()
         val serviceIntent = Intent(context, CaptureService::class.java).apply {
             action = CaptureService.ACTION_STOP
         }
@@ -96,6 +104,7 @@ class StreamingOrchestrator @Inject constructor(
     // Suspend overload for use from coroutines (backward compatibility)
     suspend fun stopStream() {
         Log.i(tag, "Stopping stream (no context)")
+        com.streamlink.shared.ai.TouchPerceptionHub.reset()
         mirrorDataPlane.stop()
         socketServer.close()
         GlobalStreamState.transition(GlobalStreamState.State.STOPPED)

@@ -1,0 +1,17 @@
+# StreamLinkWear Backend — Python Requirements
+# Pin all dependencies for reproducible builds
+
+# Chaos proxy & assessment scripts
+aiohttp==3.9.3
+asyncio==3.4.3
+
+# AI training — stream predictor model
+numpy==1.26.4
+tensorflow==2.15.0          # or tflite-model-maker for edge model export
+scikit-learn==1.4.0
+pandas==2.1.4
+matplotlib==3.8.2
+
+# Utilities
+python-dotenv==1.0.1         # load .env for local dev
+pyyaml==6.0.1

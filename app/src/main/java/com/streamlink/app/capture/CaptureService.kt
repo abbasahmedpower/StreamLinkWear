@@ -24,6 +24,7 @@ class CaptureService : Service() {
 
     @Inject lateinit var orchestrator: StreamingOrchestrator
     @Inject lateinit var hardwareEncoder: HardwareEncoder
+    @Inject lateinit var directSocketServer: com.streamlink.shared.DirectSocketServer
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -65,9 +66,10 @@ class CaptureService : Service() {
             return
         }
 
+        val metrics = resources.displayMetrics
         virtualDisplay = mediaProjection?.createVirtualDisplay(
             "StreamLinkDisplay",
-            720, 1280, resources.displayMetrics.densityDpi,
+            metrics.widthPixels, metrics.heightPixels, metrics.densityDpi,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             surface, null, null
         )

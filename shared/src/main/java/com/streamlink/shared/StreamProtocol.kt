@@ -98,7 +98,14 @@ object StreamProtocol {
     const val AES_KEY_BITS       = 256
     const val GCM_IV_BYTES       = 12
     const val GCM_TAG_BITS       = 128
-    const val TOKEN_VALIDITY_MS  = 30_000L   // 30 seconds replay window
+    const val TOKEN_VALIDITY_MS  = 5_000L    // 5 seconds replay window
+
+    // ── Touch Reverse Channel ─────────────────────────────────────────────────────
+    const val MAGIC_NUMBER_INPUT = 0x484F5443 // "HOTC" — Horus Touch Control
+    const val INPUT_FRAME_SIZE   = 32         // 32-byte cache-aligned frame
+    
+    // Kept for backward compatibility or remove if not needed.
+    // Replaced by TouchPhase in TouchEvent.kt
 
     val ALLOWED_DOMAINS: Set<String> = setOf(
         "streamlink.local",
