@@ -1,13 +1,11 @@
 package com.streamlink.shared.ui
 
-import androidx.compose.runtime.Stable
 import kotlin.math.PI
 
 /**
  * Second-order dynamics reconciler — absorbs misprediction shocks without naive linear lerp snap.
  * Based on spring-damper response (frequency + damping).
  */
-@Stable
 class SecondOrderReconciliationEngine(
     fFrequency: Float,
     zDamping: Float,

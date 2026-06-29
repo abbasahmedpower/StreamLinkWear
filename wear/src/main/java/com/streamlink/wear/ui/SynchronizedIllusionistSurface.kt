@@ -1,5 +1,6 @@
-package com.streamlink.shared.ui
+package com.streamlink.wear.ui
 
+import com.streamlink.shared.ui.SharedUiConstants
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -18,9 +19,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/**
- * Unified illusionist surface — instant local feedback (<10ms perceived) on watch and phone.
- */
 @Composable
 fun SynchronizedIllusionistSurface(
     isPressedState: Boolean,

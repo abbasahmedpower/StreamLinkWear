@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import org.webrtc.DataChannel
 import org.webrtc.PeerConnection
-import org.webrtc.PeerConnectionFactory
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -26,7 +25,6 @@ class WebRtcHotcChannel(
             val init = DataChannel.Init().apply {
                 ordered = false
                 maxRetransmits = 0
-                maxPacketLifeTime = 16
                 id = 2
             }
             dataChannel = peerConnection.createDataChannel(HOTC_LABEL, init)

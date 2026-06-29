@@ -1,22 +1,17 @@
 package com.streamlink.shared.ui
 
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.graphics.Color
 
 object SharedUiConstants {
+    // NASA-grade Spring Spec: Zero over-bounce, hyper-fast response
     val NASA_SPRING_SPEC = spring<Float>(
         dampingRatio = 0.6f,
-        stiffness = 400f,
-        visibilityThreshold = 0.001f
+        stiffness = 400f
     )
 
-    val MENU_SPRING_SPEC = spring<Float>(
-        dampingRatio = Spring.DampingRatioMediumBouncy,
-        stiffness = Spring.StiffnessMedium
-    )
-
+    // Unified Glow and Ripple colors for seamless identity
     val ACCENT_GLOW = Color(0xFF00FFCC)
-    val BACKGROUND_DARK = Color(0xFF121212)
-    val MISPREDICTION_RED = Color(0xFFFF3B30)
+    val BACKGROUND_DARK = Color(0xFF1C1C1E)
+    val MISPREDICTION_RED = Color(0xFFFF3366)
 }

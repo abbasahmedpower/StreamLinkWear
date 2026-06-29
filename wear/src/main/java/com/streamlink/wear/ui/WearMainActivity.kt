@@ -144,40 +144,6 @@ class WearMainActivity : ComponentActivity() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(overlayVisible) {
-                        if (!overlayVisible) {
-                            // Fixed 60Hz sampling loop using awaitPointerEventScope
-                            awaitPointerEventScope {
-                                while (true) {
-                                    val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-                                    val timeUs = System.nanoTime() / 1000L
-                                    for (change in event.changes) {
-                                        val phase = when {
-                                            change.pressed && !change.previousPressed -> com.streamlink.shared.TouchPhase.DOWN
-                                            !change.pressed && change.previousPressed -> com.streamlink.shared.TouchPhase.UP
-                                            change.pressed -> com.streamlink.shared.TouchPhase.MOVE
-                                            else -> continue
-                                        }
-                                        val xNorm = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                        val yNorm = (change.position.y / size.height.toFloat()).coerceIn(0f, 1f)
-                                        
-                                        touchController.processEvent(
-                                            change.id.value, phase, xNorm, yNorm, timeUs
-                                        )
-                                        change.consume()
-                                    }
-                                    // Note: awaitPointerEvent() inherently suspends and returns batched 
-                                    // events per Compose frame (typically 60Hz), so explicit Choreographer
-                                    // suspension here is redundant and would violate @RestrictsSuspension.
-                                }
-                            }
-                        } else {
-                            // When overlay is visible, listen for tap to hide it
-                            detectTapGestures(
-                                onTap = { overlayVisible = false }
-                            )
-                        }
-                    }
             ) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
@@ -201,6 +167,22 @@ class WearMainActivity : ComponentActivity() {
                         }
                     }
                 )
+
+                // Illusionist Surface for 0-latency perceived touch
+                if (!overlayVisible) {
+                    WearInteractiveScreen(
+                        onTouchEvent = { phase, nx, ny ->
+                            val timeUs = System.nanoTime() / 1000L
+                            touchController.processEvent(
+                                pointerId = 0L,
+                                phase = phase,
+                                x = nx,
+                                y = ny,
+                                timestampUs = timeUs
+                            )
+                        }
+                    )
+                }
 
                 // HUD Overlay — tap to show/hide
                 WearStreamOverlay(

@@ -34,6 +34,8 @@ class StreamingOrchestrator @Inject constructor(
         }
     }
 
+    private var webRtcTransport: com.streamlink.shared.WebRtcTransport? = null
+
     fun startStream(
         context: Context,
         url: String,
@@ -50,6 +52,33 @@ class StreamingOrchestrator @Inject constructor(
 
         // 1. Start TCP Server for Watch
         scope.launch { socketServer.start() }
+
+        // 1.5 Start WebRTC Fallback for global reach
+        val signalingClient = com.streamlink.shared.SignalingClient(
+            backendUrl = "wss://signaling.streamlink.com",
+            userId = "streamlink_phone_1",
+            deviceType = "PHONE"
+        )
+        val hotcChannel = com.streamlink.shared.network.WebRtcHotcChannel(context).apply {
+            onEncryptedFrameReceived = { data ->
+                // Assuming data is TouchFrame, we route it similarly
+                // For now, we decode it directly (simplification of HOTC parsing)
+                if (data.size == 27) {
+                    val event = com.streamlink.shared.TouchCodec.decode(data)
+                    if (event != null) {
+                        com.streamlink.shared.ai.TouchPerceptionHub.onRealTouch(event)
+                        com.streamlink.app.control.RemoteControlAccessibilityService.instance?.handle(event)
+                    }
+                }
+            }
+        }
+        webRtcTransport = com.streamlink.shared.WebRtcTransport(
+            context = context,
+            signalingClient = signalingClient,
+            isOfferer = false, // Phone acts as answerer or offerer depending on role, assume Answerer
+            hotcChannel = hotcChannel
+        )
+        webRtcTransport?.initialize()
 
         // 2. Start Data Plane
         mirrorDataPlane.start(scope)
@@ -96,6 +125,8 @@ class StreamingOrchestrator @Inject constructor(
         context.startService(serviceIntent)
         mirrorDataPlane.stop()
         socketServer.close()
+        webRtcTransport?.close()
+        webRtcTransport = null
         scope.launch {
             GlobalStreamState.transition(GlobalStreamState.State.STOPPED)
         }

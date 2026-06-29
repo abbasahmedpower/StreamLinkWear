@@ -7,7 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import com.streamlink.shared.TouchPhase
-import com.streamlink.shared.ui.SynchronizedIllusionistSurface
+import com.streamlink.wear.ui.SynchronizedIllusionistSurface
 
 /**
  * Wear-side illusionist input pad — instant local feedback before network round-trip.
