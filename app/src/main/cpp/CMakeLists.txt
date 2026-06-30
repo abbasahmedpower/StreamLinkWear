@@ -17,6 +17,11 @@ find_library(
         log
 )
 
+# Enable NEON for 32-bit ARM
+if(${ANDROID_ABI} STREQUAL "armeabi-v7a")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon -mfloat-abi=softfp")
+endif()
+
 # Link libraries
 target_link_libraries(
         streamengine
