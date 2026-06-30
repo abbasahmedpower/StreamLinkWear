@@ -13,7 +13,12 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.tensorflow.lite.Interpreter
+import java.io.FileInputStream
+import java.nio.MappedByteBuffer
+import java.nio.channels.FileChannel
 import java.util.concurrent.Executors
+import android.content.Context
 
 /**
  * Predictive intelligence layer — evaluates context every 500ms and drives
@@ -27,10 +32,35 @@ import java.util.concurrent.Executors
  * - TrendAnalyzer pre-empts degradation 500ms before threshold crossing.
  */
 class ContextIntelligenceEngine(
+    private val context: Context,
     private val decisionEngine: DecisionEngine = DecisionEngine(),
     private val scope: CoroutineScope
 ) {
     private val tag = "Intelligence"
+
+    // ✅ TensorFlow Lite Integration
+    private var tflite: Interpreter? = null
+
+    init {
+        try {
+            val modelBuffer = loadModelFile(context, "stream_predictor.tflite")
+            tflite = Interpreter(modelBuffer)
+            Log.i(tag, "✅ TFLite model loaded successfully")
+        } catch (e: Exception) {
+            Log.e(tag, "⚠️ Failed to load TFLite model, falling back to heuristic engine", e)
+        }
+    }
+
+    private fun loadModelFile(context: Context, modelName: String): MappedByteBuffer {
+        val fileDescriptor = context.assets.openFd(modelName)
+        val inputStream = FileInputStream(fileDescriptor.fileDescriptor)
+        val fileChannel = inputStream.channel
+        return fileChannel.map(
+            FileChannel.MapMode.READ_ONLY,
+            fileDescriptor.startOffset,
+            fileDescriptor.declaredLength
+        )
+    }
 
     // ✅ FIX N4: One dedicated thread — no context switch overhead per cycle
     private val intelligenceDispatcher = Executors.newSingleThreadExecutor { r ->
@@ -68,12 +98,37 @@ class ContextIntelligenceEngine(
     }
 
     suspend fun evaluateAndApply(metrics: StreamMetrics) {
+        // ✅ Real AI Inference (if model loaded)
+        val aiAction = if (tflite != null) {
+            val inputs = floatArrayOf(
+                metrics.rttMs.toFloat(), 
+                metrics.packetLossRate.toFloat(), 
+                metrics.thermalLevel.toFloat(), 
+                metrics.batteryLevel.toFloat()
+            )
+            val outputs = Array(1) { FloatArray(3) } // [PRELOAD, REDUCE, DROP]
+            try {
+                tflite?.run(inputs, outputs)
+                val probs = outputs[0]
+                val maxIdx = probs.indices.maxByOrNull { probs[it] } ?: 1
+                when (maxIdx) {
+                    0 -> StreamAction.PRELOAD
+                    1 -> StreamAction.REDUCE_QUALITY
+                    else -> StreamAction.DROP_FPS
+                }
+            } catch (e: Exception) {
+                decisionEngine.decide(metrics)
+            }
+        } else {
+            decisionEngine.decide(metrics)
+        }
+
         // ✅ Trend-based prediction: fires 500ms before threshold crossing
         val action = if (trendAnalyzer.predictDegradationIn500ms()) {
             Log.d(tag, "Pre-emptive quality reduction — trend detected")
             StreamAction.REDUCE_QUALITY
         } else {
-            decisionEngine.decide(metrics)
+            aiAction
         }
 
         val current = GlobalStreamState.snapshot.value

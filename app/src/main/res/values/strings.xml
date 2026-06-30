@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">StreamLink</string>
-    <string name="accessibility_service_description">StreamLink uses accessibility to inject touch events from your Wear OS watch, enabling full remote control of your phone screen.</string>
+    <string name="app_name">StreamLink Wear</string>
+    <string name="accessibility_service_description">StreamLink Remote Control Accessibility Service</string>
 </resources>
