@@ -15,6 +15,8 @@ import org.tensorflow.lite.Interpreter
 import java.io.FileInputStream
 import java.nio.channels.FileChannel
 
+import com.streamlink.shared.StreamProtocol
+
 /**
  * LocalPredictiveEngine — on-device TFLite inference for proactive stream adaptation.
  * Uses wrist motion + latency to predict the optimal StreamAction.
@@ -23,11 +25,15 @@ import java.nio.channels.FileChannel
 class LocalPredictiveEngine @Inject constructor(
     @ApplicationContext private val context: Context,
     private val sensor: WristMotionSensor,
-    private val logger: AIEventLogger
+    private val logger: AIEventLogger,
+    private val socketClient: com.streamlink.shared.DirectSocketClient
 ) {
     private var job: Job? = null
     private var tflite: Interpreter? = null
     private val tag = "PredictiveEngine"
+    
+    // State to track last sent bitrate to avoid jitter
+    private var currentBitrate = 0f
 
     init {
         try {
@@ -68,6 +74,18 @@ class LocalPredictiveEngine @Inject constructor(
                         val output = Array(1) { FloatArray(1) }
                         tflite?.run(input, output)
                         recommendedBitrate = output[0][0]
+                        
+                        // Sanity clamp based on StreamProtocol limits
+                        val minBitrate = StreamProtocol.WEAR_BPS_ECO.toFloat()
+                        val maxBitrate = StreamProtocol.WEAR_BPS_FULL.toFloat()
+                        recommendedBitrate = recommendedBitrate.coerceIn(minBitrate, maxBitrate)
+                        
+                        // Apply 10% threshold to avoid excessive signaling
+                        if (currentBitrate == 0f || Math.abs(recommendedBitrate - currentBitrate) / currentBitrate >= 0.1f) {
+                            Log.i(tag, "AI recommends bitrate change: ${currentBitrate.toInt()} -> ${recommendedBitrate.toInt()} kbps")
+                            currentBitrate = recommendedBitrate
+                            socketClient.sendControl(StreamProtocol.CMD_SET_BITRATE, recommendedBitrate.toInt())
+                        }
                     } catch (e: Exception) {
                         Log.e(tag, "Inference error: ${e.message}")
                     }

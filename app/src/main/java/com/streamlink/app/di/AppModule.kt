@@ -26,6 +26,12 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideStreamRouter(): com.streamlink.shared.StreamRouter {
+        return com.streamlink.shared.StreamRouter()
+    }
+
+    @Provides
+    @Singleton
     fun provideHardwareEncoder(): HardwareEncoder {
         return HardwareEncoder()
     }
@@ -47,11 +53,11 @@ object AppModule {
     @Singleton
     fun provideMirrorDataPlane(
         encoder: HardwareEncoder,
-        socketServer: DirectSocketServer,
+        streamRouter: com.streamlink.shared.StreamRouter,
         metrics: MetricsCollector,
         backpressure: BackpressureController
     ): MirrorDataPlane {
-        return MirrorDataPlane(encoder, socketServer, metrics, backpressure)
+        return MirrorDataPlane(encoder, streamRouter, metrics, backpressure)
     }
 
     @Provides
@@ -60,9 +66,10 @@ object AppModule {
         scope: CoroutineScope,
         events: EventPipeline,
         socketServer: DirectSocketServer,
+        streamRouter: com.streamlink.shared.StreamRouter,
         mirrorDataPlane: MirrorDataPlane,
         hardwareEncoder: HardwareEncoder
     ): StreamingOrchestrator {
-        return StreamingOrchestrator(scope, events, socketServer, mirrorDataPlane, hardwareEncoder)
+        return StreamingOrchestrator(scope, events, socketServer, streamRouter, mirrorDataPlane, hardwareEncoder)
     }
 }

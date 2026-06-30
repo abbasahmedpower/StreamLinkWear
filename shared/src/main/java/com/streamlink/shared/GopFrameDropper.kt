@@ -14,6 +14,7 @@ object GopFrameDropper {
 
     private val droppedCount = AtomicLong(0)
     private val savedCount = AtomicLong(0)
+    private val pFrameCounter = AtomicLong(0)
 
     /**
      * @param isKeyframe true if I-frame (IDR)
@@ -34,7 +35,7 @@ object GopFrameDropper {
             }
             queueDepth > QUEUE_HIGH_THRESHOLD -> {
                 // Drop every other P-frame above threshold
-                val drop = (droppedCount.get() % 2L == 0L)
+                val drop = (pFrameCounter.getAndIncrement() % 2L == 0L)
                 if (drop) droppedCount.incrementAndGet() else savedCount.incrementAndGet()
                 drop
             }

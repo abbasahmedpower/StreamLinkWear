@@ -9,7 +9,8 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.webrtc.*
 import java.nio.ByteBuffer
-import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.locks.LockSupport
+import com.streamlink.shared.util.LockFreeSpscQueue
 
 class WebRtcTransport(
     private val context: Context,
@@ -27,8 +28,8 @@ class WebRtcTransport(
         var wire: ByteArray? = null
         var size: Int = 0
     }
-    private val sendQueue = LinkedBlockingQueue<SendTask>(256)
-    private val freeTasks = LinkedBlockingQueue<SendTask>(256).apply {
+    private val sendQueue = LockFreeSpscQueue<SendTask>(256)
+    private val freeTasks = LockFreeSpscQueue<SendTask>(256).apply {
         repeat(256) { offer(SendTask()) }
     }
     
@@ -177,7 +178,11 @@ class WebRtcTransport(
         Thread({
             while (!Thread.currentThread().isInterrupted) {
                 try {
-                    val task = sendQueue.take()
+                    val task = sendQueue.poll()
+                    if (task == null) {
+                        LockSupport.parkNanos(100_000)
+                        continue
+                    }
                     val wire = task.wire!!
                     val size = task.size
                     
@@ -218,6 +223,8 @@ class WebRtcTransport(
         }
         return offered
     }
+
+    val queueDepth: Int get() = sendQueue.size
 
     fun close() {
         dataChannel?.close()

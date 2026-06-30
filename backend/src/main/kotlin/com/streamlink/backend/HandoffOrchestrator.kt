@@ -25,6 +25,22 @@ class HandoffOrchestrator(
     suspend fun route(userId: String, senderDevice: PeerRegistry.DeviceType, raw: String) {
         val env = try { json.decodeFromString<SignalEnvelope>(raw) } catch (_: Exception) { return }
 
+        if (env.type == "METRICS") {
+            try {
+                // Parse payload string as a JSON object
+                val payloadJson = kotlinx.serialization.json.Json.parseToJsonElement(env.payload) as kotlinx.serialization.json.JsonObject
+                val fps = payloadJson["fps"]?.let { it as? kotlinx.serialization.json.JsonPrimitive }?.content?.toIntOrNull() ?: 0
+                val bitrateKbps = payloadJson["bitrateKbps"]?.let { it as? kotlinx.serialization.json.JsonPrimitive }?.content?.toIntOrNull() ?: 0
+                val latencyMs = payloadJson["latencyMs"]?.let { it as? kotlinx.serialization.json.JsonPrimitive }?.content?.toLongOrNull() ?: 0L
+                val lossPercent = payloadJson["packetLossPercent"]?.let { it as? kotlinx.serialization.json.JsonPrimitive }?.content?.toFloatOrNull() ?: 0f
+                
+                LiveMetrics.update(fps, latencyMs, bitrateKbps, (lossPercent * 10).toInt())
+            } catch (e: Exception) {
+                // Ignore parsing errors for metrics
+            }
+            return
+        }
+
         val targetDevice = if (senderDevice == PeerRegistry.DeviceType.PHONE)
             PeerRegistry.DeviceType.WATCH else PeerRegistry.DeviceType.PHONE
 

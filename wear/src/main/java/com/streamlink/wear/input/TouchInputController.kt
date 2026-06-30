@@ -53,7 +53,7 @@ class TouchInputController(
         lastY = y
         lastTimeUs = timestampUs
 
-        val event = TouchEvent(
+        socketClient.sendTouch(
             phase = phase,
             pointerId = slot,
             nx = predicted.predictedX,
@@ -61,8 +61,6 @@ class TouchInputController(
             seq = seq,
             timestampUs = timestampUs
         )
-
-        socketClient.sendTouch(event)
 
         if (phase == TouchPhase.UP || phase == TouchPhase.CANCEL) {
             freeSlot(slot)

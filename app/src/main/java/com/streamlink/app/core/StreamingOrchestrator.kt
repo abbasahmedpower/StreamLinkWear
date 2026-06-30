@@ -22,15 +22,23 @@ class StreamingOrchestrator @Inject constructor(
     private val scope: CoroutineScope,
     private val events: EventPipeline,
     private val socketServer: DirectSocketServer,
+    private val streamRouter: com.streamlink.shared.StreamRouter,
     private val mirrorDataPlane: MirrorDataPlane,
     private val hardwareEncoder: HardwareEncoder
 ) {
     private val tag = "StreamingOrchestrator"
     
     init {
+        streamRouter.socketServer = socketServer
         socketServer.onTouchEvent = { event ->
             com.streamlink.shared.ai.TouchPerceptionHub.onRealTouch(event)
             com.streamlink.app.control.RemoteControlAccessibilityService.instance?.handle(event)
+        }
+        socketServer.onControlMessage = { msg ->
+            if (msg.command == StreamProtocol.CMD_SET_BITRATE) {
+                Log.i(tag, "AI Reverse Control: Adjusting Bitrate to ${msg.value} kbps")
+                hardwareEncoder.setBitrate(msg.value)
+            }
         }
     }
 
@@ -78,10 +86,28 @@ class StreamingOrchestrator @Inject constructor(
             isOfferer = false, // Phone acts as answerer or offerer depending on role, assume Answerer
             hotcChannel = hotcChannel
         )
+        streamRouter.webRtcTransport = webRtcTransport
         webRtcTransport?.initialize()
 
         // 2. Start Data Plane
         mirrorDataPlane.start(scope)
+
+        // 2.5 Start Metrics Telemetry to Backend
+        scope.launch {
+            GlobalStreamState.snapshot.collect { state ->
+                // Ensure we don't send empty metrics constantly
+                if (state.fps > 0 || state.bitrateKbps > 0) {
+                    val payload = org.json.JSONObject().apply {
+                        put("fps", state.fps)
+                        put("bitrateKbps", state.bitrateKbps)
+                        // In a real app we'd get actual network loss and latency
+                        put("packetLossPercent", 0) 
+                        put("latencyMs", 35) // Hardcoded nominal latency for demonstration
+                    }
+                    signalingClient.sendMessage("METRICS", "broadcast", payload.toString())
+                }
+            }
+        }
 
         // 3. Start MediaProjection Capture Service
         if (projectionData != null) {

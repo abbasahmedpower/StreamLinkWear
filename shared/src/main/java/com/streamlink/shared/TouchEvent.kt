@@ -51,6 +51,31 @@ object TouchCodec {
         return out
     }
 
+    fun encodeDirect(
+        phase: TouchPhase,
+        pointerId: Int,
+        nx: Float,
+        ny: Float,
+        seq: Int,
+        timestampUs: Long,
+        out: ByteArray
+    ): ByteArray {
+        val buf = ByteBuffer.wrap(out).order(ByteOrder.BIG_ENDIAN)
+        buf.putInt(StreamProtocol.MAGIC_NUMBER_INPUT)
+        buf.put(StreamProtocol.PROTOCOL_VERSION)
+        buf.put(phase.wireType)
+        buf.putInt(seq)
+        buf.put(pointerId.toByte())
+        
+        val shortNx = (nx.coerceIn(0f, 1f) * 65535f).toInt().toShort()
+        val shortNy = (ny.coerceIn(0f, 1f) * 65535f).toInt().toShort()
+        buf.putShort(shortNx)
+        buf.putShort(shortNy)
+        
+        buf.putLong(timestampUs)
+        return out
+    }
+
     fun decode(frame: ByteArray): TouchEvent? {
         val buf = ByteBuffer.wrap(frame).order(ByteOrder.BIG_ENDIAN)
         val magic = buf.getInt()

@@ -15,7 +15,6 @@ import com.streamlink.shared.WireBufferPool
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
@@ -34,7 +33,7 @@ import java.util.concurrent.Executors
  */
 class MirrorDataPlane(
     private val encoder: HardwareEncoder,
-    private val socketServer: DirectSocketServer,
+    private val streamRouter: com.streamlink.shared.StreamRouter,
     private val metrics: MetricsCollector?,
     private val backpressure: BackpressureController? = null
 ) {
@@ -51,7 +50,7 @@ class MirrorDataPlane(
         val handler = CoroutineExceptionHandler { _, e ->
             Log.e(tag, "DataPlane fatal: ${e.message}")
         }
-        sendJob = scope.launch(planeDispatcher + SupervisorJob() + handler) {
+        sendJob = scope.launch(planeDispatcher + handler) {
             encoder.outputChannel.consumeEach { packet ->
                 processPacket(packet)
             }
@@ -81,8 +80,8 @@ class MirrorDataPlane(
                 packet.buffer, info
             ) ?: return  // Config frame — skip
 
-            // ✅ FIX N3: Real queue depth from DirectSocketServer
-            val queueDepth = socketServer.queueDepth
+            // ✅ FIX N3: Real queue depth from StreamRouter
+            val queueDepth = streamRouter.queueDepth
 
             // GOP-aware drop — never drops I-frames
             if (GopFrameDropper.shouldDrop(hardened.isKeyframe, queueDepth)) {
@@ -93,7 +92,7 @@ class MirrorDataPlane(
 
             // ✅ Zero-allocation chunking via callback pattern (no List<Chunk>)
             NalChunker.chunkFramePipeline(hardened) { wire, wireSize, payloadSize ->
-                val sent = socketServer.sendPooledWire(wire, wireSize)
+                val sent = streamRouter.sendPooledWire(wire, wireSize)
                 if (sent) {
                     backpressure?.onChunkEnqueued(wireSize)
                     metrics?.recordFrame(payloadSize)

@@ -5,6 +5,7 @@ import android.util.Log
 import java.security.*
 import java.security.spec.ECGenParameterSpec
 import javax.crypto.KeyAgreement
+import javax.crypto.Mac
 import javax.crypto.SecretKey
 import javax.crypto.spec.SecretKeySpec
 
@@ -66,7 +67,7 @@ object KeyExchange {
         ka.doPhase(theirPublicKey, true)
         val sharedSecret = ka.generateSecret()
 
-        // HKDF-like derivation: SHA-256(label || sharedSecret)
+        // Standard HKDF-SHA256 derivation
         val sessionKey = hkdfDerive(sharedSecret, SESSION_KEY_LABEL.toByteArray())
         Log.i(TAG, "Session key derived (${sessionKey.size * 8} bits)")
         return sessionKey
@@ -89,14 +90,24 @@ object KeyExchange {
     }
 
     /**
-     * Simplified HKDF: SHA-256(context || secret).
+     * Standard HKDF-SHA256 implementation (RFC 5869).
      * Produces a 32-byte derived key suitable for AES-256.
      */
-    private fun hkdfDerive(sharedSecret: ByteArray, context: ByteArray): ByteArray {
-        val digest = MessageDigest.getInstance("SHA-256")
-        digest.update(context)
-        digest.update(sharedSecret)
-        return digest.digest()  // 32 bytes
+    private fun hkdfDerive(sharedSecret: ByteArray, info: ByteArray): ByteArray {
+        val macAlgo = "HmacSHA256"
+        
+        // 1. HKDF-Extract(salt, IKM)
+        val salt = ByteArray(32) { 0 }
+        val extractMac = Mac.getInstance(macAlgo)
+        extractMac.init(SecretKeySpec(salt, macAlgo))
+        val prk = extractMac.doFinal(sharedSecret)
+        
+        // 2. HKDF-Expand(PRK, info, L=32)
+        val expandMac = Mac.getInstance(macAlgo)
+        expandMac.init(SecretKeySpec(prk, macAlgo))
+        expandMac.update(info)
+        expandMac.update(1.toByte())
+        return expandMac.doFinal() // 32 bytes
     }
 
     /**

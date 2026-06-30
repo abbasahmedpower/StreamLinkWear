@@ -46,7 +46,6 @@ class WearMainActivity : ComponentActivity() {
         com.streamlink.wear.input.TouchInputController(socketClient)
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var isAmbient = false
     private var sensorManager: SensorManager? = null
     private var accelSensor: Sensor? = null
@@ -152,7 +151,7 @@ class WearMainActivity : ComponentActivity() {
                             holder.addCallback(object : android.view.SurfaceHolder.Callback {
                                 override fun surfaceCreated(holder: android.view.SurfaceHolder) {
                                     streamPlayer.setSurface(holder.surface)
-                                    streamPlayer.start(scope)
+                                    streamPlayer.start(lifecycleScope)
                                     surfaceReady = true
                                     Log.i("WearMain", "Surface ready — streaming started")
                                 }
@@ -195,8 +194,8 @@ class WearMainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        sensorManager?.registerListener(sensorListener, accelSensor, SensorManager.SENSOR_DELAY_UI)
-        sensorManager?.registerListener(sensorListener, gyroSensor, SensorManager.SENSOR_DELAY_UI)
+        sensorManager?.registerListener(sensorListener, accelSensor, SensorManager.SENSOR_DELAY_GAME)
+        sensorManager?.registerListener(sensorListener, gyroSensor, SensorManager.SENSOR_DELAY_GAME)
         // Wrist raise restores from ambient — no action needed,
         // AmbientLifecycleObserver.onExitAmbient() handles it
     }

@@ -72,6 +72,7 @@ class BackpressureController(
     /** Called when a wire chunk enters the TCP send queue (pre-write). */
     fun onChunkEnqueued(bytes: Int) {
         pendingInNetwork.incrementAndGet()
+        totalSentBytes.addAndGet(bytes.toLong())
     }
 
     /** Called by DirectSocketServer AFTER actual TCP write() completes. */

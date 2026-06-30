@@ -1,5 +1,6 @@
 package com.streamlink.app.ui
 
+import android.content.Context
 import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,8 +10,11 @@ import com.streamlink.shared.LatencyTracker
 import com.streamlink.shared.QualityController
 import com.streamlink.shared.StreamMetrics
 import com.streamlink.shared.StreamProtocol
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /**
  * SessionViewModel — complete state management for the UI layer.
@@ -18,7 +22,11 @@ import kotlinx.coroutines.launch
  * Owns: stream state, metrics display, user actions.
  * Delegates: all business logic to StreamingOrchestrator (no direct engine access from UI).
  */
-class SessionViewModel : ViewModel() {
+@HiltViewModel
+class SessionViewModel @Inject constructor(
+    private val orchestrator: StreamingOrchestrator,
+    @ApplicationContext private val context: Context
+) : ViewModel() {
 
     // ── Public UI state ───────────────────────────────────────────────────
     data class UiState(
@@ -57,8 +65,6 @@ class SessionViewModel : ViewModel() {
     private val _snackbar = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val snackbar: SharedFlow<String> = _snackbar
 
-    // Injected (or set after construction)
-    var orchestrator: StreamingOrchestrator? = null
     private val latencyTracker = LatencyTracker()
 
     init {
@@ -92,7 +98,8 @@ class SessionViewModel : ViewModel() {
             is UserAction.StartStream -> viewModelScope.launch {
                 _uiState.update { it.copy(isConnecting = true, errorMessage = "") }
                 try {
-                    orchestrator?.startStream(
+                    orchestrator.startStream(
+                        context        = context,
                         url            = action.url,
                         resultCode     = action.resultCode,
                         projectionData = action.projectionData,
@@ -105,11 +112,11 @@ class SessionViewModel : ViewModel() {
                 }
             }
             is UserAction.StopStream -> viewModelScope.launch {
-                orchestrator?.stopStream()
+                orchestrator.stopStream(context)
                 GlobalStreamState.transition(GlobalStreamState.State.STOPPED)
             }
             is UserAction.ForceKeyframe -> viewModelScope.launch {
-                orchestrator?.requestKeyframe()
+                orchestrator.requestKeyframe()
                 _snackbar.emit("Keyframe requested")
             }
             is UserAction.ToggleMode -> viewModelScope.launch {
@@ -138,6 +145,5 @@ class SessionViewModel : ViewModel() {
 
     override fun onCleared() {
         super.onCleared()
-        orchestrator = null
     }
 }

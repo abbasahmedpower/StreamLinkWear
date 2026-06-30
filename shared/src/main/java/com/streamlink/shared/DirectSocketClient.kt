@@ -10,6 +10,8 @@ import java.io.InputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.LockSupport
+import com.streamlink.shared.util.LockFreeSpscQueue
 
 /**
  * Watch-side TCP receiver.
@@ -174,46 +176,46 @@ class DirectSocketClient(
         return true
     }
 
-    private class TouchTask { var event: TouchEvent? = null }
+    private class TouchFrameTask {
+        val wire = ByteArray(StreamProtocol.INPUT_FRAME_SIZE)
+        var hasData = false
+    }
 
     // Capacity must be power of 2
-    private val touchSendQueue = LockFreeRingBuffer<TouchTask>(64)
-    private val touchFreeTasks = LockFreeRingBuffer<TouchTask>(64).apply {
-        repeat(64) { offer(TouchTask()) }
+    private val touchSendQueue = LockFreeSpscQueue<TouchFrameTask>(64)
+    private val touchFreeTasks = LockFreeSpscQueue<TouchFrameTask>(64).apply {
+        repeat(64) { offer(TouchFrameTask()) }
     }
     private val touchSenderStarted = AtomicBoolean(false)
 
     private fun startTouchSenderOnce() {
         if (!touchSenderStarted.compareAndSet(false, true)) return
         Thread({
-            val wire = ByteArray(StreamProtocol.INPUT_FRAME_SIZE)
             while (!closed.get()) {
                 val task = touchSendQueue.poll()
                 if (task == null) {
-                    Thread.yield()
+                    LockSupport.parkNanos(100_000)
                     continue
                 }
-                val event = task.event
                 val s = socket
-                if (event != null && s != null && !s.isClosed) {
+                if (task.hasData && s != null && !s.isClosed) {
                     try {
-                        TouchCodec.encode(event, wire)
                         val ec = encryptedChannel
                         if (ec != null) {
-                            val encrypted = ec.encrypt(wire)
+                            val encrypted = ec.encrypt(task.wire)
                             // We need to send size since it's variable (GCM tag overhead)
                             val dos = java.io.DataOutputStream(s.outputStream)
                             dos.writeInt(encrypted.size)
                             dos.write(encrypted)
                         } else {
-                            s.outputStream.write(wire)
+                            s.outputStream.write(task.wire)
                         }
                         // TCP_NODELAY is enabled, so no flush needed
                     } catch (e: IOException) {
                         Log.w(tag, "Touch send failed: ${e.message}")
                     }
                 }
-                task.event = null
+                task.hasData = false
                 touchFreeTasks.offer(task)
             }
         }, "SL-TouchSender").apply { 
@@ -224,11 +226,30 @@ class DirectSocketClient(
     }
 
     /** Call this to queue a touch packet for reverse-channel delivery to phone. */
-    fun sendTouch(event: TouchEvent) {
+    fun sendTouch(
+        phase: TouchPhase,
+        pointerId: Int,
+        nx: Float,
+        ny: Float,
+        seq: Int,
+        timestampUs: Long
+    ) {
         val task = touchFreeTasks.poll() ?: return // Dropped if pool is exhausted (extreme load)
-        task.event = event
+        TouchCodec.encodeDirect(phase, pointerId, nx, ny, seq, timestampUs, task.wire)
+        task.hasData = true
         if (!touchSendQueue.offer(task)) {
-            task.event = null
+            task.hasData = false
+            touchFreeTasks.offer(task)
+        }
+    }
+
+    /** Call this to queue a control packet for reverse-channel delivery to phone. */
+    fun sendControl(command: Int, value: Int) {
+        val task = touchFreeTasks.poll() ?: return // Dropped if pool is exhausted
+        ControlCodec.encodeDirect(command, value, task.wire)
+        task.hasData = true
+        if (!touchSendQueue.offer(task)) {
+            task.hasData = false
             touchFreeTasks.offer(task)
         }
     }
