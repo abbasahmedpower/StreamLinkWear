@@ -64,7 +64,7 @@ class StreamViewModel @Inject constructor(
     init {
         wristSensor.start()
         metrics.start()
-        predictiveEngine.startWithScope(
+        predictiveEngine.start(
             scope = viewModelScope,
             motionProvider  = { wristSensor.currentMagnitude },
             networkProvider = { GlobalStreamState.snapshot.value.latencyMs.toFloat() }

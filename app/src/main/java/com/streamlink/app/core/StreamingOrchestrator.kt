@@ -31,8 +31,14 @@ class StreamingOrchestrator @Inject constructor(
     init {
         streamRouter.socketServer = socketServer
         socketServer.onTouchEvent = { event ->
-            com.streamlink.shared.ai.TouchPerceptionHub.onRealTouch(event)
-            com.streamlink.app.control.RemoteControlAccessibilityService.instance?.handle(event)
+            // Use the zero-GC ring buffer instead of direct synchronous dispatch
+            publishTouch(
+                event.phase.wireType,
+                event.pointerId,
+                event.nx,
+                event.ny,
+                event.timestampUs
+            )
         }
         socketServer.onControlMessage = { msg ->
             if (msg.command == StreamProtocol.CMD_SET_BITRATE) {
@@ -40,7 +46,85 @@ class StreamingOrchestrator @Inject constructor(
                 hardwareEncoder.setBitrate(msg.value)
             }
         }
+        
+        startRealtimeConsumer()
     }
+    
+    // ==========================================
+    // 🔥 ZERO-GC LOCK-FREE TOUCH RING BUFFER
+    // ==========================================
+    private val ringCapacity = 1024
+    private val mask = ringCapacity - 1
+    
+    private val phaseBuffer = ByteArray(ringCapacity)
+    private val pointerBuffer = IntArray(ringCapacity)
+    private val nxBuffer = FloatArray(ringCapacity)
+    private val nyBuffer = FloatArray(ringCapacity)
+    private val timeBuffer = LongArray(ringCapacity)
+    
+    private val writeIndex = java.util.concurrent.atomic.AtomicInteger(0)
+    private val readIndex = java.util.concurrent.atomic.AtomicInteger(0)
+    
+    @Volatile private var runningRealtime = true
+    
+    fun publishTouch(phase: Byte, pointerId: Int, nx: Float, ny: Float, timestampUs: Long) {
+        val w = writeIndex.get()
+        val next = (w + 1) and mask
+        
+        if (next == readIndex.get()) {
+            readIndex.incrementAndGet() // Drop oldest
+        }
+        
+        val idx = w and mask
+        phaseBuffer[idx] = phase
+        pointerBuffer[idx] = pointerId
+        nxBuffer[idx] = nx
+        nyBuffer[idx] = ny
+        timeBuffer[idx] = timestampUs
+        
+        writeIndex.lazySet(next)
+    }
+    
+    private fun startRealtimeConsumer() {
+        Thread({
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+            while (runningRealtime) {
+                val r = readIndex.get()
+                val w = writeIndex.get()
+                
+                if (r == w) {
+                    java.util.concurrent.locks.LockSupport.parkNanos(50_000) // 50 micro-seconds spin
+                    continue
+                }
+                
+                val idx = r and mask
+                val phaseByte = phaseBuffer[idx]
+                val pointerId = pointerBuffer[idx]
+                val nx = nxBuffer[idx]
+                val ny = nyBuffer[idx]
+                val ts = timeBuffer[idx]
+                
+                processRealtimeTouch(phaseByte, pointerId, nx, ny, ts)
+                
+                readIndex.lazySet((r + 1) and mask)
+            }
+        }, "SL-TouchOrchestrator").start()
+    }
+    
+    private fun processRealtimeTouch(phaseByte: Byte, pointerId: Int, nx: Float, ny: Float, ts: Long) {
+        // Reconstruct or pass to JNI. For now we reconstruct minimally for Android's Accessibility
+        val phase = when(phaseByte) {
+            1.toByte() -> com.streamlink.shared.TouchPhase.DOWN
+            2.toByte() -> com.streamlink.shared.TouchPhase.MOVE
+            3.toByte() -> com.streamlink.shared.TouchPhase.UP
+            else -> com.streamlink.shared.TouchPhase.CANCEL
+        }
+        val event = com.streamlink.shared.TouchEvent(phase, pointerId, nx, ny, 0, ts)
+        
+        com.streamlink.shared.ai.TouchPerceptionHub.onRealTouch(event)
+        com.streamlink.app.control.RemoteControlAccessibilityService.instance?.handle(event)
+    }
+    // ==========================================
 
     private var webRtcTransport: com.streamlink.shared.WebRtcTransport? = null
 
@@ -153,6 +237,7 @@ class StreamingOrchestrator @Inject constructor(
         socketServer.close()
         webRtcTransport?.close()
         webRtcTransport = null
+        runningRealtime = false
         scope.launch {
             GlobalStreamState.transition(GlobalStreamState.State.STOPPED)
         }
@@ -164,6 +249,7 @@ class StreamingOrchestrator @Inject constructor(
         com.streamlink.shared.ai.TouchPerceptionHub.reset()
         mirrorDataPlane.stop()
         socketServer.close()
+        runningRealtime = false
         GlobalStreamState.transition(GlobalStreamState.State.STOPPED)
     }
 

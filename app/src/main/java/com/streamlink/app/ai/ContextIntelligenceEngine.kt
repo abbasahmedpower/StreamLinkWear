@@ -43,9 +43,21 @@ class ContextIntelligenceEngine(
 
     init {
         try {
-            val modelBuffer = loadModelFile(context, "stream_predictor.tflite")
-            tflite = Interpreter(modelBuffer)
-            Log.i(tag, "✅ TFLite model loaded successfully")
+            val assetFileDescriptor = context.assets.openFd("stream_predictor.tflite")
+            if (assetFileDescriptor.declaredLength < 100) {
+                Log.w(tag, "Model size is too small (${assetFileDescriptor.declaredLength} bytes), ignoring dummy model.")
+                tflite = null
+            } else {
+                val fileInputStream = java.io.FileInputStream(assetFileDescriptor.fileDescriptor)
+                val fileChannel = fileInputStream.channel
+                val modelBuffer = fileChannel.map(
+                    java.nio.channels.FileChannel.MapMode.READ_ONLY,
+                    assetFileDescriptor.startOffset,
+                    assetFileDescriptor.declaredLength
+                )
+                tflite = Interpreter(modelBuffer)
+                Log.i(tag, "✅ TFLite model loaded successfully")
+            }
         } catch (e: Exception) {
             Log.e(tag, "⚠️ Failed to load TFLite model, falling back to heuristic engine", e)
         }

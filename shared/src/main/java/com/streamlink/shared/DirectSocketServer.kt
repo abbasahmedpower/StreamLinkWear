@@ -116,6 +116,7 @@ class DirectSocketServer {
                 
                 // 1. Read Watch's public key
                 val clientLen = dis.readInt()
+                if (clientLen <= 0 || clientLen > 8192) throw java.io.IOException("Invalid key length: $clientLen")
                 val clientBytes = ByteArray(clientLen)
                 dis.readFully(clientBytes)
                 val clientPub = String(clientBytes, Charsets.UTF_8)
@@ -172,8 +173,16 @@ class DirectSocketServer {
                     continue
                 }
                 try {
-                    socket.outputStream.write(wire, 0, size)
-                    bytesSent.addAndGet(size.toLong())
+                    val ec = encryptedChannel
+                    val encrypted = ec?.encrypt(wire.copyOfRange(0, size)) ?: wire.copyOfRange(0, size)
+                    val outSize = encrypted.size
+                    
+                    val dos = java.io.DataOutputStream(socket.outputStream)
+                    dos.writeInt(outSize)
+                    dos.write(encrypted, 0, outSize)
+                    dos.flush()
+                    
+                    bytesSent.addAndGet(outSize.toLong())
                     onChunkDelivered?.invoke()
                     WireBufferPool.release(wire)
                 } catch (e: IOException) {

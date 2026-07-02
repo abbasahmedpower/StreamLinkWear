@@ -30,19 +30,21 @@ fun main() {
     val nodeId  = System.getenv("NODE_ID")  ?: "NODE_1"
     val redisUrl = System.getenv("REDIS_URL") ?: "redis://localhost:6379"
 
+    val tlsPassword = System.getenv("HORUS_TLS_PASSWORD") ?: "horus_tls_2026"
+    
     val keystoreFile = File("build/keystore.jks")
     if (!keystoreFile.exists()) {
         keystoreFile.parentFile.mkdirs()
         generateCertificate(
             file = keystoreFile,
             keyAlias = "streamlink",
-            keyPassword = "horus_tls_2026",
-            jksPassword = "horus_tls_2026"
+            keyPassword = tlsPassword,
+            jksPassword = tlsPassword
         )
     }
 
     val keystore = KeyStore.getInstance(KeyStore.getDefaultType())
-    keystore.load(keystoreFile.inputStream(), "horus_tls_2026".toCharArray())
+    keystore.load(keystoreFile.inputStream(), tlsPassword.toCharArray())
 
     val env = applicationEngineEnvironment {
         log = LoggerFactory.getLogger("ktor.application")
@@ -53,8 +55,8 @@ fun main() {
         sslConnector(
             keyStore = keystore,
             keyAlias = "streamlink",
-            keyStorePassword = { "horus_tls_2026".toCharArray() },
-            privateKeyPassword = { "horus_tls_2026".toCharArray() }
+            keyStorePassword = { tlsPassword.toCharArray() },
+            privateKeyPassword = { tlsPassword.toCharArray() }
         ) {
             port = 8443
             host = "0.0.0.0"
@@ -179,8 +181,8 @@ fun Application.module(nodeId: String, redisUrl: String) {
             val deviceType = call.parameters["deviceType"] ?: return@webSocket close()
             
             // X-Horus-Authorization Security Check
-            val authToken = call.request.headers["X-Horus-Authorization"]
-            if (authToken != expectedToken) { 
+            val authToken = call.request.headers["X-Horus-Authorization"] ?: ""
+            if (!java.security.MessageDigest.isEqual(authToken.toByteArray(Charsets.UTF_8), expectedToken.toByteArray(Charsets.UTF_8))) { 
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Unauthorized Access Attempt"))
                 return@webSocket
             }

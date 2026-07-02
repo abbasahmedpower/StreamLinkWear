@@ -38,25 +38,24 @@ class LocalPredictiveEngine @Inject constructor(
     init {
         try {
             val assetFileDescriptor = context.assets.openFd("predictive_model.tflite")
-            val fileInputStream = FileInputStream(assetFileDescriptor.fileDescriptor)
-            val fileChannel = fileInputStream.channel
-            val startOffset = assetFileDescriptor.startOffset
-            val declaredLength = assetFileDescriptor.declaredLength
-            val buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
-            tflite = Interpreter(buffer)
-            Log.i(tag, "TFLite model loaded successfully")
+            if (assetFileDescriptor.declaredLength < 100) {
+                Log.w(tag, "Model size is too small (${assetFileDescriptor.declaredLength} bytes), ignoring dummy model.")
+                tflite = null
+            } else {
+                val fileInputStream = java.io.FileInputStream(assetFileDescriptor.fileDescriptor)
+                val fileChannel = fileInputStream.channel
+                val startOffset = assetFileDescriptor.startOffset
+                val declaredLength = assetFileDescriptor.declaredLength
+                val buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
+                tflite = Interpreter(buffer)
+                Log.i(tag, "TFLite model loaded successfully")
+            }
         } catch (e: Exception) {
             Log.w(tag, "Dummy/missing TFLite model: ${e.message}")
         }
     }
 
     fun start(
-        motionProvider: () -> Float,
-        networkProvider: () -> Float
-    ) {
-    }
-
-    fun startWithScope(
         scope: CoroutineScope,
         motionProvider: () -> Float,
         networkProvider: () -> Float

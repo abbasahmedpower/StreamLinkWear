@@ -106,15 +106,26 @@ class DirectSocketClient(
         stream: InputStream,
         onChunk: ((WireChunk) -> Unit)?
     ) {
-        val headerBuf = ByteArray(StreamProtocol.WIRE_HEADER_SIZE)
-        val dataBuf   = ByteArray(StreamProtocol.CHUNK_MTU)
+        val dis = java.io.DataInputStream(stream)
+        val dataBuf   = ByteArray(StreamProtocol.CHUNK_MTU + 100) // extra space for encryption overhead
 
         try {
             while (!closed.get()) {
-                // 1. Read fixed-size header
-                if (!readExact(stream, headerBuf, StreamProtocol.WIRE_HEADER_SIZE)) return
+                // 1. Read 4-byte length prefix
+                val len = dis.readInt()
+                if (len <= 0 || len > dataBuf.size) {
+                    Log.e(tag, "Invalid packet length=$len")
+                    return
+                }
 
-                val buffer = java.nio.ByteBuffer.wrap(headerBuf).order(java.nio.ByteOrder.BIG_ENDIAN)
+                val encrypted = ByteArray(len)
+                dis.readFully(encrypted)
+                
+                val ec = encryptedChannel
+                val decrypted = if (ec != null) ec.decrypt(encrypted) else encrypted
+                if (decrypted == null || decrypted.size < StreamProtocol.WIRE_HEADER_SIZE) continue
+
+                val buffer = java.nio.ByteBuffer.wrap(decrypted).order(java.nio.ByteOrder.BIG_ENDIAN)
 
                 val magic = buffer.getInt()
                 if (magic != StreamProtocol.MAGIC_NUMBER) {
@@ -139,13 +150,13 @@ class DirectSocketClient(
                 val timestampUs = buffer.getLong()
 
                 // 3. Validate before reading
-                if (payloadSize <= 0 || payloadSize > dataBuf.size) {
+                if (payloadSize <= 0 || (StreamProtocol.WIRE_HEADER_SIZE + payloadSize > decrypted.size)) {
                     Log.e(tag, "Invalid payloadSize=$payloadSize — protocol error, closing")
                     return
                 }
 
-                // 4. Read EXACTLY payloadSize bytes — ✅ FIXED (was reading CHUNK_MTU always)
-                if (!readExact(stream, dataBuf, payloadSize)) return
+                // 4. Copy payload from decrypted buffer
+                System.arraycopy(decrypted, StreamProtocol.WIRE_HEADER_SIZE, dataBuf, 0, payloadSize)
 
                 // 5. Deliver to FrameAssembler — dataBuf is reused so caller MUST copy data if holding
                 onChunk?.invoke(
