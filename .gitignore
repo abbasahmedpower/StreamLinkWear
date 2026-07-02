@@ -1,5 +1,5 @@
 # ===================================================
-# StreamLinkWear — .gitignore
+# StreamLinkWear — Optimized .gitignore
 # ===================================================
 
 # ── Build outputs (أكبر سبب للحجم الكبير) ─────────
@@ -11,12 +11,17 @@ build/
 **/.gradle/
 local.properties
 
-# ── Android Studio / IntelliJ ──────────────────────
+# ── Android Studio / IntelliJ / VSCode ──────────────
 .idea/
 *.iml
 *.ipr
 *.iws
 .DS_Store
+.vscode/
+
+# ── AI Tools & Editors Cache (إضافة لحماية كاش المحرر) ──
+.cursor/
+.continue/
 
 # ── Kotlin / Java ──────────────────────────────────
 *.class
