@@ -33,9 +33,10 @@ object WearModule {
     @Provides
     @Singleton
     fun provideDirectStreamPlayer(
-        client: DirectSocketClient
+        client: DirectSocketClient,
+        audioEngine: com.streamlink.wear.player.AudioPlaybackEngine
     ): DirectStreamPlayer {
-        return DirectStreamPlayer(client)
+        return DirectStreamPlayer(client, audioEngine)
     }
 
     @Provides

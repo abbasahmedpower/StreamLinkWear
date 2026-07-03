@@ -92,7 +92,7 @@ object StreamProtocol {
 
     fun isTurnConfigured(): Boolean =
         TURN_SERVERS.isNotEmpty() &&
-        TURN_SERVERS.first().url != "turn:your.turn.server:3478"
+        TURN_SERVERS.first().url != "turn:turn.streamlink.local:3478"
 
     // ── Security constants ────────────────────────────────────────────────
     const val AES_KEY_BITS       = 256
@@ -105,8 +105,15 @@ object StreamProtocol {
     const val MAGIC_NUMBER_CONTROL = 0x484F434E // "HOCN" — Horus Control Network
     const val INPUT_FRAME_SIZE     = 32         // 32-byte cache-aligned frame
     
+    // Audio & Video payload types
+    const val PAYLOAD_TYPE_VIDEO_H264: Byte = 1
+    const val PAYLOAD_TYPE_AUDIO_PCM16: Byte = 2
+    const val AUDIO_SAMPLE_RATE = 24000
+    const val AUDIO_CHANNELS = 1
+
     // Control Commands
     const val CMD_SET_BITRATE = 1
+    const val CMD_GLOBAL_ACTION = 2
 
     val ALLOWED_DOMAINS: Set<String> = setOf(
         "streamlink.local",

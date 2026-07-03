@@ -28,7 +28,8 @@ import javax.inject.Inject
  * - IDR-only start: waits for keyframe before decoding to avoid green frames
  */
 class DirectStreamPlayer @Inject constructor(
-    private val client: DirectSocketClient
+    private val client: DirectSocketClient,
+    private val audioEngine: AudioPlaybackEngine
 ) {
     private val tag = "DirectStreamPlayer"
 
@@ -63,6 +64,7 @@ class DirectStreamPlayer @Inject constructor(
             return
         }
         initDecoder()
+        audioEngine.start()
         connectJob = scope.launch(Dispatchers.IO) {
             client.connect(
                 onStateChange = { connected ->
@@ -73,8 +75,12 @@ class DirectStreamPlayer @Inject constructor(
                     }
                 },
                 onChunk = { chunk ->
-                    val assembled = assembler.onChunk(chunk) ?: return@connect
-                    feedDecoder(assembled)
+                    if (chunk.nalType.toInt() == StreamProtocol.PAYLOAD_TYPE_AUDIO_PCM16.toInt()) {
+                        audioEngine.onAudioChunk(chunk.data, chunk.dataSize, chunk.timestampUs)
+                    } else {
+                        val assembled = assembler.onChunk(chunk) ?: return@connect
+                        feedDecoder(assembled)
+                    }
                 }
             )
         }
@@ -186,6 +192,7 @@ class DirectStreamPlayer @Inject constructor(
 
     fun release() {
         if (!released.compareAndSet(false, true)) return
+        audioEngine.stop()
         connectJob?.cancel()
         client.close()
         try {

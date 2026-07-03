@@ -25,9 +25,18 @@ class CaptureService : Service() {
     @Inject lateinit var orchestrator: StreamingOrchestrator
     @Inject lateinit var hardwareEncoder: HardwareEncoder
     @Inject lateinit var directSocketServer: com.streamlink.shared.DirectSocketServer
+    @Inject lateinit var audioCaptureEngine: AudioCaptureEngine
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
+
+    private val projectionCallback = object : MediaProjection.Callback() {
+        override fun onStop() {
+            Log.w(tag, "Projection stopped by system — tearing down")
+            stopCapture()
+            stopSelf()
+        }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action ?: return START_NOT_STICKY
@@ -51,6 +60,7 @@ class CaptureService : Service() {
     private fun startCapture(resultCode: Int, data: Intent) {
         val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         mediaProjection = mpm.getMediaProjection(resultCode, data)
+        mediaProjection?.registerCallback(projectionCallback, android.os.Handler(mainLooper))
 
         // Ensure encoder is initialized
         if (!hardwareEncoder.initialize()) {
@@ -73,11 +83,13 @@ class CaptureService : Service() {
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             surface, null, null
         )
+        mediaProjection?.let { audioCaptureEngine.start(it) }
 
         Log.i(tag, "Screen capture started successfully")
     }
 
     private fun stopCapture() {
+        audioCaptureEngine.stop()
         virtualDisplay?.release()
         virtualDisplay = null
 

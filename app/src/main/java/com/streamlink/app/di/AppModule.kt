@@ -1,16 +1,20 @@
 package com.streamlink.app.di
 
+import android.content.Context
 import com.streamlink.app.capture.HardwareEncoder
 import com.streamlink.app.core.StreamingOrchestrator
 import com.streamlink.app.stream.BackpressureController
 import com.streamlink.app.stream.MirrorDataPlane
+import com.streamlink.shared.AdaptiveResolutionController
 import com.streamlink.shared.DirectSocketServer
 import com.streamlink.shared.EventPipeline
 import com.streamlink.shared.LatencyTracker
 import com.streamlink.shared.MetricsCollector
+import com.streamlink.shared.ThermalMonitor
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import javax.inject.Singleton
@@ -67,6 +71,16 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideAdaptiveResolutionController(): AdaptiveResolutionController = AdaptiveResolutionController()
+
+    @Provides
+    @Singleton
+    fun provideThermalMonitor(@ApplicationContext context: Context): ThermalMonitor {
+        return ThermalMonitor(context).apply { start() }
+    }
+
+    @Provides
+    @Singleton
     fun provideStreamingOrchestrator(
         scope: CoroutineScope,
         events: EventPipeline,
@@ -74,8 +88,10 @@ object AppModule {
         streamRouter: com.streamlink.shared.StreamRouter,
         mirrorDataPlane: MirrorDataPlane,
         hardwareEncoder: HardwareEncoder,
-        latencyTracker: LatencyTracker
+        latencyTracker: LatencyTracker,
+        adaptiveController: AdaptiveResolutionController,
+        thermalMonitor: ThermalMonitor
     ): StreamingOrchestrator {
-        return StreamingOrchestrator(scope, events, socketServer, streamRouter, mirrorDataPlane, hardwareEncoder, latencyTracker)
+        return StreamingOrchestrator(scope, events, socketServer, streamRouter, mirrorDataPlane, hardwareEncoder, latencyTracker, adaptiveController, thermalMonitor)
     }
 }

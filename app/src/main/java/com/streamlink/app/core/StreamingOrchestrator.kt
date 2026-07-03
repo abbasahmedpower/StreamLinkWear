@@ -25,7 +25,9 @@ class StreamingOrchestrator @Inject constructor(
     private val streamRouter: com.streamlink.shared.StreamRouter,
     private val mirrorDataPlane: MirrorDataPlane,
     private val hardwareEncoder: HardwareEncoder,
-    private val latencyTracker: com.streamlink.shared.LatencyTracker
+    private val latencyTracker: com.streamlink.shared.LatencyTracker,
+    private val adaptiveController: com.streamlink.shared.AdaptiveResolutionController,
+    private val thermalMonitor: com.streamlink.shared.ThermalMonitor
 ) {
     private val tag = "StreamingOrchestrator"
     
@@ -42,13 +44,37 @@ class StreamingOrchestrator @Inject constructor(
             )
         }
         socketServer.onControlMessage = { msg ->
-            if (msg.command == StreamProtocol.CMD_SET_BITRATE) {
-                Log.i(tag, "AI Reverse Control: Adjusting Bitrate to ${msg.value} kbps")
-                hardwareEncoder.setBitrate(msg.value)
+            when (msg.command) {
+                StreamProtocol.CMD_SET_BITRATE -> {
+                    Log.i(tag, "AI Reverse Control: Adjusting Bitrate to ${msg.value} kbps")
+                    hardwareEncoder.setBitrate(msg.value)
+                }
+                StreamProtocol.CMD_GLOBAL_ACTION -> {
+                    Log.i(tag, "Remote global action: ${msg.value}")
+                    com.streamlink.app.control.RemoteControlAccessibilityService.instance?.performGlobalAction(msg.value)
+                }
             }
         }
         
         startRealtimeConsumer()
+        startAdaptiveResolutionPolling()
+    }
+    
+    private fun startAdaptiveResolutionPolling() {
+        scope.launch {
+            var currentLabel = adaptiveController.currentResolution().label
+            while (true) {
+                kotlinx.coroutines.delay(3000)
+                val rtt = latencyTracker.report().avgE2EMs
+                val cpu = 0.5f // We don't have a CPU tracker yet, just use a dummy value
+                val thermal = thermalMonitor.thermalLevel.value
+                val profile = adaptiveController.determine(rtt, cpu, thermal)
+                if (profile.label != currentLabel) {
+                    currentLabel = profile.label
+                    hardwareEncoder.reconfigure(profile)
+                }
+            }
+        }
     }
     
     // ==========================================

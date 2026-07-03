@@ -5,6 +5,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
@@ -28,7 +29,11 @@ import kotlinx.coroutines.delay
 @Composable
 fun WearStreamOverlay(
     visible: Boolean,
-    onHide: () -> Unit
+    onHide: () -> Unit,
+    onBack: () -> Unit,
+    onHome: () -> Unit,
+    onRecents: () -> Unit,
+    onAudioOutput: () -> Unit
 ) {
     val state by GlobalStreamState.snapshot.collectAsState()
 
@@ -108,6 +113,24 @@ fun WearStreamOverlay(
                         value = state.bitrateKbps.toString(),
                         good = state.bitrateKbps > 800
                     )
+                }
+            }
+
+            // Remote Control Buttons
+            if (state.state == GlobalStreamState.State.STREAMING) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 6.dp, bottom = 40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .padding(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("◀", fontSize = 14.sp, color = Color.White, modifier = Modifier.clickable { onBack() })
+                    Text("●", fontSize = 14.sp, color = Color.White, modifier = Modifier.clickable { onHome() })
+                    Text("▢", fontSize = 14.sp, color = Color.White, modifier = Modifier.clickable { onRecents() })
+                    Text("🔊", fontSize = 14.sp, modifier = Modifier.clickable { onAudioOutput() })
                 }
             }
         }

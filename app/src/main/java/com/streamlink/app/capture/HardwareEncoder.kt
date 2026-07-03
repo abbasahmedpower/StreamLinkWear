@@ -32,10 +32,10 @@ import java.util.concurrent.atomic.AtomicLong
  * N3 — Consecutive error circuit breaker triggers onEncoderError callback.
  */
 class HardwareEncoder(
-    private val width: Int = StreamProtocol.WEAR_W_FULL,
-    private val height: Int = StreamProtocol.WEAR_H_FULL,
+    private var width: Int = StreamProtocol.WEAR_W_FULL,
+    private var height: Int = StreamProtocol.WEAR_H_FULL,
     private val initialBitrateKbps: Int = StreamProtocol.WEAR_BPS_FULL,
-    private val targetFps: Int = StreamProtocol.WEAR_FPS_FULL,
+    private var targetFps: Int = StreamProtocol.WEAR_FPS_FULL,
     private val onEncoderError: (() -> Unit)? = null
 ) {
     private val tag = "HardwareEncoder"
@@ -53,6 +53,7 @@ class HardwareEncoder(
 
     private var mediaCodec: MediaCodec? = null
     private var inputSurface: Surface? = null
+    var onSurfaceChanged: ((Surface) -> Unit)? = null
 
     val encoderSurface: Surface? get() = inputSurface
     val codec: MediaCodec? get() = mediaCodec
@@ -64,7 +65,7 @@ class HardwareEncoder(
     ).also { it.start() }
     private val encoderHandler = Handler(encoderThread.looper)
 
-    private val frameIntervalNs = 1_000_000_000L / targetFps
+    private var frameIntervalNs = 1_000_000_000L / targetFps
     private val lastFrameNs = AtomicLong(0L)
     private var currentBitrateKbps = initialBitrateKbps
     private val released = AtomicBoolean(false)
@@ -90,6 +91,9 @@ class HardwareEncoder(
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
                 }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    setInteger(MediaFormat.KEY_OPERATING_RATE, targetFps)
+                }
                 setInteger(
                     MediaFormat.KEY_BITRATE_MODE,
                     MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR
@@ -114,6 +118,28 @@ class HardwareEncoder(
         }
     }
 
+    fun reconfigure(profile: com.streamlink.shared.ResolutionProfile) {
+        if (width == profile.width && height == profile.height && targetFps == profile.fps) return
+        Log.i(tag, "Reconfiguring encoder to ${profile.label} (${profile.width}x${profile.height}@${profile.fps})")
+        
+        // Stop current codec
+        try { mediaCodec?.stop() } catch (_: Exception) {}
+        try { mediaCodec?.release() } catch (_: Exception) {}
+        mediaCodec = null
+        try { inputSurface?.release() } catch (_: Exception) {}
+        inputSurface = null
+        
+        width = profile.width
+        height = profile.height
+        targetFps = profile.fps
+        currentBitrateKbps = profile.bitrateKbps
+        frameIntervalNs = 1_000_000_000L / targetFps
+        
+        if (initialize()) {
+            inputSurface?.let { onSurfaceChanged?.invoke(it) }
+        }
+    }
+
     private val encoderCallback = object : MediaCodec.Callback() {
         override fun onOutputBufferAvailable(
             codec: MediaCodec,
@@ -130,13 +156,10 @@ class HardwareEncoder(
                 return
             }
 
-            // Skip config frames (SPS/PPS are handled by HardenedFrameProcessor)
+            // Config frames contain SPS/PPS, must be passed to HardenedFrameProcessor
             if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
-                // Still pass to HardenedFrameProcessor so it caches SPS/PPS
-                val packet = buildPacket(buffer, info) {
-                    codec.releaseOutputBuffer(index, false)
-                }
-                packet.release()  // Immediately release config frames
+                com.streamlink.shared.HardenedFrameProcessor.processAndObtain(buffer, info)
+                codec.releaseOutputBuffer(index, false)
                 return
             }
 
@@ -145,10 +168,11 @@ class HardwareEncoder(
                 return
             }
 
-            // Frame rate throttle — don't exceed targetFps
+            // Frame rate throttle — don't exceed targetFps (never drop keyframes)
             val now = System.nanoTime()
             val last = lastFrameNs.get()
-            if (last > 0 && now - last < frameIntervalNs * 0.85) {
+            val isKeyframe = (info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
+            if (!isKeyframe && last > 0 && now - last < frameIntervalNs * 0.85) {
                 codec.releaseOutputBuffer(index, false)
                 return
             }

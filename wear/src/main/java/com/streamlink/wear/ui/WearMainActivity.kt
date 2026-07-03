@@ -196,7 +196,11 @@ class WearMainActivity : ComponentActivity() {
                 // HUD Overlay — tap to show/hide
                 WearStreamOverlay(
                     visible = overlayVisible,
-                    onHide  = { overlayVisible = false }
+                    onHide  = { overlayVisible = false },
+                    onBack      = { socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK) },
+                    onHome      = { socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME) },
+                    onRecents   = { socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_RECENTS) },
+                    onAudioOutput = { com.streamlink.wear.ux.AudioOutputPicker.open(this@WearMainActivity) }
                 )
             }
         }
@@ -229,5 +233,16 @@ class WearMainActivity : ComponentActivity() {
             WearForegroundService.stop(this)
             streamPlayer.release()
         }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        val action = when (keyCode) {
+            android.view.KeyEvent.KEYCODE_BACK -> android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
+            android.view.KeyEvent.KEYCODE_STEM_1,
+            android.view.KeyEvent.KEYCODE_STEM_PRIMARY -> android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME
+            else -> return super.onKeyDown(keyCode, event)
+        }
+        socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, action)
+        return true
     }
 }
