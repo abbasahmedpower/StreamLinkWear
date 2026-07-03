@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/Facebook Cover - Stream Your Phone to Your Watch(1).png" width="120" alt="Horus Link logo" />
+<img src="docs/assets/Facebook Cover - Stream Your Phone to Your Watch(1).png" width="2000" alt="Horus Link logo" />
 
 # StreamLinkWear
 ### Real-time phone → Wear OS screen mirroring, built for hostile networks.
