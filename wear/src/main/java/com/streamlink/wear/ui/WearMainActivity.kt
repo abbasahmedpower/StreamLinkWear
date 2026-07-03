@@ -42,8 +42,18 @@ class WearMainActivity : ComponentActivity() {
     @Inject lateinit var uxEngine: com.streamlink.wear.ai.SmartWatchUXEngine
     @Inject lateinit var socketClient: com.streamlink.shared.DirectSocketClient
     
+    // webRtcSender = null لغاية ما يتعمل نظير WebRTC حقيقي على جانب الساعة (Phase 2).
+    // لحد كده الـorchestrator بيشتغل على TCP المحلي بس (نفس السلوك القديم بالظبط)
+    // لكن دلوقتي عبر طبقة abstraction جاهزة تستقبل WebRTC sender بسطر واحد لما يتبنى.
+    private val fallbackOrchestrator by lazy {
+        com.streamlink.shared.network.NetworkFallbackOrchestrator(
+            localSender = socketClient,
+            webRtcSender = null
+        )
+    }
+
     private val touchController by lazy {
-        com.streamlink.wear.input.TouchInputController(socketClient)
+        com.streamlink.wear.input.TouchInputController(fallbackOrchestrator)
     }
 
     private var isAmbient = false

@@ -3,6 +3,8 @@ package com.streamlink.shared
 import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * LatencyTracker — tracks end-to-end latency per frame across the pipeline.
@@ -18,7 +20,8 @@ import java.util.concurrent.atomic.AtomicLong
  *   tracker.onChunkSent(id)
  *   tracker.onDecoded(id)  // Called by watch side via feedback message
  */
-class LatencyTracker {
+@Singleton
+class LatencyTracker @Inject constructor() {
     private val tag = "LatencyTracker"
 
     data class FrameTimes(

@@ -24,7 +24,8 @@ class StreamingOrchestrator @Inject constructor(
     private val socketServer: DirectSocketServer,
     private val streamRouter: com.streamlink.shared.StreamRouter,
     private val mirrorDataPlane: MirrorDataPlane,
-    private val hardwareEncoder: HardwareEncoder
+    private val hardwareEncoder: HardwareEncoder,
+    private val latencyTracker: com.streamlink.shared.LatencyTracker
 ) {
     private val tag = "StreamingOrchestrator"
     
@@ -151,12 +152,21 @@ class StreamingOrchestrator @Inject constructor(
             userId = "streamlink_phone_1",
             deviceType = "PHONE"
         )
+        // تبادل مفتاح ECDH خاص بقناة HOTC عبر نفس اتصال الـsignaling (منفصل عن مفتاح TCP المحلي)
+        var hotcEncryptedChannel: com.streamlink.shared.EncryptedChannel? = null
+        val hotcKeyPair = com.streamlink.shared.KeyExchange.generateEphemeralKeyPair()
+
         val hotcChannel = com.streamlink.shared.network.WebRtcHotcChannel(context).apply {
             onEncryptedFrameReceived = { data ->
-                // Assuming data is TouchFrame, we route it similarly
-                // For now, we decode it directly (simplification of HOTC parsing)
-                if (data.size == 27) {
-                    val event = com.streamlink.shared.TouchCodec.decode(data)
+                val ec = hotcEncryptedChannel
+                val decrypted = if (ec != null) {
+                    try { ec.decrypt(data) } catch (e: Exception) {
+                        Log.w(tag, "HOTC decrypt failed: ${e.message}"); null
+                    }
+                } else null
+
+                if (decrypted != null && decrypted.size >= StreamProtocol.INPUT_FRAME_SIZE) {
+                    val event = com.streamlink.shared.TouchCodec.decode(decrypted)
                     if (event != null) {
                         com.streamlink.shared.ai.TouchPerceptionHub.onRealTouch(event)
                         com.streamlink.app.control.RemoteControlAccessibilityService.instance?.handle(event)
@@ -164,6 +174,26 @@ class StreamingOrchestrator @Inject constructor(
                 }
             }
         }
+
+        // استقبال مفتاح الساعة العام عبر قناة الـsignaling واشتقاق مفتاح الجلسة
+        scope.launch {
+            signalingClient.messages.collect { msg ->
+                if (msg.optString("type") == "HOTC_KEY") {
+                    val peerKey = msg.optString("payload")
+                    if (com.streamlink.shared.KeyExchange.validatePeerKey(peerKey)) {
+                        val sessionKey = com.streamlink.shared.KeyExchange.deriveSessionKey(hotcKeyPair, peerKey)
+                        hotcEncryptedChannel = com.streamlink.shared.EncryptedChannel(sessionKey)
+                        Log.i(tag, "✅ HOTC session key derived over signaling")
+                    } else {
+                        Log.e(tag, "❌ رفض مفتاح HOTC غير صالح من الطرف الآخر")
+                    }
+                }
+            }
+        }
+
+        signalingClient.connect()
+        signalingClient.sendMessage("HOTC_KEY", "broadcast", hotcKeyPair.publicKeyBase64)
+
         webRtcTransport = com.streamlink.shared.WebRtcTransport(
             context = context,
             signalingClient = signalingClient,
@@ -186,7 +216,9 @@ class StreamingOrchestrator @Inject constructor(
                         put("bitrateKbps", state.bitrateKbps)
                         // In a real app we'd get actual network loss and latency
                         put("packetLossPercent", 0) 
-                        put("latencyMs", 35) // Hardcoded nominal latency for demonstration
+                        // رقم حقيقي من LatencyTracker؛ -1 لو لسه مفيش عينات كافية (بدل رقم وهمي ثابت)
+                        val avgE2E = latencyTracker.report().avgE2EMs
+                        put("latencyMs", if (avgE2E > 0) avgE2E else -1)
                     }
                     signalingClient.sendMessage("METRICS", "broadcast", payload.toString())
                 }

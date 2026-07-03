@@ -10,10 +10,15 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Dedicated HOTC data channel — unordered/unreliable SCTP for 32-byte encrypted touch frames.
  * Attach to an existing [PeerConnection] created by [com.streamlink.shared.WebRtcTransport].
+ *
+ * ملاحظة: الكلاس ده حاليًا بياستقبل بس (Phone side). مش بيعمل implement لـ
+ * WebRtcHotcSender لأنه لسه مفيش عنده منطق encode/encrypt للمس (ده لسه مبني
+ * بس على جانب الموبايل). الـinterface محجوز لكلاس مخصص هيتبنى على جانب
+ * الساعة (Phase 2) لما يتضاف WebRTC حقيقي هناك.
  */
 class WebRtcHotcChannel(
     private val context: Context
-) : WebRtcHotcSender {
+) {
     private val tag = "WebRtcHotcChannel"
     private var dataChannel: DataChannel? = null
     private val ready = AtomicBoolean(false)
@@ -58,14 +63,15 @@ class WebRtcHotcChannel(
         })
     }
 
-    override fun sendFrame(encryptedPayload: ByteArray): Boolean {
+    /** بيبعت بايتات مشفرة جاهزة على الـdata channel — لسه مستخدم داخليًا بس. */
+    fun sendFrame(encryptedPayload: ByteArray): Boolean {
         val dc = dataChannel ?: return false
         if (dc.state() != DataChannel.State.OPEN) return false
         val buffer = ByteBuffer.wrap(encryptedPayload)
         return dc.send(DataChannel.Buffer(buffer, true))
     }
 
-    override fun isReady(): Boolean = ready.get()
+    fun isReady(): Boolean = ready.get()
 
     fun close() {
         ready.set(false)

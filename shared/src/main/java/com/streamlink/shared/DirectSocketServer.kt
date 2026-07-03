@@ -120,7 +120,13 @@ class DirectSocketServer {
                 val clientBytes = ByteArray(clientLen)
                 dis.readFully(clientBytes)
                 val clientPub = String(clientBytes, Charsets.UTF_8)
-                
+
+                if (!KeyExchange.validatePeerKey(clientPub)) {
+                    Log.e(tag, "❌ مفتاح غير صالح من الساعة (فشل التحقق من المنحنى) — رفض الاتصال")
+                    newClient.close()
+                    continue
+                }
+
                 // 2. Generate Phone's ephemeral key
                 val kp = KeyExchange.generateEphemeralKeyPair()
                 val pubBytes = kp.publicKeyBase64.toByteArray(Charsets.UTF_8)
@@ -152,6 +158,8 @@ class DirectSocketServer {
     }
 
     private fun runSender() {
+        var cachedDos: java.io.DataOutputStream? = null
+        var cachedForSocket: Socket? = null
         while (running.get() && !Thread.currentThread().isInterrupted) {
             try {
                 var task = iFrameQueue.poll()
@@ -170,6 +178,8 @@ class DirectSocketServer {
                     WireBufferPool.release(wire)
                     task.wire = null
                     freeTasks.offer(task)
+                    cachedDos = null
+                    cachedForSocket = null
                     continue
                 }
                 try {
@@ -177,10 +187,14 @@ class DirectSocketServer {
                     val encrypted = ec?.encrypt(wire.copyOfRange(0, size)) ?: wire.copyOfRange(0, size)
                     val outSize = encrypted.size
                     
-                    val dos = java.io.DataOutputStream(socket.outputStream)
-                    dos.writeInt(outSize)
-                    dos.write(encrypted, 0, outSize)
-                    dos.flush()
+                    // Reuse DataOutputStream for the lifetime of this connection (zero allocation per frame)
+                    if (cachedDos == null || cachedForSocket !== socket) {
+                        cachedDos = java.io.DataOutputStream(socket.outputStream)
+                        cachedForSocket = socket
+                    }
+                    cachedDos!!.writeInt(outSize)
+                    cachedDos!!.write(encrypted, 0, outSize)
+                    // TCP_NODELAY is set — no explicit flush needed
                     
                     bytesSent.addAndGet(outSize.toLong())
                     onChunkDelivered?.invoke()
@@ -188,6 +202,8 @@ class DirectSocketServer {
                 } catch (e: IOException) {
                     Log.w(tag, "Send failed: ${e.message}")
                     isClientConnected = false
+                    cachedDos = null
+                    cachedForSocket = null
                     WireBufferPool.release(wire)
                 }
                 task.wire = null

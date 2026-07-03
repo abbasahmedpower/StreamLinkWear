@@ -1,19 +1,20 @@
 package com.streamlink.wear.input
 
-import com.streamlink.shared.DirectSocketClient
 import com.streamlink.shared.TouchEvent
 import com.streamlink.shared.TouchPhase
 import com.streamlink.shared.ai.DigitalTwinEngine
 import com.streamlink.shared.ai.KinematicPredictionEngine
 import com.streamlink.shared.ai.PreCognitionEngine
+import com.streamlink.shared.network.NetworkFallbackOrchestrator
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Maps Compose pointer IDs to 0-9 slots, runs kinematic + twin prediction on wear,
- * and schedules TouchEvents to the DirectSocketClient.
+ * and schedules TouchEvents عبر NetworkFallbackOrchestrator (TCP محلي أولاً،
+ * WebRTC لما يبقى متاح — بدل الاتصال المباشر بـDirectSocketClient).
  */
 class TouchInputController(
-    private val socketClient: DirectSocketClient
+    private val fallbackOrchestrator: NetworkFallbackOrchestrator
 ) {
     private val pointerSlots = IntArray(10) { -1 }
     private val seqGen = AtomicInteger(0)
@@ -53,7 +54,7 @@ class TouchInputController(
         lastY = y
         lastTimeUs = timestampUs
 
-        socketClient.sendTouch(
+        fallbackOrchestrator.dispatchTouch(
             phase = phase,
             pointerId = slot,
             nx = predicted.predictedX,

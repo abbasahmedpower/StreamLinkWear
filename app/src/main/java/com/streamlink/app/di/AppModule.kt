@@ -6,6 +6,7 @@ import com.streamlink.app.stream.BackpressureController
 import com.streamlink.app.stream.MirrorDataPlane
 import com.streamlink.shared.DirectSocketServer
 import com.streamlink.shared.EventPipeline
+import com.streamlink.shared.LatencyTracker
 import com.streamlink.shared.MetricsCollector
 import dagger.Module
 import dagger.Provides
@@ -62,14 +63,19 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideLatencyTracker(): LatencyTracker = LatencyTracker()
+
+    @Provides
+    @Singleton
     fun provideStreamingOrchestrator(
         scope: CoroutineScope,
         events: EventPipeline,
         socketServer: DirectSocketServer,
         streamRouter: com.streamlink.shared.StreamRouter,
         mirrorDataPlane: MirrorDataPlane,
-        hardwareEncoder: HardwareEncoder
+        hardwareEncoder: HardwareEncoder,
+        latencyTracker: LatencyTracker
     ): StreamingOrchestrator {
-        return StreamingOrchestrator(scope, events, socketServer, streamRouter, mirrorDataPlane, hardwareEncoder)
+        return StreamingOrchestrator(scope, events, socketServer, streamRouter, mirrorDataPlane, hardwareEncoder, latencyTracker)
     }
 }

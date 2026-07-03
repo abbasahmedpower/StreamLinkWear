@@ -14,9 +14,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.tensorflow.lite.Interpreter
-import java.io.FileInputStream
-import java.nio.MappedByteBuffer
-import java.nio.channels.FileChannel
 import java.util.concurrent.Executors
 import android.content.Context
 
@@ -58,20 +55,12 @@ class ContextIntelligenceEngine(
                 tflite = Interpreter(modelBuffer)
                 Log.i(tag, "✅ TFLite model loaded successfully")
             }
+        } catch (_: java.io.FileNotFoundException) {
+            // Model file not yet included in assets — heuristic engine will be used
+            Log.i(tag, "ℹ️ stream_predictor.tflite not found — running in heuristic-only mode")
         } catch (e: Exception) {
             Log.e(tag, "⚠️ Failed to load TFLite model, falling back to heuristic engine", e)
         }
-    }
-
-    private fun loadModelFile(context: Context, modelName: String): MappedByteBuffer {
-        val fileDescriptor = context.assets.openFd(modelName)
-        val inputStream = FileInputStream(fileDescriptor.fileDescriptor)
-        val fileChannel = inputStream.channel
-        return fileChannel.map(
-            FileChannel.MapMode.READ_ONLY,
-            fileDescriptor.startOffset,
-            fileDescriptor.declaredLength
-        )
     }
 
     // ✅ FIX N4: One dedicated thread — no context switch overhead per cycle

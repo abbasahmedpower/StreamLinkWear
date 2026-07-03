@@ -74,6 +74,13 @@ object KeyExchange {
     }
 
     /**
+     * Convenience overload — accepts the full [EphemeralKeyPair] so callers in
+     * other modules don't need to access the [internal] privateKey field directly.
+     */
+    fun deriveSessionKey(myKeyPair: EphemeralKeyPair, theirPublicKeyBase64: String): ByteArray =
+        deriveSessionKey(myKeyPair.privateKey, theirPublicKeyBase64)
+
+    /**
      * Verify peer public key is a valid P-256 point (prevents invalid curve attack).
      */
     fun validatePeerKey(peerPublicKeyBase64: String): Boolean {

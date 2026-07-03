@@ -25,7 +25,7 @@ import com.streamlink.shared.util.LockFreeSpscQueue
 class DirectSocketClient(
     private val discovery: NetworkDiscovery,
     private val port: Int = StreamProtocol.DIRECT_SOCKET_PORT
-) {
+) : com.streamlink.shared.network.LocalTouchSender {
     private val tag = "DirectSocketClient"
     private var socket: Socket? = null
     private val closed = AtomicBoolean(false)
@@ -80,7 +80,14 @@ class DirectSocketClient(
                 val theirBytes = ByteArray(theirLen)
                 dis.readFully(theirBytes)
                 val theirPub = String(theirBytes, Charsets.UTF_8)
-                
+
+                if (!KeyExchange.validatePeerKey(theirPub)) {
+                    Log.e(tag, "❌ مفتاح غير صالح من الموبايل (فشل التحقق من المنحنى) — إغلاق الاتصال")
+                    s.close()
+                    delay(1000)
+                    continue
+                }
+
                 val sessionKey = KeyExchange.deriveSessionKey(kp.privateKey, theirPub)
                 encryptedChannel = EncryptedChannel(sessionKey)
                 
@@ -202,6 +209,8 @@ class DirectSocketClient(
     private fun startTouchSenderOnce() {
         if (!touchSenderStarted.compareAndSet(false, true)) return
         Thread({
+            var cachedDos: java.io.DataOutputStream? = null
+            var cachedForSocket: Socket? = null
             while (!closed.get()) {
                 val task = touchSendQueue.poll()
                 if (task == null) {
@@ -214,16 +223,21 @@ class DirectSocketClient(
                         val ec = encryptedChannel
                         if (ec != null) {
                             val encrypted = ec.encrypt(task.wire)
-                            // We need to send size since it's variable (GCM tag overhead)
-                            val dos = java.io.DataOutputStream(s.outputStream)
-                            dos.writeInt(encrypted.size)
-                            dos.write(encrypted)
+                            // نعيد استخدام نفس الـDataOutputStream طول عمر الاتصال بدل تخصيص جديد كل touch event
+                            if (cachedDos == null || cachedForSocket !== s) {
+                                cachedDos = java.io.DataOutputStream(s.outputStream)
+                                cachedForSocket = s
+                            }
+                            cachedDos!!.writeInt(encrypted.size)
+                            cachedDos!!.write(encrypted)
                         } else {
                             s.outputStream.write(task.wire)
                         }
                         // TCP_NODELAY is enabled, so no flush needed
                     } catch (e: IOException) {
                         Log.w(tag, "Touch send failed: ${e.message}")
+                        cachedDos = null
+                        cachedForSocket = null
                     }
                 }
                 task.hasData = false
@@ -237,7 +251,7 @@ class DirectSocketClient(
     }
 
     /** Call this to queue a touch packet for reverse-channel delivery to phone. */
-    fun sendTouch(
+    override fun sendTouch(
         phase: TouchPhase,
         pointerId: Int,
         nx: Float,
@@ -266,7 +280,7 @@ class DirectSocketClient(
     }
 
     /** Returns true when TCP socket is open and handshake completed. */
-    fun isConnected(): Boolean {
+    override fun isConnected(): Boolean {
         val s = socket
         return s != null && s.isConnected && !s.isClosed && encryptedChannel != null
     }
