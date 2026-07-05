@@ -22,6 +22,8 @@ class DirectSocketServer {
     private var serverSocket: ServerSocket? = null
     private var clientSocket: Socket? = null
     private val running = AtomicBoolean(false)
+    /** True once the server socket is bound and listening. Used by orchestrator startup sequencing. */
+    val isRunning: Boolean get() = running.get()
     class SendTask {
         var wire: ByteArray? = null
         var size: Int = 0
@@ -34,6 +36,13 @@ class DirectSocketServer {
         repeat(512) { offer(SendTask()) }
     }
     private val bytesSent = AtomicLong(0L)
+
+    // MICRO-03: Queue Metrics
+    val queueDepth: Int get() = iFrameQueue.size + pFrameQueue.size
+    @Volatile var droppedFrames: Long = 0L
+        private set
+    @Volatile var averageDelayMs: Float = 0f
+        private set
 
     @Volatile var isClientConnected = false
     var onChunkDelivered: (() -> Unit)? = null
@@ -167,7 +176,7 @@ class DirectSocketServer {
                 if (task == null) task = pFrameQueue.poll()
                 
                 if (task == null) {
-                    LockSupport.parkNanos(100_000) // 0.1ms lock-free wait
+                    LockSupport.parkNanos(500_000) // 0.5ms lock-free wait
                     continue
                 }
                 
@@ -241,6 +250,7 @@ class DirectSocketServer {
 
         val q = if (isKeyframe) iFrameQueue else pFrameQueue
         if (!q.offer(task)) {
+            droppedFrames++
             if (!isKeyframe) {
                 // Drop this P-frame immediately to protect queue
                 task.wire = null
@@ -276,6 +286,4 @@ class DirectSocketServer {
         serverSocket = null
         Log.i(tag, "Server closed. totalSent=${bytesSent.get()} bytes")
     }
-
-    val queueDepth: Int get() = iFrameQueue.size + pFrameQueue.size
 }

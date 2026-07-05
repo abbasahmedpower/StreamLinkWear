@@ -15,6 +15,14 @@ android {
         targetSdk 34
         versionCode 5
         versionName "1.0.0"
+
+        // ✅ Configurable signaling server — override via local.properties or CI environment
+        buildConfigField "String", "SIGNALING_URL", "\"${project.findProperty('SIGNALING_URL') ?: 'wss://signaling.streamlink.com'}\""
+        buildConfigField "String", "HORUS_SECRET_TOKEN", "\"${project.findProperty('HORUS_SECRET_TOKEN') ?: ''}\""
+
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
     }
 
     signingConfigs {

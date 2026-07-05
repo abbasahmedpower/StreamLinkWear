@@ -231,7 +231,7 @@ class DirectSocketClient(
             while (!closed.get()) {
                 val task = touchSendQueue.poll()
                 if (task == null) {
-                    LockSupport.parkNanos(100_000)
+                    LockSupport.parkNanos(500_000)
                     continue
                 }
                 val s = socket

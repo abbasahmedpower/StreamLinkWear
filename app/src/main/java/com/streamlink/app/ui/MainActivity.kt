@@ -59,7 +59,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (com.streamlink.shared.SecurityUtils.isRooted() || com.streamlink.shared.SecurityUtils.isEmulator()) {
             android.widget.Toast.makeText(this, "Security Warning: Rooted device or emulator detected.", android.widget.Toast.LENGTH_LONG).show()
-            // finish() // Keep commented out during development testing
+            if (!com.streamlink.app.BuildConfig.DEBUG) {
+                finish()
+                return
+            }
         }
         setContent {
             MaterialTheme(

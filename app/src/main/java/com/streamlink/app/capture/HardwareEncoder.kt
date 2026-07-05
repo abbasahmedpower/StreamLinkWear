@@ -36,7 +36,7 @@ class HardwareEncoder(
     private var height: Int = StreamProtocol.WEAR_H_FULL,
     private val initialBitrateKbps: Int = StreamProtocol.WEAR_BPS_FULL,
     private var targetFps: Int = StreamProtocol.WEAR_FPS_FULL,
-    private val onEncoderError: (() -> Unit)? = null
+    var onEncoderError: (() -> Unit)? = null
 ) {
     private val tag = "HardwareEncoder"
 
@@ -118,8 +118,19 @@ class HardwareEncoder(
         }
     }
 
+    private var lastReconfigureMs = 0L
+
     fun reconfigure(profile: com.streamlink.shared.ResolutionProfile) {
         if (width == profile.width && height == profile.height && targetFps == profile.fps) return
+        
+        // ✅ FIX: Hysteresis — prevent rapid reconfigurations that cause video stuttering
+        val now = System.currentTimeMillis()
+        if (now - lastReconfigureMs < 1000L) {
+            Log.d(tag, "Ignoring rapid reconfigure request (${now - lastReconfigureMs}ms ago)")
+            return
+        }
+        lastReconfigureMs = now
+
         Log.i(tag, "Reconfiguring encoder to ${profile.label} (${profile.width}x${profile.height}@${profile.fps})")
         
         // Stop current codec

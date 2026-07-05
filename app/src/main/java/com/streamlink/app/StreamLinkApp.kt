@@ -1,33 +1,38 @@
 package com.streamlink.app
 
 import android.app.Application
-import com.streamlink.shared.GlobalStreamState
-import com.streamlink.shared.SessionBrain
+import android.content.ComponentCallbacks2
+import android.content.res.Configuration
+import android.util.Log
+import com.streamlink.app.diagnostics.CrashReporter
+import com.streamlink.shared.diagnostics.StartupDiagnostics
+import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-
-import dagger.hilt.android.HiltAndroidApp
 
 @HiltAndroidApp
-class StreamLinkApp : Application() {
+class StreamLinkApp : Application(), ComponentCallbacks2 {
+
     private val appScope = CoroutineScope(SupervisorJob())
 
     override fun onCreate() {
+        StartupDiagnostics.step("App.onCreate")
         super.onCreate()
-        
-        // Crash Hardening: Log fatal crashes cleanly
-        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            android.util.Log.e("StreamLinkApp", "Fatal crash on thread: ${thread.name}", throwable)
-            defaultHandler?.uncaughtException(thread, throwable)
-        }
+
+        // ✅ Install CrashReporter FIRST — before any other initialization
+        CrashReporter.install(this)
+        StartupDiagnostics.ok("CrashReporter installed")
+
+        // ✅ Start ANR Watchdog
+        com.streamlink.shared.diagnostics.ANRWatchDog().start()
+        StartupDiagnostics.ok("ANRWatchDog started")
 
         if (BuildConfig.DEBUG) {
             android.os.StrictMode.setThreadPolicy(
                 android.os.StrictMode.ThreadPolicy.Builder()
                     .detectAll()
                     .penaltyLog()
+                    .penaltyFlashScreen()
                     .build()
             )
             android.os.StrictMode.setVmPolicy(
@@ -36,11 +41,24 @@ class StreamLinkApp : Application() {
                     .penaltyLog()
                     .build()
             )
+            StartupDiagnostics.ok("StrictMode configured")
         }
+        StartupDiagnostics.ok("App init complete")
+    }
 
-        appScope.launch {
-            GlobalStreamState.resetSafe()
-            SessionBrain.reset()
-        }
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        Log.w("StreamLinkApp", "onTrimMemory: level=$level")
+        com.streamlink.shared.telemetry.MemoryGovernor.handleMemoryPressure(level)
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        Log.e("StreamLinkApp", "onLowMemory: CRITICAL MEMORY PRESSURE")
+        com.streamlink.shared.telemetry.MemoryGovernor.handleMemoryPressure(ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
     }
 }

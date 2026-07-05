@@ -59,14 +59,35 @@ class CaptureService : Service() {
     }
 
     private fun startCapture(resultCode: Int, data: Intent) {
-        val mpm: MediaProjectionManager? = safeSystemService(Context.MEDIA_PROJECTION_SERVICE)
-        if (mpm == null) {
-            Log.e(tag, "MEDIA_PROJECTION_SERVICE unavailable — cannot start capture")
+        try {
+            val mpm = safeSystemService<MediaProjectionManager>(Context.MEDIA_PROJECTION_SERVICE)
+            if (mpm == null) {
+                com.streamlink.shared.diagnostics.StartupDiagnostics.warn("CaptureService", "MediaProjectionManager is null")
+                stopSelf()
+                return
+            }
+
+            mediaProjection = mpm.getMediaProjection(resultCode, data)
+            if (mediaProjection == null) {
+                com.streamlink.shared.diagnostics.StartupDiagnostics.warn("CaptureService", "MediaProjection is null")
+                stopSelf()
+                return
+            }
+
+            com.streamlink.shared.diagnostics.StartupDiagnostics.ok("CaptureService MediaProjection started")
+        } catch (e: Exception) {
+            android.util.Log.e(tag, "Failed to start MediaProjection", e)
+            com.streamlink.shared.diagnostics.StartupDiagnostics.warn("CaptureService", "MediaProjection failed: ${e.message}")
             stopSelf()
             return
         }
-        mediaProjection = mpm.getMediaProjection(resultCode, data)
+
         mediaProjection?.registerCallback(projectionCallback, android.os.Handler(mainLooper))
+
+        hardwareEncoder.onEncoderError = {
+            Log.e(tag, "Encoder error detected. Initiating Self-Healing (MICRO-10)...")
+            autoRestartEncoder()
+        }
 
         // Ensure encoder is initialized
         if (!hardwareEncoder.initialize()) {
@@ -75,10 +96,16 @@ class CaptureService : Service() {
             return
         }
 
+        setupVirtualDisplay()
+        mediaProjection?.let { audioCaptureEngine.start(it) }
+
+        Log.i(tag, "Screen capture started successfully")
+    }
+
+    private fun setupVirtualDisplay() {
         val surface = hardwareEncoder.encoderSurface
         if (surface == null) {
             Log.e(tag, "Encoder surface is null")
-            stopSelf()
             return
         }
 
@@ -89,9 +116,24 @@ class CaptureService : Service() {
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             surface, null, null
         )
-        mediaProjection?.let { audioCaptureEngine.start(it) }
+    }
 
-        Log.i(tag, "Screen capture started successfully")
+    private fun autoRestartEncoder() {
+        android.os.Handler(mainLooper).postDelayed({
+            Log.i(tag, "Self-Healing: Releasing faulty encoder...")
+            virtualDisplay?.release()
+            virtualDisplay = null
+            hardwareEncoder.release()
+
+            Log.i(tag, "Self-Healing: Re-initializing encoder...")
+            if (hardwareEncoder.initialize()) {
+                setupVirtualDisplay()
+                Log.i(tag, "Self-Healing: Encoder restored successfully.")
+            } else {
+                Log.e(tag, "Self-Healing: Encoder restore failed.")
+                stopSelf()
+            }
+        }, 500)
     }
 
     private fun stopCapture() {
