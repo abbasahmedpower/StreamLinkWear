@@ -69,9 +69,7 @@ object AppModule {
     @Singleton
     fun provideLatencyTracker(): LatencyTracker = LatencyTracker()
 
-    @Provides
-    @Singleton
-    fun provideAdaptiveResolutionController(): AdaptiveResolutionController = AdaptiveResolutionController()
+
 
     @Provides
     @Singleton
@@ -89,9 +87,8 @@ object AppModule {
         mirrorDataPlane: MirrorDataPlane,
         hardwareEncoder: HardwareEncoder,
         latencyTracker: LatencyTracker,
-        adaptiveController: AdaptiveResolutionController,
         thermalMonitor: ThermalMonitor
     ): StreamingOrchestrator {
-        return StreamingOrchestrator(scope, events, socketServer, streamRouter, mirrorDataPlane, hardwareEncoder, latencyTracker, adaptiveController, thermalMonitor)
+        return StreamingOrchestrator(scope, events, socketServer, streamRouter, mirrorDataPlane, hardwareEncoder, latencyTracker, thermalMonitor)
     }
 }

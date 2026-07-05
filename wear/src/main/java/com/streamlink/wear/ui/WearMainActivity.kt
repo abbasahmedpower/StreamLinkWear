@@ -32,6 +32,8 @@ import android.hardware.SensorManager
 import android.content.Context
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.os.PowerManager
+import com.streamlink.shared.util.safeSystemService
 import com.streamlink.shared.GlobalStreamState
 import androidx.lifecycle.repeatOnLifecycle
 
@@ -106,21 +108,29 @@ class WearMainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        try {
+            if (com.streamlink.shared.SecurityUtils.isRooted() || com.streamlink.shared.SecurityUtils.isEmulator()) {
+            android.widget.Toast.makeText(this, "Security Warning: Rooted device or emulator detected.", android.widget.Toast.LENGTH_LONG).show()
+        }
 
-        // Keep screen ON during active streaming
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-
+        // Keep screen ON will be managed dynamically based on stream state to save battery
+        
         // Register ambient lifecycle
         lifecycle.addObserver(ambientObserver)
 
         // Start background service immediately
         WearForegroundService.start(this)
 
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        sensorManager = safeSystemService(Context.SENSOR_SERVICE)
         accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         gyroSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
         
-        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        val vibrator: Vibrator? = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            safeSystemService<android.os.VibratorManager>(Context.VIBRATOR_MANAGER_SERVICE)?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            safeSystemService(Context.VIBRATOR_SERVICE)
+        }
         
         lifecycleScope.launch {
             this@WearMainActivity.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
@@ -130,13 +140,18 @@ class WearMainActivity : ComponentActivity() {
                     if (newState != previousState) {
                         when (newState) {
                             GlobalStreamState.State.STREAMING -> {
-                                vibrator.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+                                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                                vibrator?.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
                             }
                             GlobalStreamState.State.FAILED -> {
-                                vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 100, 50, 100), -1))
+                                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                                vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 100, 50, 100), -1))
+                            }
+                            GlobalStreamState.State.STOPPED -> {
+                                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                             }
                             GlobalStreamState.State.DEGRADED -> {
-                                vibrator.vibrate(VibrationEffect.createOneShot(20, VibrationEffect.DEFAULT_AMPLITUDE))
+                                vibrator?.vibrate(VibrationEffect.createOneShot(20, VibrationEffect.DEFAULT_AMPLITUDE))
                             }
                             else -> {}
                         }
@@ -200,8 +215,24 @@ class WearMainActivity : ComponentActivity() {
                     onBack      = { socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK) },
                     onHome      = { socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME) },
                     onRecents   = { socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_RECENTS) },
-                    onAudioOutput = { com.streamlink.wear.ux.AudioOutputPicker.open(this@WearMainActivity) }
+                    onAudioOutput = { com.streamlink.wear.ux.AudioOutputPicker.open(this@WearMainActivity) },
+                    onRetry = {
+                        WearForegroundService.stop(this@WearMainActivity)
+                        lifecycleScope.launch {
+                            delay(300)
+                            WearForegroundService.start(this@WearMainActivity)
+                            streamPlayer.start(lifecycleScope)
+                        }
+                    }
                 )
+            }
+        }
+        } catch (e: Exception) {
+            android.util.Log.e("WearMain", "Non-fatal init error — showing degraded UI instead of crashing", e)
+            setContent { 
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                    androidx.wear.compose.material.Text("Init Failed. Please restart.", color = androidx.compose.ui.graphics.Color.White)
+                }
             }
         }
     }

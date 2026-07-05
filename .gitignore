@@ -6,6 +6,9 @@
 build/
 */build/
 **/build/
+bin/
+*/bin/
+**/bin/
 .gradle/
 */.gradle/
 **/.gradle/
@@ -66,6 +69,7 @@ dist/
 # ── TFLite model (كبير — اتدرب محلياً) ─────────────
 *.tflite
 ai_training/stream_predict_model.tflite
+ai_training/stream_predictor.tflite
 
 # ── Logs ─────────────────────────────────────────────
 *.log

@@ -24,6 +24,12 @@ class SignalingClient(
     private val tag = "SignalingClient"
     private val client = OkHttpClient.Builder()
         .pingInterval(10, TimeUnit.SECONDS)
+        .certificatePinner(
+            CertificatePinner.Builder()
+                .add("*.streamlinkwear.com", "sha256/7HIpactkIAq2Y49orFOOQKurWxmmSFZhBCoQYcRhJ3Y=") // Primary
+                .add("*.streamlinkwear.com", "sha256/fwza0LRMXouZHRC8Ei+4PyuldPDcf3UKgO/04cDM1oE=") // Backup
+                .build()
+        )
         .build()
         
     private var webSocket: WebSocket? = null
@@ -54,6 +60,13 @@ class SignalingClient(
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
                     val json = JSONObject(text)
+                    val ts = json.optLong("ts", 0L)
+                    val now = System.currentTimeMillis()
+                    // 30 seconds replay protection window
+                    if (ts > 0 && kotlin.math.abs(now - ts) > 30000) {
+                        Log.w(tag, "Rejecting signaling message due to replay protection (ts difference: ${now - ts}ms)")
+                        return
+                    }
                     _messages.tryEmit(json)
                 } catch (e: Exception) {
                     Log.e(tag, "Failed to parse signaling message: $text", e)

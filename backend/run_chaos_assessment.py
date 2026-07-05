@@ -10,6 +10,13 @@ def execute_ci_chaos_test():
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     time.sleep(2) # Wait for sockets to boot
 
+    if proxy_proc.poll() is not None:
+        stdout, stderr = proxy_proc.communicate()
+        print("[CI CHAOS] Proxy failed to start")
+        print(stdout.decode(errors="ignore"))
+        print(stderr.decode(errors="ignore"))
+        sys.exit(1)
+
     try:
         # Programmatic injection sequence
         print("[CI CHAOS] Step 1: Simulating Perfect Network Baseline for 5 seconds...")
@@ -33,15 +40,21 @@ def execute_ci_chaos_test():
         if test_passed:
             print("[CI CHAOS] SUCCESS: System successfully self-healed. NASA Validation Passed.")
             proxy_proc.terminate()
+            proxy_proc.wait(timeout=5)
             sys.exit(0)
         else:
             print("[CI CHAOS] CRITICAL FAILURE: System hung or failed to auto-recover within bounds.")
             proxy_proc.terminate()
+            proxy_proc.wait(timeout=5)
             sys.exit(1)
 
     except Exception as e:
         print(f"[CI CHAOS] Automation Error: {e}")
         proxy_proc.terminate()
+        try:
+            proxy_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proxy_proc.kill()
         sys.exit(1)
 
 if __name__ == "__main__":

@@ -61,13 +61,20 @@ class ChaosStreamProxy:
             cleanup()
 
         def cleanup():
-            try: client_socket.close() except: pass
-            try: source_socket.close() except: pass
+            try:
+                client_socket.close()
+            except OSError:
+                pass
+            try:
+                source_socket.close()
+            except OSError:
+                pass
 
         threading.Thread(target=forward_to_watch, daemon=True).start()
 
     def start(self):
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind(("0.0.0.0", PROXY_PORT))
         server.listen(5)
         print(f"[CHAOS PROXY] Chaos Gateway running on port {PROXY_PORT}...")
@@ -88,7 +95,10 @@ class ChaosStreamProxy:
             print("3. Trigger Total Network Blackout (Dead Zone)")
             print("4. Inject Bit-Flip Data Corruption")
             print("5. Reset to Perfect Network (Clear Chaos)")
-            choice = input("Enter choice: ")
+            try:
+                choice = input("Enter choice: ")
+            except EOFError:
+                return
 
             if choice == "1":
                 self.packet_drop_rate = float(input("Enter drop rate (0.0 to 1.0): "))

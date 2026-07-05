@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
+import com.streamlink.shared.util.safeSystemService
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -56,6 +57,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (com.streamlink.shared.SecurityUtils.isRooted() || com.streamlink.shared.SecurityUtils.isEmulator()) {
+            android.widget.Toast.makeText(this, "Security Warning: Rooted device or emulator detected.", android.widget.Toast.LENGTH_LONG).show()
+            // finish() // Keep commented out during development testing
+        }
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -82,7 +87,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestScreenCapture() {
-        val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        val mpm: MediaProjectionManager? = safeSystemService(Context.MEDIA_PROJECTION_SERVICE)
+        if (mpm == null) {
+            android.widget.Toast.makeText(this, "Screen capture service unavailable on this device.", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
         captureLauncher.launch(mpm.createScreenCaptureIntent())
     }
 

@@ -63,6 +63,7 @@ class DirectStreamPlayer @Inject constructor(
             Log.e(tag, "Cannot start — no Surface set")
             return
         }
+        released.set(false)
         initDecoder()
         audioEngine.start()
         connectJob = scope.launch(Dispatchers.IO) {

@@ -14,7 +14,7 @@ object WireBufferPool {
     private const val MASK = (POOL_SIZE - 1).toLong()
 
     // Buffer size = MTU + header + safety margin
-    val BUFFER_SIZE = StreamProtocol.CHUNK_MTU + StreamProtocol.WIRE_HEADER_SIZE + 8
+    val BUFFER_SIZE = StreamProtocol.WIRE_BUFFER_SIZE
 
     private val pool = AtomicReferenceArray<ByteArray?>(POOL_SIZE)
     private val head = AtomicLong(0L)

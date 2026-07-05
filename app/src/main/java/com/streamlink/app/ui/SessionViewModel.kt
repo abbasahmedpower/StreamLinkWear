@@ -7,7 +7,6 @@ import androidx.lifecycle.viewModelScope
 import com.streamlink.app.core.StreamingOrchestrator
 import com.streamlink.shared.GlobalStreamState
 import com.streamlink.shared.LatencyTracker
-import com.streamlink.shared.QualityController
 import com.streamlink.shared.StreamMetrics
 import com.streamlink.shared.StreamProtocol
 import dagger.hilt.android.lifecycle.HiltViewModel

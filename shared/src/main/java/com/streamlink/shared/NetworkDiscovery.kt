@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.util.Log
+import com.streamlink.shared.util.safeSystemService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -20,7 +21,8 @@ class NetworkDiscovery(private val context: Context) {
     private val SERVICE_TYPE = "_streamlink._tcp."
     private val SERVICE_NAME = "StreamLink-Phone"
 
-    private val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
+    private val nsdManager: NsdManager? = context.safeSystemService(Context.NSD_SERVICE)
+    val isDiscoveryAvailable: Boolean get() = nsdManager != null
 
     private val _discoveredHost = MutableStateFlow<String?>(null)
     val discoveredHost: StateFlow<String?> = _discoveredHost
@@ -28,17 +30,21 @@ class NetworkDiscovery(private val context: Context) {
     // ── Phone: Publish service ─────────────────────────────────────────────
 
     fun publishService(port: Int) {
+        val manager = nsdManager ?: run {
+            Log.w(tag, "NSD unavailable — skipping publish, fallback mode expected")
+            return
+        }
         val serviceInfo = NsdServiceInfo().apply {
             serviceName = SERVICE_NAME
             serviceType = SERVICE_TYPE
             setPort(port)
         }
-        nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
+        manager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
         Log.i(tag, "Publishing NSD service on port $port")
     }
 
     fun stopPublish() {
-        try { nsdManager.unregisterService(registrationListener) } catch (_: Exception) {}
+        try { nsdManager?.unregisterService(registrationListener) } catch (_: Exception) {}
     }
 
     private val registrationListener = object : NsdManager.RegistrationListener {
@@ -59,12 +65,16 @@ class NetworkDiscovery(private val context: Context) {
     // ── Watch: Discover service ────────────────────────────────────────────
 
     fun startDiscovery() {
-        nsdManager.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
+        val manager = nsdManager ?: run {
+            Log.w(tag, "NSD unavailable — cannot auto-discover, user must enter IP manually")
+            return
+        }
+        manager.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
         Log.i(tag, "Starting NSD discovery for $SERVICE_TYPE")
     }
 
     fun stopDiscovery() {
-        try { nsdManager.stopServiceDiscovery(discoveryListener) } catch (_: Exception) {}
+        try { nsdManager?.stopServiceDiscovery(discoveryListener) } catch (_: Exception) {}
     }
 
     private val discoveryListener = object : NsdManager.DiscoveryListener {
@@ -74,7 +84,7 @@ class NetworkDiscovery(private val context: Context) {
         override fun onServiceFound(serviceInfo: NsdServiceInfo) {
             Log.i(tag, "Service found: ${serviceInfo.serviceName}")
             if (serviceInfo.serviceType.contains("_streamlink")) {
-                nsdManager.resolveService(serviceInfo, resolveListener)
+                nsdManager?.resolveService(serviceInfo, resolveListener)
             }
         }
 

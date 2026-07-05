@@ -1,5 +1,6 @@
 package com.streamlink.app.ai
 
+import android.content.Context
 import android.util.Log
 import com.streamlink.shared.DecisionEngine
 import com.streamlink.shared.GlobalStreamState
@@ -15,18 +16,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.tensorflow.lite.Interpreter
 import java.util.concurrent.Executors
-import android.content.Context
 
 /**
- * Predictive intelligence layer — evaluates context every 500ms and drives
- * GlobalStreamState before failures become visible to the user.
- *
- * Nano fix N4:
- * - Replaces withContext(Dispatchers.IO) inside the loop with a dedicated
- *   single-thread dispatcher allocated once.
- * - The dispatcher thread has NORM_PRIORITY-1 (background) so it doesn't
- *   compete with the encoder's URGENT_DISPLAY thread.
- * - TrendAnalyzer pre-empts degradation 500ms before threshold crossing.
+ * Predictive intelligence layer. It uses a TFLite model when present and falls
+ * back to the deterministic DecisionEngine when the model is missing or invalid.
  */
 class ContextIntelligenceEngine(
     private val context: Context,
@@ -35,16 +28,18 @@ class ContextIntelligenceEngine(
 ) {
     private val tag = "Intelligence"
 
-    // ✅ TensorFlow Lite Integration
     private var tflite: Interpreter? = null
+    private var modelOutputClasses: Int = 0
 
     init {
-        try {
-            val assetFileDescriptor = context.assets.openFd("stream_predictor.tflite")
-            if (assetFileDescriptor.declaredLength < 100) {
-                Log.w(tag, "Model size is too small (${assetFileDescriptor.declaredLength} bytes), ignoring dummy model.")
-                tflite = null
-            } else {
+        for (assetName in MODEL_ASSET_NAMES) {
+            try {
+                val assetFileDescriptor = context.assets.openFd(assetName)
+                if (assetFileDescriptor.declaredLength < 100) {
+                    Log.w(tag, "Model $assetName is too small (${assetFileDescriptor.declaredLength} bytes), ignoring it")
+                    continue
+                }
+
                 val fileInputStream = java.io.FileInputStream(assetFileDescriptor.fileDescriptor)
                 val fileChannel = fileInputStream.channel
                 val modelBuffer = fileChannel.map(
@@ -52,21 +47,26 @@ class ContextIntelligenceEngine(
                     assetFileDescriptor.startOffset,
                     assetFileDescriptor.declaredLength
                 )
+
                 tflite = Interpreter(modelBuffer)
-                Log.i(tag, "✅ TFLite model loaded successfully")
+                modelOutputClasses = tflite?.getOutputTensor(0)?.shape()?.lastOrNull() ?: 0
+                Log.i(tag, "TFLite model loaded successfully: $assetName outputs=$modelOutputClasses")
+                break
+            } catch (_: java.io.FileNotFoundException) {
+                // Try the next supported filename.
+            } catch (e: Exception) {
+                Log.e(tag, "Failed to load TFLite model $assetName, trying fallback", e)
             }
-        } catch (_: java.io.FileNotFoundException) {
-            // Model file not yet included in assets — heuristic engine will be used
-            Log.i(tag, "ℹ️ stream_predictor.tflite not found — running in heuristic-only mode")
-        } catch (e: Exception) {
-            Log.e(tag, "⚠️ Failed to load TFLite model, falling back to heuristic engine", e)
+        }
+
+        if (tflite == null) {
+            Log.i(tag, "No stream predictor model found; running in heuristic-only mode")
         }
     }
 
-    // ✅ FIX N4: One dedicated thread — no context switch overhead per cycle
     private val intelligenceDispatcher = Executors.newSingleThreadExecutor { r ->
         Thread(r, "SL-Intelligence").also { t ->
-            t.priority = Thread.NORM_PRIORITY - 1  // Background — yield to encoder
+            t.priority = Thread.NORM_PRIORITY - 1
             t.isDaemon = true
         }
     }.asCoroutineDispatcher()
@@ -99,34 +99,10 @@ class ContextIntelligenceEngine(
     }
 
     suspend fun evaluateAndApply(metrics: StreamMetrics) {
-        // ✅ Real AI Inference (if model loaded)
-        val aiAction = if (tflite != null) {
-            val inputs = floatArrayOf(
-                metrics.rttMs.toFloat(), 
-                metrics.packetLossRate.toFloat(), 
-                metrics.thermalLevel.toFloat(), 
-                metrics.batteryLevel.toFloat()
-            )
-            val outputs = Array(1) { FloatArray(3) } // [PRELOAD, REDUCE, DROP]
-            try {
-                tflite?.run(inputs, outputs)
-                val probs = outputs[0]
-                val maxIdx = probs.indices.maxByOrNull { probs[it] } ?: 1
-                when (maxIdx) {
-                    0 -> StreamAction.PRELOAD
-                    1 -> StreamAction.REDUCE_QUALITY
-                    else -> StreamAction.DROP_FPS
-                }
-            } catch (e: Exception) {
-                decisionEngine.decide(metrics)
-            }
-        } else {
-            decisionEngine.decide(metrics)
-        }
+        val aiAction = inferAction(metrics)
 
-        // ✅ Trend-based prediction: fires 500ms before threshold crossing
         val action = if (trendAnalyzer.predictDegradationIn500ms()) {
-            Log.d(tag, "Pre-emptive quality reduction — trend detected")
+            Log.d(tag, "Pre-emptive quality reduction: trend detected")
             StreamAction.REDUCE_QUALITY
         } else {
             aiAction
@@ -157,7 +133,7 @@ class ContextIntelligenceEngine(
                             predictedAction = action
                         )
                     }
-                    Log.d(tag, "→ DEGRADED: rtt=${metrics.rttMs}ms loss=${metrics.packetLossRate}")
+                    Log.d(tag, "DEGRADED: rtt=${metrics.rttMs}ms loss=${metrics.packetLossRate}")
                 }
             }
 
@@ -171,7 +147,7 @@ class ContextIntelligenceEngine(
                             predictedAction = action
                         )
                     }
-                    Log.d(tag, "→ STREAMING: rtt=${metrics.rttMs}ms recovered")
+                    Log.d(tag, "STREAMING: rtt=${metrics.rttMs}ms recovered")
                 }
             }
 
@@ -202,7 +178,59 @@ class ContextIntelligenceEngine(
             StreamAction.STABLE, StreamAction.IDLE -> {
                 GlobalStreamState.update { copy(predictedAction = action) }
             }
+
             else -> {}
         }
+    }
+
+    private fun inferAction(metrics: StreamMetrics): StreamAction {
+        val interpreter = tflite ?: return decisionEngine.decide(metrics)
+
+        val inputs = arrayOf(
+            floatArrayOf(
+                metrics.batteryLevel.coerceIn(0, 100) / 100f,
+                if (metrics.isUserMoving) 1f else 0f,
+                (metrics.rttMs / 500f).coerceIn(0f, 1f),
+                (metrics.thermalLevel / 10f).coerceIn(0f, 1f)
+            )
+        )
+        val outputs = Array(1) {
+            FloatArray(modelOutputClasses.takeIf { it > 0 } ?: DEFAULT_MODEL_OUTPUT_CLASSES)
+        }
+
+        return try {
+            interpreter.run(inputs, outputs)
+            actionFromModelOutput(outputs[0])
+        } catch (e: Exception) {
+            Log.w(tag, "TFLite inference failed; falling back to heuristic: ${e.message}")
+            decisionEngine.decide(metrics)
+        }
+    }
+
+    private fun actionFromModelOutput(probs: FloatArray): StreamAction {
+        val maxIdx = probs.indices.maxByOrNull { probs[it] } ?: return StreamAction.STABLE
+
+        return if (probs.size == 3) {
+            when (maxIdx) {
+                0 -> StreamAction.PRELOAD
+                1 -> StreamAction.REDUCE_QUALITY
+                else -> StreamAction.DROP_FPS
+            }
+        } else {
+            when (maxIdx) {
+                0 -> StreamAction.IDLE
+                1 -> StreamAction.PRELOAD
+                2 -> StreamAction.INCREASE_QUALITY
+                else -> StreamAction.REDUCE_QUALITY
+            }
+        }
+    }
+
+    companion object {
+        private const val DEFAULT_MODEL_OUTPUT_CLASSES = 4
+        private val MODEL_ASSET_NAMES = listOf(
+            "stream_predictor.tflite",
+            "stream_predict_model.tflite"
+        )
     }
 }

@@ -3,7 +3,7 @@ package com.streamlink.shared.engine
 import com.streamlink.shared.ai.LocalPredictiveEngine
 import com.streamlink.shared.GlobalStreamState
 import com.streamlink.shared.FramePacket
-import com.streamlink.shared.QualityController
+import com.streamlink.shared.StreamingIntelligenceEngine
 import com.streamlink.shared.LockFreeFramePool
 import com.streamlink.shared.easp.EaspStreamController
 import com.streamlink.shared.easp.ZeroAllocationMotionAnalyzer
@@ -11,7 +11,7 @@ import com.streamlink.shared.easp.WristState
 
 class PredictiveInterceptionLoop(
     private val predictiveEngine: LocalPredictiveEngine,
-    private val qualityController: QualityController,
+    private val intelEngine: StreamingIntelligenceEngine,
     private val framePool: LockFreeFramePool,
     private val motionAnalyzer: ZeroAllocationMotionAnalyzer,
     private val easpController: EaspStreamController
@@ -47,7 +47,7 @@ class PredictiveInterceptionLoop(
         if (prediction.congestionRisk > 0.85f || wristState == WristState.SLEEP) {
             // Very high risk of congestion or sleep state detected! 
             // Throttle backend proactively and prepare buffers.
-            qualityController.downgradeQuality() 
+            intelEngine.downgradeQuality() 
         }
     }
 }

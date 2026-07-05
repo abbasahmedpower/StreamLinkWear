@@ -110,29 +110,45 @@ class DirectSocketClient(
     }
 
     private fun receiveLoop(
-        stream: InputStream,
+        stream: java.io.InputStream,
         onChunk: ((WireChunk) -> Unit)?
     ) {
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DISPLAY)
         val dis = java.io.DataInputStream(stream)
-        val dataBuf   = ByteArray(StreamProtocol.CHUNK_MTU + 100) // extra space for encryption overhead
+        val dataBuf = ByteArray(StreamProtocol.WIRE_BUFFER_SIZE)
+        val encryptedBuf = ByteArray(StreamProtocol.WIRE_BUFFER_SIZE)
+        val decryptedBuf = ByteArray(StreamProtocol.WIRE_BUFFER_SIZE)
 
         try {
             while (!closed.get()) {
                 // 1. Read 4-byte length prefix
                 val len = dis.readInt()
-                if (len <= 0 || len > dataBuf.size) {
+                if (len <= 0 || len > encryptedBuf.size) {
                     Log.e(tag, "Invalid packet length=$len")
                     return
                 }
 
-                val encrypted = ByteArray(len)
-                dis.readFully(encrypted)
+                dis.readFully(encryptedBuf, 0, len)
                 
                 val ec = encryptedChannel
-                val decrypted = if (ec != null) ec.decrypt(encrypted) else encrypted
-                if (decrypted == null || decrypted.size < StreamProtocol.WIRE_HEADER_SIZE) continue
+                val decrypted: ByteArray
+                val decryptedSize: Int
+                if (ec != null) {
+                    try {
+                        decryptedSize = ec.decrypt(encryptedBuf, 0, len, decryptedBuf, 0)
+                        decrypted = decryptedBuf
+                    } catch (e: Exception) {
+                        Log.e(tag, "Decryption error: ${e.message}")
+                        continue
+                    }
+                } else {
+                    decryptedSize = len
+                    decrypted = encryptedBuf
+                }
+                
+                if (decryptedSize < StreamProtocol.WIRE_HEADER_SIZE) continue
 
-                val buffer = java.nio.ByteBuffer.wrap(decrypted).order(java.nio.ByteOrder.BIG_ENDIAN)
+                val buffer = java.nio.ByteBuffer.wrap(decrypted, 0, decryptedSize).order(java.nio.ByteOrder.BIG_ENDIAN)
 
                 val magic = buffer.getInt()
                 if (magic != StreamProtocol.MAGIC_NUMBER) {
@@ -157,7 +173,7 @@ class DirectSocketClient(
                 val timestampUs = buffer.getLong()
 
                 // 3. Validate before reading
-                if (payloadSize <= 0 || (StreamProtocol.WIRE_HEADER_SIZE + payloadSize > decrypted.size)) {
+                if (payloadSize <= 0 || (StreamProtocol.WIRE_HEADER_SIZE + payloadSize > decryptedSize)) {
                     Log.e(tag, "Invalid payloadSize=$payloadSize — protocol error, closing")
                     return
                 }
@@ -209,6 +225,7 @@ class DirectSocketClient(
     private fun startTouchSenderOnce() {
         if (!touchSenderStarted.compareAndSet(false, true)) return
         Thread({
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DISPLAY)
             var cachedDos: java.io.DataOutputStream? = null
             var cachedForSocket: Socket? = null
             while (!closed.get()) {

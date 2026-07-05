@@ -24,7 +24,7 @@ object StreamProtocol {
     const val HDR_TIMESTAMP_US  = 17  // Long  (8 bytes)
 
     // Wire buffer pool
-    const val WIRE_BUFFER_SIZE = CHUNK_MTU + WIRE_HEADER_SIZE + 8
+    const val WIRE_BUFFER_SIZE = CHUNK_MTU + WIRE_HEADER_SIZE + 64
 
     // Video profiles
     const val WEAR_W_FULL = 466

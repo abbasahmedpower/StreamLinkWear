@@ -15,6 +15,7 @@ import com.streamlink.wear.R
 import com.streamlink.wear.player.DirectStreamPlayer
 import com.streamlink.wear.ui.WearMainActivity
 import dagger.hilt.android.AndroidEntryPoint
+import com.streamlink.shared.util.safeSystemService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -60,10 +61,7 @@ class WearForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                createNotificationChannel()
-                startForeground(NOTIF_ID, buildNotification())
-                acquireWakeLock()
-                Log.i("WearFgService", "Streaming service started")
+                startOrRecoverForeground(systemRestart = false)
             }
             ACTION_STOP -> {
                 Log.i("WearFgService", "Stopping streaming service")
@@ -72,12 +70,35 @@ class WearForegroundService : Service() {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
+            null -> {
+                startOrRecoverForeground(systemRestart = true)
+            }
+            else -> {
+                Log.w("WearFgService", "Unknown action=${intent.action}; keeping foreground stream guard alive")
+                startOrRecoverForeground(systemRestart = false)
+            }
         }
         return START_STICKY
     }
 
+    private fun startOrRecoverForeground(systemRestart: Boolean) {
+        createNotificationChannel()
+        startForeground(NOTIF_ID, buildNotification())
+        acquireWakeLock()
+        if (systemRestart) {
+            Log.w("WearFgService", "Recovered after system restart; waiting for UI Surface to resume player")
+        } else {
+            Log.i("WearFgService", "Streaming service started")
+        }
+    }
+
     private fun acquireWakeLock() {
-        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        if (wakeLock?.isHeld == true) return
+        val pm: PowerManager? = safeSystemService(POWER_SERVICE)
+        if (pm == null) {
+            Log.w("WearFgService", "POWER_SERVICE unavailable — continuing without WakeLock")
+            return
+        }
         wakeLock = pm.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
             "StreamLinkWear::StreamWakeLock"
@@ -110,7 +131,8 @@ class WearForegroundService : Service() {
             "StreamLink Stream",
             NotificationManager.IMPORTANCE_LOW
         ).apply { description = "Active streaming notification" }
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        val nm: NotificationManager? = safeSystemService(Context.NOTIFICATION_SERVICE)
+        nm?.createNotificationChannel(channel)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

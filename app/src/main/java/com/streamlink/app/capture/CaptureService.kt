@@ -15,6 +15,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.streamlink.app.core.StreamingOrchestrator
+import com.streamlink.shared.util.safeSystemService
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -58,7 +59,12 @@ class CaptureService : Service() {
     }
 
     private fun startCapture(resultCode: Int, data: Intent) {
-        val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        val mpm: MediaProjectionManager? = safeSystemService(Context.MEDIA_PROJECTION_SERVICE)
+        if (mpm == null) {
+            Log.e(tag, "MEDIA_PROJECTION_SERVICE unavailable — cannot start capture")
+            stopSelf()
+            return
+        }
         mediaProjection = mpm.getMediaProjection(resultCode, data)
         mediaProjection?.registerCallback(projectionCallback, android.os.Handler(mainLooper))
 
@@ -106,8 +112,8 @@ class CaptureService : Service() {
             val channel = NotificationChannel(
                 channelId, "Screen Capture", NotificationManager.IMPORTANCE_LOW
             )
-            val nm = getSystemService(NotificationManager::class.java)
-            nm.createNotificationChannel(channel)
+            val nm: NotificationManager? = safeSystemService(Context.NOTIFICATION_SERVICE)
+            nm?.createNotificationChannel(channel)
         }
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle("StreamLink")

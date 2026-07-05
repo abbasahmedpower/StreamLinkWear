@@ -41,7 +41,12 @@ class MirrorDataPlane(
 
     // Dedicated single thread — eliminates coroutine context switch overhead
     private val planeDispatcher = Executors.newSingleThreadExecutor { r ->
-        Thread(r, "SL-DataPlane").also { it.priority = Thread.MAX_PRIORITY - 1 }
+        Thread({
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DISPLAY)
+            r.run()
+        }, "SL-DataPlane").apply {
+            priority = Thread.MAX_PRIORITY - 1
+        }
     }.asCoroutineDispatcher()
 
     private var sendJob: Job? = null

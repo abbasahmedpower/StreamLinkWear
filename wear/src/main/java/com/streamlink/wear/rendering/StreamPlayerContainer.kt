@@ -16,20 +16,22 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.util.Log
 import androidx.compose.ui.viewinterop.AndroidView
+import com.streamlink.shared.util.safeSystemService
 import kotlinx.coroutines.delay
 
 @Composable
 fun StreamPlayerContainer(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val powerManager = remember { context.getSystemService(Context.POWER_SERVICE) as PowerManager }
+    val powerManager = remember { context.safeSystemService<PowerManager>(Context.POWER_SERVICE) }
     
     var thermalStatus by remember { mutableStateOf(PowerManager.THERMAL_STATUS_NONE) }
     var liveStats by remember { mutableStateOf(LiveFrameStats()) }
 
     LaunchedEffect(Unit) {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            powerManager.addThermalStatusListener { status ->
+            powerManager?.addThermalStatusListener { status ->
                 thermalStatus = status
             }
         }
@@ -47,11 +49,22 @@ fun StreamPlayerContainer(modifier: Modifier = Modifier) {
         // 1️⃣ Raw Video Layer (Zero-Allocation Render Pipeline)
         AndroidView(
             factory = { ctx ->
+                var wakeLock: PowerManager.WakeLock? = null
+                try {
+                    wakeLock = powerManager?.newWakeLock(
+                        PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                        "StreamLinkWear::StreamPlayerWakeLock"
+                    )?.apply {
+                        acquire(10 * 60 * 1000L /*10 minutes*/)
+                    }
+                } catch (e: Exception) {
+                    Log.e("StreamPlayer", "Failed to acquire wake lock", e)
+                }
                 HardenedStreamTextureView(ctx).apply {
                     onSurfaceReady = { surface ->
                         // Link hardware MediaCodec here
                     }
-                    onSurfaceDestroyed = { }
+                    onSurfaceDestroyed = { wakeLock?.release() }
                 }
             },
             modifier = Modifier.fillMaxSize()

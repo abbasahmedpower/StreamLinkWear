@@ -4,9 +4,10 @@ import android.content.Context
 import android.os.VibrationEffect
 import android.os.Vibrator
 import com.streamlink.shared.GlobalStreamState
+import com.streamlink.shared.util.safeSystemService
 
 class StreamHapticFeedback(context: Context) {
-    private val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator?
+    private val vibrator: Vibrator? = context.safeSystemService(Context.VIBRATOR_SERVICE)
 
     fun triggerFeedback(state: GlobalStreamState.State) {
         if (vibrator == null || !vibrator.hasVibrator()) return

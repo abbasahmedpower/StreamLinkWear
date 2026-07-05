@@ -43,6 +43,19 @@ class SecurityManagerTest {
     }
 
     @Test
+    fun `verify authenticated metadata cannot be altered`() {
+        val payload = "SecurePacket"
+        val encrypted = SecurityManager.encrypt(payload, masterKey, sequenceNumber = 7)
+        val decoded = java.util.Base64.getDecoder().decode(encrypted)
+
+        val sequenceOffset = StreamProtocol.GCM_IV_BYTES + 2
+        decoded[sequenceOffset] = (decoded[sequenceOffset].toInt() xor 0x01).toByte()
+
+        val tampered = java.util.Base64.getEncoder().encodeToString(decoded)
+        assertNull(SecurityManager.decrypt(tampered, masterKey))
+    }
+
+    @Test
     fun `verify Bounded Eviction does not crash when cache exceeds limits`() {
         val payload = "Data"
         

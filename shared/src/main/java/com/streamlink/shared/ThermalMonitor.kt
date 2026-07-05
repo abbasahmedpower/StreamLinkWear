@@ -3,6 +3,7 @@ package com.streamlink.shared
 import android.content.Context
 import android.os.PowerManager
 import android.util.Log
+import com.streamlink.shared.util.safeSystemService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -17,10 +18,10 @@ import kotlinx.coroutines.flow.StateFlow
  */
 class ThermalMonitor(
     private val context: Context,
-    private val qualityController: QualityController? = null
+    private val intelEngine: StreamingIntelligenceEngine? = null
 ) {
     private val tag = "ThermalMonitor"
-    private val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+    private val powerManager: PowerManager? = context.safeSystemService(Context.POWER_SERVICE)
 
     private val _thermalLevel = MutableStateFlow(0)
     val thermalLevel: StateFlow<Int> = _thermalLevel
@@ -29,18 +30,19 @@ class ThermalMonitor(
         val level = mapStatusToLevel(status)
         Log.i(tag, "Thermal status: $status → level $level/10")
         _thermalLevel.value = level
-        qualityController?.thermalLevel = level
-        qualityController?.thermalCeilingKbps = ceilingForLevel(level)
+        intelEngine?.thermalLevel = level
+        intelEngine?.thermalCeilingKbps = ceilingForLevel(level)
     }
 
     fun start() {
         if (android.os.Build.VERSION.SDK_INT >= 29) {
-            powerManager.addThermalStatusListener(listener)
-            // Immediately apply current thermal state
-            val current = mapStatusToLevel(powerManager.currentThermalStatus)
-            _thermalLevel.value = current
-            qualityController?.thermalLevel = current
-            Log.i(tag, "ThermalMonitor started — current level: $current/10")
+            try {
+                powerManager?.addThermalStatusListener(listener)
+                val currentStatus = powerManager?.currentThermalStatus ?: PowerManager.THERMAL_STATUS_NONE
+                listener.onThermalStatusChanged(currentStatus)
+            } catch (e: Exception) {
+                Log.e(tag, "Failed to start thermal monitor", e)
+            }
         } else {
             Log.i(tag, "ThermalMonitor: API < 29, thermal monitoring unavailable")
         }
@@ -48,7 +50,11 @@ class ThermalMonitor(
 
     fun stop() {
         if (android.os.Build.VERSION.SDK_INT >= 29) {
-            powerManager.removeThermalStatusListener(listener)
+            try {
+                powerManager?.removeThermalStatusListener(listener)
+            } catch (e: Exception) {
+                Log.e(tag, "Failed to stop thermal monitor", e)
+            }
         }
     }
 

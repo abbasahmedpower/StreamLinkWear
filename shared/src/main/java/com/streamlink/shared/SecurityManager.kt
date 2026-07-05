@@ -1,5 +1,6 @@
 package com.streamlink.shared
 
+import java.nio.ByteBuffer
 import java.util.Base64
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -24,6 +25,11 @@ object SecurityManager {
     private val seqWindow = ConcurrentHashMap<Int, Long>(256)
     private val keyRef = AtomicReference<ByteArray?>(null)
 
+    private const val AAD_VERSION: Byte = 1
+    private const val AAD_CONTROL_MESSAGE: Byte = 1
+    private const val STRING_AAD_BYTES = 6  // version(1) | type(1) | sequence(4)
+    private const val BINARY_AAD_BYTES = 10 // version(1) | type(1) | sequence(8)
+
     fun generateAndStoreKey(): ByteArray {
         val kg = KeyGenerator.getInstance("AES")
         kg.init(StreamProtocol.AES_KEY_BITS, secureRandom)
@@ -36,46 +42,64 @@ object SecurityManager {
         keyRef.set(keyBytes.copyOf())
     }
 
-    fun encrypt(data: ByteArray, key: ByteArray, timestamp: Long = System.currentTimeMillis()): ByteArray {
+    fun encrypt(
+        data: ByteArray,
+        key: ByteArray,
+        timestamp: Long = System.currentTimeMillis(),
+        frameType: Byte = StreamProtocol.PAYLOAD_TYPE_VIDEO_H264,
+        sequenceNumber: Long = timestamp
+    ): ByteArray {
         val iv = ByteArray(StreamProtocol.GCM_IV_BYTES).also { secureRandom.nextBytes(it) }
+        val aad = buildBinaryAad(frameType, sequenceNumber)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(
             Cipher.ENCRYPT_MODE,
             SecretKeySpec(key, "AES"),
             GCMParameterSpec(StreamProtocol.GCM_TAG_BITS, iv)
         )
-        cipher.updateAAD(iv)
+        cipher.updateAAD(aad)
         val ciphertext = cipher.doFinal(data)
         
-        // Return raw IV + ciphertext (no Base64 for binary efficiency)
-        return iv + ciphertext
+        // Return raw IV + authenticated metadata + ciphertext (no Base64 for binary efficiency)
+        return iv + aad + ciphertext
     }
 
     fun encrypt(payload: String, keyBytes: ByteArray, sequenceNumber: Int = 0): String {
         val timestamp = System.currentTimeMillis()
         val iv = ByteArray(StreamProtocol.GCM_IV_BYTES).also { secureRandom.nextBytes(it) }
+        val aad = buildMessageAad(AAD_CONTROL_MESSAGE, sequenceNumber)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(
             Cipher.ENCRYPT_MODE,
             SecretKeySpec(keyBytes, "AES"),
             GCMParameterSpec(StreamProtocol.GCM_TAG_BITS, iv)
         )
-        cipher.updateAAD(iv)
+        cipher.updateAAD(aad)
         val ciphertext = cipher.doFinal(
             "$payload|TS|$timestamp|SEQ|$sequenceNumber".toByteArray(Charsets.UTF_8)
         )
-        return Base64.getEncoder().encodeToString(iv + ciphertext)
+        return Base64.getEncoder().encodeToString(iv + aad + ciphertext)
     }
 
     fun decrypt(encoded: String, keyBytes: ByteArray): String? {
         if (encoded.isEmpty()) return null
         return try {
             val combined = java.util.Base64.getDecoder().decode(encoded)
-            if (combined.size <= StreamProtocol.GCM_IV_BYTES) return null
+            if (combined.size <= StreamProtocol.GCM_IV_BYTES + STRING_AAD_BYTES) return null
 
             val iv = combined.copyOfRange(0, StreamProtocol.GCM_IV_BYTES)
-            val ciphertext = combined.copyOfRange(StreamProtocol.GCM_IV_BYTES, combined.size)
-            val ivKey = sha256Key(iv, 0)
+            val aad = combined.copyOfRange(
+                StreamProtocol.GCM_IV_BYTES,
+                StreamProtocol.GCM_IV_BYTES + STRING_AAD_BYTES
+            )
+            if (aad[0] != AAD_VERSION) return null
+
+            val authenticatedSequence = ByteBuffer.wrap(aad, 2, Int.SIZE_BYTES).int
+            val ciphertext = combined.copyOfRange(
+                StreamProtocol.GCM_IV_BYTES + STRING_AAD_BYTES,
+                combined.size
+            )
+            val ivKey = sha256Key(iv, authenticatedSequence)
             val now = System.currentTimeMillis()
 
             evictNonceCache(now)
@@ -98,7 +122,7 @@ object SecurityManager {
                 SecretKeySpec(keyBytes, "AES"),
                 GCMParameterSpec(StreamProtocol.GCM_TAG_BITS, iv)
             )
-            cipher.updateAAD(iv)
+            cipher.updateAAD(aad)
             val plaintext = String(cipher.doFinal(ciphertext), Charsets.UTF_8)
             val parts = plaintext.split("|TS|")
             if (parts.size < 2) return null
@@ -107,6 +131,10 @@ object SecurityManager {
             val rest = parts[1].split("|SEQ|")
             val ts = rest[0].toLongOrNull() ?: return null
             val seq = rest.getOrNull(1)?.toIntOrNull() ?: 0
+            if (seq != authenticatedSequence) {
+                android.util.Log.w("SecurityManager", "Authenticated sequence mismatch")
+                return null
+            }
 
             if (now - ts > StreamProtocol.TOKEN_VALIDITY_MS) {
                 android.util.Log.w("SecurityManager", "Expired token (age=${now - ts}ms)")
@@ -163,6 +191,20 @@ object SecurityManager {
         digest.update(sequenceNumber.toString().toByteArray())
         return java.util.Base64.getEncoder().withoutPadding().encodeToString(digest.digest())
     }
+
+    private fun buildMessageAad(frameType: Byte, sequenceNumber: Int): ByteArray =
+        ByteBuffer.allocate(STRING_AAD_BYTES)
+            .put(AAD_VERSION)
+            .put(frameType)
+            .putInt(sequenceNumber)
+            .array()
+
+    private fun buildBinaryAad(frameType: Byte, sequenceNumber: Long): ByteArray =
+        ByteBuffer.allocate(BINARY_AAD_BYTES)
+            .put(AAD_VERSION)
+            .put(frameType)
+            .putLong(sequenceNumber)
+            .array()
 
     // Monitoring
     fun nonceCacheSize(): Int = nonceCache.size

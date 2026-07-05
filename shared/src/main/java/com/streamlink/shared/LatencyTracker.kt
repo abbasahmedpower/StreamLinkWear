@@ -48,6 +48,9 @@ class LatencyTracker @Inject constructor() {
     private val totalFrames = AtomicLong(0)
     private val lateFrames  = AtomicLong(0)     // e2e > 100ms
 
+    private var lastE2EMs = 0L
+    private var jitter = 0f
+
     private val statLock = Any()
 
     fun onEncodeStart(): Long {
@@ -73,7 +76,14 @@ class LatencyTracker @Inject constructor() {
         synchronized(statLock) {
             if (f.encodeLatencyMs  > 0) record(encodeLatencies, f.encodeLatencyMs)
             if (f.networkLatencyMs > 0) record(networkLatencies, f.networkLatencyMs)
-            if (f.e2eLatencyMs     > 0) record(e2eLatencies, f.e2eLatencyMs)
+            if (f.e2eLatencyMs     > 0) {
+                record(e2eLatencies, f.e2eLatencyMs)
+                if (lastE2EMs > 0) {
+                    val diff = Math.abs(f.e2eLatencyMs - lastE2EMs)
+                    jitter = jitter + (diff - jitter) / 16f
+                }
+                lastE2EMs = f.e2eLatencyMs
+            }
         }
 
         if (f.e2eLatencyMs > 150) {
@@ -86,11 +96,12 @@ class LatencyTracker @Inject constructor() {
         val avgNetworkMs: Long,
         val avgE2EMs: Long,
         val p95E2EMs: Long,
+        val jitterMs: Long,
         val lateFramePct: Float,
         val totalFrames: Long
     ) {
         override fun toString() =
-            "E2E avg=${avgE2EMs}ms p95=${p95E2EMs}ms | enc=${avgEncodeMs}ms net=${avgNetworkMs}ms | late=${lateFramePct}%"
+            "E2E avg=${avgE2EMs}ms p95=${p95E2EMs}ms jitter=${jitterMs}ms | enc=${avgEncodeMs}ms net=${avgNetworkMs}ms | late=${lateFramePct}%"
     }
 
     fun report(): LatencyReport = synchronized(statLock) {
@@ -99,6 +110,7 @@ class LatencyTracker @Inject constructor() {
             avgNetworkMs  = if (networkLatencies.isEmpty()) 0 else networkLatencies.sum() / networkLatencies.size,
             avgE2EMs      = if (e2eLatencies.isEmpty())     0 else e2eLatencies.sum()     / e2eLatencies.size,
             p95E2EMs      = percentile95(e2eLatencies),
+            jitterMs      = jitter.toLong(),
             lateFramePct  = if (totalFrames.get() == 0L) 0f else
                             lateFrames.get().toFloat() / totalFrames.get() * 100,
             totalFrames   = totalFrames.get()

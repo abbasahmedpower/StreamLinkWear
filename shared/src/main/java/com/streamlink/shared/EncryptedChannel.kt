@@ -36,6 +36,16 @@ class EncryptedChannel(private val sessionKey: ByteArray) {
         return iv + ciphertext  // 12 + len + 16
     }
 
+    /** Zero-allocation encrypt to target buffer. Returns total size written. */
+    fun encrypt(plaintext: ByteArray, offset: Int, length: Int, output: ByteArray, outputOffset: Int): Int {
+        val iv = ByteArray(12).also { random.nextBytes(it) }
+        System.arraycopy(iv, 0, output, outputOffset, 12)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(128, iv))
+        val encLen = cipher.doFinal(plaintext, offset, length, output, outputOffset + 12)
+        return 12 + encLen
+    }
+
     /** Decrypt a chunk received from the wire. Input: [IV(12) || CipherText+Tag] */
     fun decrypt(cipherData: ByteArray): ByteArray? {
         return try {
@@ -49,6 +59,15 @@ class EncryptedChannel(private val sessionKey: ByteArray) {
             Log.e(tag, "Decryption failed: ${e.message}")
             null
         }
+    }
+
+    /** Zero-allocation decrypt. Input: ciphertext slice. Output: output buffer. Returns decrypted size. */
+    fun decrypt(ciphertext: ByteArray, offset: Int, length: Int, output: ByteArray, outputOffset: Int): Int {
+        val iv = ByteArray(12)
+        System.arraycopy(ciphertext, offset, iv, 0, 12)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(128, iv))
+        return cipher.doFinal(ciphertext, offset + 12, length - 12, output, outputOffset)
     }
 
     /** Generate a new random 256-bit session key */

@@ -26,7 +26,6 @@ class StreamingOrchestrator @Inject constructor(
     private val mirrorDataPlane: MirrorDataPlane,
     private val hardwareEncoder: HardwareEncoder,
     private val latencyTracker: com.streamlink.shared.LatencyTracker,
-    private val adaptiveController: com.streamlink.shared.AdaptiveResolutionController,
     private val thermalMonitor: com.streamlink.shared.ThermalMonitor
 ) {
     private val tag = "StreamingOrchestrator"
@@ -57,22 +56,50 @@ class StreamingOrchestrator @Inject constructor(
         }
         
         startRealtimeConsumer()
-        startAdaptiveResolutionPolling()
+        startQualityControllerWiring()
     }
     
-    private fun startAdaptiveResolutionPolling() {
+    private var currentWidth = com.streamlink.shared.StreamProtocol.WEAR_W_FULL
+    private var currentHeight = com.streamlink.shared.StreamProtocol.WEAR_H_FULL
+    private var currentFps = com.streamlink.shared.StreamProtocol.WEAR_FPS_FULL
+    private var currentBitrate = com.streamlink.shared.StreamProtocol.WEAR_BPS_FULL
+
+    private val intelEngine = com.streamlink.shared.StreamingIntelligenceEngine(
+        scope = scope,
+        onBitrateChange = { kbps ->
+            currentBitrate = kbps
+            hardwareEncoder.setBitrate(kbps)
+        },
+        onFpsChange = { fps ->
+            currentFps = fps
+            hardwareEncoder.reconfigure(com.streamlink.shared.ResolutionProfile("CUSTOM", currentWidth, currentHeight, currentFps, currentBitrate))
+        },
+        onResolutionChange = { scale ->
+            currentWidth = (com.streamlink.shared.StreamProtocol.WEAR_W_FULL * scale).toInt()
+            currentHeight = (com.streamlink.shared.StreamProtocol.WEAR_H_FULL * scale).toInt()
+            hardwareEncoder.reconfigure(com.streamlink.shared.ResolutionProfile("CUSTOM", currentWidth, currentHeight, currentFps, currentBitrate))
+        },
+        onIFrameIntervalChange = { sec ->
+            hardwareEncoder.forceKeyframe()
+        }
+    )
+
+    private fun startQualityControllerWiring() {
+        intelEngine.start()
         scope.launch {
-            var currentLabel = adaptiveController.currentResolution().label
             while (true) {
-                kotlinx.coroutines.delay(3000)
-                val rtt = latencyTracker.report().avgE2EMs
-                val cpu = 0.5f // We don't have a CPU tracker yet, just use a dummy value
-                val thermal = thermalMonitor.thermalLevel.value
-                val profile = adaptiveController.determine(rtt, cpu, thermal)
-                if (profile.label != currentLabel) {
-                    currentLabel = profile.label
-                    hardwareEncoder.reconfigure(profile)
-                }
+                kotlinx.coroutines.delay(200) // Poll every 200ms for accurate Sliding Window
+                val report = latencyTracker.report()
+                
+                intelEngine.currentRttMs = report.avgE2EMs
+                intelEngine.jitterMs = report.jitterMs
+                intelEngine.packetLossRate = report.lateFramePct / 100f 
+                intelEngine.currentFps = currentFps
+                intelEngine.decoderQueueSize = socketServer.queueDepth
+                intelEngine.thermalLevel = thermalMonitor.thermalLevel.value
+                // Fake battery/CPU for now until wired to Android system APIs
+                intelEngine.batteryLevel = 100
+                intelEngine.cpuUsagePercent = 10f
             }
         }
     }

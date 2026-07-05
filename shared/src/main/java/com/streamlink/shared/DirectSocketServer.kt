@@ -158,6 +158,7 @@ class DirectSocketServer {
     }
 
     private fun runSender() {
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DISPLAY)
         var cachedDos: java.io.DataOutputStream? = null
         var cachedForSocket: Socket? = null
         while (running.get() && !Thread.currentThread().isInterrupted) {
@@ -184,19 +185,27 @@ class DirectSocketServer {
                 }
                 try {
                     val ec = encryptedChannel
-                    val encrypted = ec?.encrypt(wire.copyOfRange(0, size)) ?: wire.copyOfRange(0, size)
-                    val outSize = encrypted.size
-                    
-                    // Reuse DataOutputStream for the lifetime of this connection (zero allocation per frame)
-                    if (cachedDos == null || cachedForSocket !== socket) {
-                        cachedDos = java.io.DataOutputStream(socket.outputStream)
-                        cachedForSocket = socket
+                    if (ec != null) {
+                        val encWire = WireBufferPool.acquire()
+                        val outSize = ec.encrypt(wire, 0, size, encWire, 0)
+                        
+                        if (cachedDos == null || cachedForSocket !== socket) {
+                            cachedDos = java.io.DataOutputStream(socket.outputStream)
+                            cachedForSocket = socket
+                        }
+                        cachedDos!!.writeInt(outSize)
+                        cachedDos!!.write(encWire, 0, outSize)
+                        bytesSent.addAndGet(outSize.toLong())
+                        WireBufferPool.release(encWire)
+                    } else {
+                        if (cachedDos == null || cachedForSocket !== socket) {
+                            cachedDos = java.io.DataOutputStream(socket.outputStream)
+                            cachedForSocket = socket
+                        }
+                        cachedDos!!.writeInt(size)
+                        cachedDos!!.write(wire, 0, size)
+                        bytesSent.addAndGet(size.toLong())
                     }
-                    cachedDos!!.writeInt(outSize)
-                    cachedDos!!.write(encrypted, 0, outSize)
-                    // TCP_NODELAY is set — no explicit flush needed
-                    
-                    bytesSent.addAndGet(outSize.toLong())
                     onChunkDelivered?.invoke()
                     WireBufferPool.release(wire)
                 } catch (e: IOException) {
