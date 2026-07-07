@@ -56,7 +56,12 @@ class StreamingOrchestrator @Inject constructor(
                 }
             }
         }
-        
+        socketServer.onWatchDimensions = { w, h ->
+            // Propagate real watch screen dimensions to the touch mapper immediately
+            com.streamlink.app.control.RemoteControlAccessibilityService.instance
+                ?.updateWatchDimensions(w, h)
+        }
+
         startRealtimeConsumer()
         startQualityControllerWiring()
     }
@@ -257,8 +262,10 @@ class StreamingOrchestrator @Inject constructor(
                     if (msg.optString("type") == "HOTC_KEY") {
                         val peerKey = msg.optString("payload")
                         if (com.streamlink.shared.KeyExchange.validatePeerKey(peerKey)) {
-                            val sessionKey = com.streamlink.shared.KeyExchange.deriveSessionKey(hotcKeyPair, peerKey)
-                            hotcEncryptedChannel = com.streamlink.shared.EncryptedChannel(sessionKey)
+                            // Using the same pairing code acquired by the TCP server for consistency
+                            val sessionKey = com.streamlink.shared.KeyExchange.deriveSessionKey(hotcKeyPair, peerKey, socketServer.pairingCode)
+                            hotcEncryptedChannel = com.streamlink.shared.EncryptedChannel(sessionKey, "tcp-stream", "phone-to-watch")
+
                             Log.i(tag, "✅ HOTC session key derived over signaling")
                             resolved = true
                         } else {

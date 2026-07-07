@@ -20,7 +20,6 @@ fun WearInteractiveScreen(
 
     SynchronizedIllusionistSurface(
         isPressedState = isPressed,
-        touchPadSize = 100.dp,
         enableDrag = true,
         onCoordinatesCaptured = { nx, ny, phaseByte ->
             isPressed = phaseByte.toInt() == 0 || phaseByte.toInt() == 1

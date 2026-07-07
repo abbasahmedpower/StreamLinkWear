@@ -22,12 +22,11 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun SynchronizedIllusionistSurface(
     isPressedState: Boolean,
-    touchPadSize: Dp = 140.dp,
     enableDrag: Boolean = true,
     onCoordinatesCaptured: (nx: Float, ny: Float, phase: Byte) -> Unit
 ) {
     val scaleMultiplier by animateFloatAsState(
-        targetValue = if (isPressedState) 0.88f else 1f,
+        targetValue = if (isPressedState) 0.95f else 1f,
         animationSpec = SharedUiConstants.NASA_SPRING_SPEC,
         label = "PerceptionHackingScale"
     )
@@ -40,21 +39,14 @@ fun SynchronizedIllusionistSurface(
     ) {
         Box(
             modifier = Modifier
-                .size(touchPadSize)
+                .fillMaxSize() // Full screen gesture layer
                 .scale(scaleMultiplier)
-                .shadow(
-                    elevation = if (isPressedState) 20.dp else 0.dp,
-                    shape = CircleShape,
-                    ambientColor = SharedUiConstants.ACCENT_GLOW,
-                    spotColor = SharedUiConstants.ACCENT_GLOW
-                )
                 .background(
                     color = if (isPressedState) {
-                        SharedUiConstants.ACCENT_GLOW.copy(alpha = 0.35f)
+                        SharedUiConstants.ACCENT_GLOW.copy(alpha = 0.15f)
                     } else {
-                        SharedUiConstants.ACCENT_GLOW
-                    },
-                    shape = CircleShape
+                        androidx.compose.ui.graphics.Color.Transparent
+                    }
                 )
                 .pointerInput(enableDrag) {
                     if (enableDrag) {

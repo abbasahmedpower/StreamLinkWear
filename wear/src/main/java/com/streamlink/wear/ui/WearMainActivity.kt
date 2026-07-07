@@ -6,17 +6,31 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.*
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import android.view.SurfaceView
 import androidx.lifecycle.lifecycleScope
 import androidx.wear.ambient.AmbientLifecycleObserver
+import androidx.wear.compose.material.MaterialTheme
+import androidx.wear.compose.material.Text
 import com.streamlink.wear.player.DirectStreamPlayer
+import com.streamlink.wear.security.WatchPinEngine
 import com.streamlink.wear.service.WearForegroundService
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -161,70 +175,86 @@ class WearMainActivity : ComponentActivity() {
             }
         }
 
+        // 1. Generate Secure PIN and set it on the client
+        val generatedPin = com.streamlink.wear.security.WatchPinEngine.generateSecurePin()
+        socketClient.pairingCode = generatedPin
+        
         setContent {
-            var surfaceReady by remember { mutableStateOf(false) }
-            var overlayVisible by remember { mutableStateOf(true) }
+            val streamState by GlobalStreamState.snapshot.collectAsState()
+            var isPinScreen by remember { mutableStateOf(true) }
+            
+            // Auto-hide PIN screen when successfully connected and streaming
+            if (streamState.state == GlobalStreamState.State.STREAMING) {
+                isPinScreen = false
+            }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-            ) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { context ->
-                        object : SurfaceView(context) {}.apply {
-                            holder.addCallback(object : android.view.SurfaceHolder.Callback {
-                                override fun surfaceCreated(holder: android.view.SurfaceHolder) {
-                                    streamPlayer.setSurface(holder.surface)
-                                    streamPlayer.start(lifecycleScope)
-                                    surfaceReady = true
-                                    Log.i("WearMain", "Surface ready — streaming started")
-                                }
-                                override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, w: Int, h: Int) {
-                                    Log.d("WearMain", "Surface changed ${w}x${h}")
-                                }
-                                override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
-                                    streamPlayer.setSurface(null)
-                                    surfaceReady = false
-                                }
-                            })
+            if (isPinScreen) {
+                WearPinScreen(pinCode = generatedPin)
+            } else {
+                var surfaceReady by remember { mutableStateOf(false) }
+                var overlayVisible by remember { mutableStateOf(true) }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                ) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { context ->
+                            object : SurfaceView(context) {}.apply {
+                                holder.addCallback(object : android.view.SurfaceHolder.Callback {
+                                    override fun surfaceCreated(holder: android.view.SurfaceHolder) {
+                                        streamPlayer.setSurface(holder.surface)
+                                        streamPlayer.start(lifecycleScope)
+                                        surfaceReady = true
+                                        Log.i("WearMain", "Surface ready — streaming started")
+                                    }
+                                    override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, w: Int, h: Int) {
+                                        Log.d("WearMain", "Surface changed ${w}x${h}")
+                                    }
+                                    override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
+                                        streamPlayer.setSurface(null)
+                                        surfaceReady = false
+                                    }
+                                })
+                            }
                         }
-                    }
-                )
+                    )
 
-                // Illusionist Surface for 0-latency perceived touch
-                if (!overlayVisible) {
-                    WearInteractiveScreen(
-                        onTouchEvent = { phase, nx, ny ->
-                            val timeUs = System.nanoTime() / 1000L
-                            touchController.processEvent(
-                                pointerId = 0L,
-                                phase = phase,
-                                x = nx,
-                                y = ny,
-                                timestampUs = timeUs
-                            )
+                    // Illusionist Surface for 0-latency perceived touch
+                    if (!overlayVisible) {
+                        WearInteractiveScreen(
+                            onTouchEvent = { phase, nx, ny ->
+                                val timeUs = System.nanoTime() / 1000L
+                                touchController.processEvent(
+                                    pointerId = 0L,
+                                    phase = phase,
+                                    x = nx,
+                                    y = ny,
+                                    timestampUs = timeUs
+                                )
+                            }
+                        )
+                    }
+
+                    // HUD Overlay — tap to show/hide
+                    WearStreamOverlay(
+                        visible = overlayVisible,
+                        onHide  = { overlayVisible = false },
+                        onBack      = { socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK) },
+                        onHome      = { socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME) },
+                        onRecents   = { socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_RECENTS) },
+                        onAudioOutput = { com.streamlink.wear.ux.AudioOutputPicker.open(this@WearMainActivity) },
+                        onRetry = {
+                            WearForegroundService.stop(this@WearMainActivity)
+                            lifecycleScope.launch {
+                                delay(300)
+                                WearForegroundService.start(this@WearMainActivity)
+                                streamPlayer.start(lifecycleScope)
+                            }
                         }
                     )
                 }
-
-                // HUD Overlay — tap to show/hide
-                WearStreamOverlay(
-                    visible = overlayVisible,
-                    onHide  = { overlayVisible = false },
-                    onBack      = { socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK) },
-                    onHome      = { socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME) },
-                    onRecents   = { socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_RECENTS) },
-                    onAudioOutput = { com.streamlink.wear.ux.AudioOutputPicker.open(this@WearMainActivity) },
-                    onRetry = {
-                        WearForegroundService.stop(this@WearMainActivity)
-                        lifecycleScope.launch {
-                            delay(300)
-                            WearForegroundService.start(this@WearMainActivity)
-                            streamPlayer.start(lifecycleScope)
-                        }
-                    }
-                )
             }
         }
         } catch (e: Exception) {
@@ -275,5 +305,47 @@ class WearMainActivity : ComponentActivity() {
         }
         socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, action)
         return true
+    }
+}
+
+@Composable
+fun WearPinScreen(pinCode: String) {
+    MaterialTheme {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "رمز الاقتران الآمن",
+                color = Color(0xFF94A3B8),
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // PIN displayed in two groups of 3 for easy reading on a small watch face
+            Text(
+                text = pinCode.chunked(3).joinToString("  "),
+                color = Color(0xFF10B981),
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 3.sp,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "أدخله في تطبيق الهاتف",
+                color = Color.White,
+                fontSize = 10.sp,
+                textAlign = TextAlign.Center,
+                lineHeight = 14.sp
+            )
+        }
     }
 }

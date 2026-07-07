@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "769809848054",
+    "project_id": "steamlinkwear",
+    "storage_bucket": "steamlinkwear.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:769809848054:android:7df8ca702b78eb67923ed7",
+        "android_client_info": {
+          "package_name": "com.streamlink.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAqcSv11FTpnFwQVXPZWh9gbblkOxQS8a8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:769809848054:android:605b7c2875c70888923ed7",
+        "android_client_info": {
+          "package_name": "com.streamlink.wear"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAqcSv11FTpnFwQVXPZWh9gbblkOxQS8a8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

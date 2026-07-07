@@ -5,48 +5,61 @@ import java.util.concurrent.atomic.AtomicLong
 
 /**
  * A lock-free, zero-allocation ring buffer for high-throughput frame streaming.
- * Nano-level optimization for Hot Path (replaces LockFreeSpscQueue in most critical paths).
- * Uses CAS (Compare-And-Swap) for ultra-low latency queueing.
+ * SPSC/MPSC/MPMC safe with commit flags to prevent consumers from reading unwritten slots.
  */
-class LockFreeRingBuffer(capacity: Int) {
-    // Capacity must be a power of 2 for fast modulo bitwise operations
-    private val mask = capacity - 1
+class LockFreeRingBuffer(private val capacity: Int) {
     init {
         require(capacity > 0 && (capacity and (capacity - 1)) == 0) { "Capacity must be a power of 2" }
     }
+    private val mask = capacity - 1
 
     private val buffer = AtomicIntegerArray(capacity)
+    private val committed = AtomicIntegerArray(capacity) // 0 = empty/reading, 1 = written & ready
+    
     private val head = AtomicLong(0)
     private val tail = AtomicLong(0)
 
     fun offer(element: Int): Boolean {
         var currentTail: Long
-        var currentHead: Long
+        var nextTail: Long
+        var index: Int
         do {
             currentTail = tail.get()
-            currentHead = head.get()
-            if (currentTail - currentHead >= mask) {
-                return false // Buffer full
+            nextTail = currentTail + 1
+            if (nextTail - head.get() > capacity) {
+                return false // full
             }
-        } while (!tail.compareAndSet(currentTail, currentTail + 1))
+            index = (currentTail and mask.toLong()).toInt()
+            // Wait for consumer to clear the commit flag before taking this slot
+            if (committed.get(index) == 1) return false
+        } while (!tail.compareAndSet(currentTail, nextTail))
         
-        buffer.set((currentTail and mask.toLong()).toInt(), element)
+        // Write the payload FIRST
+        buffer.set(index, element)
+        // THEN mark as committed (Release)
+        committed.set(index, 1)
         return true
     }
 
     fun poll(): Int? {
         var currentHead: Long
-        var currentTail: Long
+        var index: Int
         var element: Int
         do {
             currentHead = head.get()
-            currentTail = tail.get()
-            if (currentHead >= currentTail) {
-                return null // Buffer empty
+            if (currentHead >= tail.get()) {
+                return null // empty
             }
-            element = buffer.get((currentHead and mask.toLong()).toInt())
+            index = (currentHead and mask.toLong()).toInt()
+            
+            // Wait for producer to commit the payload
+            if (committed.get(index) == 0) return null 
+            
+            element = buffer.get(index)
         } while (!head.compareAndSet(currentHead, currentHead + 1))
         
+        // Clear the commit flag for the next producer cycle
+        committed.set(index, 0)
         return element
     }
 

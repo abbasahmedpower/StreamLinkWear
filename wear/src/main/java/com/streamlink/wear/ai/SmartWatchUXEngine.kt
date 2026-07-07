@@ -15,6 +15,17 @@ class SmartWatchUXEngine(
     fun processWristMetrics(rotationX: Float, accelerationZ: Float) {
         if (GlobalStreamState.current != GlobalStreamState.State.STREAMING) return
 
+        if (!AiFeatureFlag.PREDICTION_ENABLED) {
+            // Fallback to heuristic controller
+            applyHeuristic(rotationX, accelerationZ)
+            return
+        }
+
+        TODO("Wire real .tflite model after export_model.py is complete")
+    }
+
+    private fun applyHeuristic(rotationX: Float, accelerationZ: Float) {
+
         if (abs(rotationX) > 1.2f || accelerationZ < -4.0f) {
             if (_uxMode.value != UXOptimizationMode.BATTERY_SAVER) {
                 _uxMode.value = UXOptimizationMode.BATTERY_SAVER

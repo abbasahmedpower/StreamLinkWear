@@ -26,11 +26,17 @@ import java.io.File
 import java.security.KeyStore
 import org.slf4j.LoggerFactory
 
-fun main() {
-    val nodeId  = System.getenv("NODE_ID")  ?: "NODE_1"
-    val redisUrl = System.getenv("REDIS_URL") ?: "redis://localhost:6379"
+import com.streamlink.backend.config.SecureConfig
 
-    val tlsPassword = System.getenv("HORUS_TLS_PASSWORD") ?: "horus_tls_2026"
+fun main() {
+    // 1. Fail-closed check: Crash immediately if secrets are missing or placeholders
+    SecureConfig.horusSecretToken
+    SecureConfig.redisUrl
+    SecureConfig.tlsPassword
+
+    val nodeId  = SecureConfig.nodeId
+    val redisUrl = SecureConfig.redisUrl
+    val tlsPassword = SecureConfig.tlsPassword
     
     val keystoreFile = File("build/keystore.jks")
     if (!keystoreFile.exists()) {
@@ -125,7 +131,7 @@ fun Application.module(nodeId: String, redisUrl: String) {
     val registry = PeerRegistry()
     val orchestrator = HandoffOrchestrator(registry, redis, nodeId)
 
-    val expectedToken = System.getenv("HORUS_SECRET") ?: throw IllegalStateException("HORUS_SECRET env var is missing")
+    val expectedToken = SecureConfig.horusSecretToken
 
     // Background: broadcast metrics to dashboard every 500ms
     val monitorScope = CoroutineScope(Dispatchers.IO + SupervisorJob())

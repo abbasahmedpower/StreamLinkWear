@@ -30,9 +30,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.streamlink.app.core.StreamingOrchestrator
 import com.streamlink.shared.GlobalStreamState
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -64,6 +67,36 @@ class MainActivity : ComponentActivity() {
                 return
             }
         }
+        // Observe pairing events — auto-launch PIN screen when a Watch connects
+        lifecycleScope.launch {
+            lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                com.streamlink.shared.PairingManager.state.collect { pairingState ->
+                    when (pairingState) {
+                        is com.streamlink.shared.PairingManager.PairingState.WaitingForPin -> {
+                            startActivity(Intent(this@MainActivity, MobilePinInputActivity::class.java))
+                        }
+                        is com.streamlink.shared.PairingManager.PairingState.PinRejected -> {
+                            android.widget.Toast.makeText(
+                                this@MainActivity,
+                                "❌ رمز الاقتران خاطئ — يرجى المحاولة مجدداً",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                            com.streamlink.shared.PairingManager.reset()
+                        }
+                        is com.streamlink.shared.PairingManager.PairingState.Paired -> {
+                            android.widget.Toast.makeText(
+                                this@MainActivity,
+                                "✅ تم الاقتران بنجاح",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                            com.streamlink.shared.PairingManager.reset()
+                        }
+                        else -> {}
+                    }
+                }
+            }
+        }
+
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(

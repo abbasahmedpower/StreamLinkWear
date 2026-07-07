@@ -54,7 +54,8 @@ object KeyExchange {
      */
     fun deriveSessionKey(
         myPrivateKey: PrivateKey,
-        theirPublicKeyBase64: String
+        theirPublicKeyBase64: String,
+        pairingCode: String
     ): ByteArray {
         val theirPublicBytes = Base64.decode(theirPublicKeyBase64, Base64.NO_WRAP)
         val kf = KeyFactory.getInstance(KEY_ALGO)
@@ -67,8 +68,9 @@ object KeyExchange {
         ka.doPhase(theirPublicKey, true)
         val sharedSecret = ka.generateSecret()
 
-        // Standard HKDF-SHA256 derivation
-        val sessionKey = hkdfDerive(sharedSecret, SESSION_KEY_LABEL.toByteArray())
+        // Standard HKDF-SHA256 derivation with pairing code as info/salt
+        val infoString = "$SESSION_KEY_LABEL|PIN:$pairingCode"
+        val sessionKey = hkdfDerive(sharedSecret, infoString.toByteArray())
         Log.i(TAG, "Session key derived (${sessionKey.size * 8} bits)")
         return sessionKey
     }
@@ -77,8 +79,8 @@ object KeyExchange {
      * Convenience overload — accepts the full [EphemeralKeyPair] so callers in
      * other modules don't need to access the [internal] privateKey field directly.
      */
-    fun deriveSessionKey(myKeyPair: EphemeralKeyPair, theirPublicKeyBase64: String): ByteArray =
-        deriveSessionKey(myKeyPair.privateKey, theirPublicKeyBase64)
+    fun deriveSessionKey(myKeyPair: EphemeralKeyPair, theirPublicKeyBase64: String, pairingCode: String): ByteArray =
+        deriveSessionKey(myKeyPair.privateKey, theirPublicKeyBase64, pairingCode)
 
     /**
      * Verify peer public key is a valid P-256 point (prevents invalid curve attack).
@@ -122,4 +124,54 @@ object KeyExchange {
      */
     fun toAesKey(keyBytes: ByteArray): SecretKey =
         SecretKeySpec(keyBytes.copyOf(32), "AES")
+
+    // ── Encrypted Auth Block ──────────────────────────────────────────────────
+    // Protocol step after ECDH:
+    //   Watch → Phone:  [12-byte nonce][ciphertext+16-byte GCM tag]
+    //   Phone decrypts and checks for magic string "STREAMLINK_VERIFIED"
+    //   Wrong PIN → mismatched session key → AEADBadTagException → Fail Closed
+    private const val AUTH_MAGIC = "STREAMLINK_VERIFIED"
+    private const val AUTH_NONCE_SIZE = 12
+
+    /**
+     * Watch calls this immediately after ECDH to build the auth block to send.
+     * @return  nonce(12) + ciphertext+tag bytes (35 bytes total for the magic string)
+     */
+    fun encryptAuthBlock(sessionKey: ByteArray): ByteArray {
+        val nonce = ByteArray(AUTH_NONCE_SIZE).also { SecureRandom().nextBytes(it) }
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(
+            javax.crypto.Cipher.ENCRYPT_MODE,
+            SecretKeySpec(sessionKey, "AES"),
+            javax.crypto.spec.GCMParameterSpec(128, nonce)
+        )
+        val ciphertext = cipher.doFinal(AUTH_MAGIC.toByteArray(Charsets.UTF_8))
+        return nonce + ciphertext
+    }
+
+    /**
+     * Phone calls this to verify the auth block from the watch.
+     * @return true if PIN matches, false if wrong PIN or MITM
+     */
+    fun verifyAuthBlock(authBlock: ByteArray, sessionKey: ByteArray): Boolean {
+        return try {
+            if (authBlock.size < AUTH_NONCE_SIZE + 1) return false
+            val nonce = authBlock.copyOf(AUTH_NONCE_SIZE)
+            val ciphertext = authBlock.copyOfRange(AUTH_NONCE_SIZE, authBlock.size)
+            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(
+                javax.crypto.Cipher.DECRYPT_MODE,
+                SecretKeySpec(sessionKey, "AES"),
+                javax.crypto.spec.GCMParameterSpec(128, nonce)
+            )
+            val decrypted = cipher.doFinal(ciphertext)
+            String(decrypted, Charsets.UTF_8) == AUTH_MAGIC
+        } catch (e: javax.crypto.AEADBadTagException) {
+            Log.w(TAG, "❌ Auth block verification failed — wrong PIN or tampered data")
+            false
+        } catch (e: Exception) {
+            Log.e(TAG, "Auth block error: ${e.message}")
+            false
+        }
+    }
 }

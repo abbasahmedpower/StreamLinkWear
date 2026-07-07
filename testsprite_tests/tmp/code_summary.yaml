@@ -1,0 +1,48 @@
+version: "2"
+type: backend
+tech_stack:
+  - Kotlin
+  - C++ (JNI)
+  - Android SDK
+  - WebRTC (Signaling)
+  - Custom UDP/TCP streaming
+features:
+  - name: Screen Capture and Hardware Encoding
+    description: Captures Android screen via MediaProjection and encodes it using MediaCodec (H.264).
+    files:
+      - app/src/main/java/com/streamlink/app/capture/CaptureService.kt
+      - app/src/main/java/com/streamlink/app/capture/HardwareEncoder.kt
+    endpoints:
+      - method: START
+        path: /capture
+        description: Starts screen capture service
+        auth_required: false
+  - name: Streaming Orchestrator
+    description: Orchestrates capture, encoding, and networking components with zero-GC circular buffers and thermal management.
+    files:
+      - app/src/main/java/com/streamlink/app/core/StreamingOrchestrator.kt
+    endpoints:
+      - method: INIT
+        path: /orchestrator
+        description: Initializes orchestrator
+        auth_required: false
+  - name: Direct Socket Server
+    description: Custom network server for transmitting video/audio packets to the Wear OS device over local network or adb.
+    files:
+      - shared/src/main/java/com/streamlink/shared/DirectSocketServer.kt
+    endpoints:
+      - method: CONNECT
+        path: /socket
+        description: Accept incoming connection from Wear OS
+        auth_required: true
+  - name: Telemetry and Observability
+    description: Micro-level telemetry for latency, queue depth, thermal throttling, and self-healing.
+    files:
+      - shared/src/main/java/com/streamlink/shared/telemetry/FrameTimeline.kt
+      - shared/src/main/java/com/streamlink/shared/telemetry/LatencyHistogram.kt
+    endpoints:
+      - method: METRICS
+        path: /metrics
+        description: Collect metrics
+        auth_required: false
+known_limitations: []

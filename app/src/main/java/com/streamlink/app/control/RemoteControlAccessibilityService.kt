@@ -21,6 +21,9 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     private val tag = "RemoteControlService"
     private var screenWidth: Int = 1080
     private var screenHeight: Int = 2400
+    @Volatile private var watchWidth: Int = 454   // Updated via updateWatchDimensions()
+    @Volatile private var watchHeight: Int = 454  // Updated via updateWatchDimensions()
+
 
     private var inputManager: InputManager? = null
     private var injectInputEventMethod: Method? = null
@@ -40,6 +43,16 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         screenWidth = dm.widthPixels
         screenHeight = dm.heightPixels
         trySetupInputManager()
+    }
+
+    /**
+     * Called by StreamingOrchestrator when the TCP handshake receives real watch dimensions.
+     * Thread-safe: both fields are @Volatile.
+     */
+    fun updateWatchDimensions(widthPx: Int, heightPx: Int) {
+        watchWidth = widthPx.coerceIn(200, 1000)
+        watchHeight = heightPx.coerceIn(200, 1000)
+        Log.i(tag, "Watch dimensions updated → ${watchWidth}×${watchHeight}")
     }
 
     private fun trySetupInputManager() {
@@ -79,8 +92,28 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     private val lock = Any()
 
     fun handle(event: TouchEvent) {
-        val px = (event.nx * screenWidth).coerceIn(0f, (screenWidth - 1).toFloat())
-        val py = (event.ny * screenHeight).coerceIn(0f, (screenHeight - 1).toFloat())
+        // The watch sends nx, ny normalized to its own screen (e.g., 400x400).
+        // We need to map this to the phone's screen (e.g., 1080x2400), accounting for the letterbox/pillarbox
+        // that the watch applies when rendering the phone's tall screen on its square display.
+        
+        val scale = minOf(watchWidth.toFloat() / screenWidth, watchHeight.toFloat() / screenHeight)
+        val renderedW = screenWidth * scale
+        val renderedH = screenHeight * scale
+        val offsetX = (watchWidth - renderedW) / 2f
+        val offsetY = (watchHeight - renderedH) / 2f
+        
+        // Convert normalized watch coordinates back to watch pixels
+        val watchX = event.nx * watchWidth
+        val watchY = event.ny * watchHeight
+        
+        // Reject touches outside the rendered phone area (in the black bars)
+        if (watchX < offsetX || watchX > offsetX + renderedW || watchY < offsetY || watchY > offsetY + renderedH) {
+            return
+        }
+        
+        // Map back to phone pixels
+        val px = ((watchX - offsetX) / scale).coerceIn(0f, (screenWidth - 1).toFloat())
+        val py = ((watchY - offsetY) / scale).coerceIn(0f, (screenHeight - 1).toFloat())
 
         if (canUseInputManager && injectViaInputManager(event.phase, px, py)) return
 

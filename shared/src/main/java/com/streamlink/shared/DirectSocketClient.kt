@@ -23,6 +23,7 @@ import com.streamlink.shared.util.LockFreeSpscQueue
  * - dataBuf reused per receive iteration (no per-chunk copy in receiveLoop)
  */
 class DirectSocketClient(
+    private val context: android.content.Context,
     private val discovery: NetworkDiscovery,
     private val port: Int = StreamProtocol.DIRECT_SOCKET_PORT
 ) : com.streamlink.shared.network.LocalTouchSender {
@@ -31,6 +32,8 @@ class DirectSocketClient(
     private val closed = AtomicBoolean(false)
     private var encryptedChannel: EncryptedChannel? = null
 
+    // Pairing code — set by the Wear UI before attempting to connect
+    @Volatile var pairingCode: String = "000000"
     data class WireChunk(
         val nalSeq: Int,           // ✅ Global NAL sequence (for FrameAssembler grouping)
         val chunkIdx: Int,         // ✅ Chunk index within this NAL (0..totalChunks-1)
@@ -72,8 +75,18 @@ class DirectSocketClient(
                 val dos = java.io.DataOutputStream(s.outputStream)
                 val dis = java.io.DataInputStream(s.inputStream)
                 
+                // 1. Send watch's public key
                 dos.writeInt(pubBytes.size)
                 dos.write(pubBytes)
+
+                // 2. Send watch screen dimensions for accurate touch mapping
+                val wm = context.getSystemService(android.content.Context.WINDOW_SERVICE)
+                        as android.view.WindowManager
+                val displayMetrics = android.util.DisplayMetrics()
+                @Suppress("DEPRECATION")
+                wm.defaultDisplay.getRealMetrics(displayMetrics)
+                dos.writeInt(displayMetrics.widthPixels)
+                dos.writeInt(displayMetrics.heightPixels)
                 dos.flush()
                 
                 val theirLen = dis.readInt()
@@ -88,9 +101,26 @@ class DirectSocketClient(
                     continue
                 }
 
-                val sessionKey = KeyExchange.deriveSessionKey(kp.privateKey, theirPub)
-                encryptedChannel = EncryptedChannel(sessionKey)
-                
+                val sessionKey = KeyExchange.deriveSessionKey(kp.privateKey, theirPub, pairingCode)
+                encryptedChannel = EncryptedChannel(sessionKey, "tcp-stream", "phone-to-watch")
+
+                // 6. Send Encrypted Auth Block for Fail Closed PIN verification
+                //    Phone will verify this — if PIN is wrong, decryption produces garbage
+                //    and phone closes the socket immediately.
+                val authBlock = KeyExchange.encryptAuthBlock(sessionKey)
+                dos.writeInt(authBlock.size)
+                dos.write(authBlock)
+                dos.flush()
+
+                // 7. Wait for phone's ACK (0x01 = verified, 0x00 = rejected)
+                val ack = dis.readByte()
+                if (ack != 0x01.toByte()) {
+                    Log.e(tag, "❌ PIN rejected by phone. Closing connection.")
+                    s.close()
+                    delay(2000)
+                    continue
+                }
+
                 Log.i(tag, "✅ Connected and Handshake complete with $host:$port")
                 onStateChange(true)
                 attempt = 0

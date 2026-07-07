@@ -91,3 +91,5 @@ secrets.properties
 
 # YoYo AI version control directory
 .yoyo/
+
+testsprite_tests\tmp\config.json

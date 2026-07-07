@@ -8,3 +8,21 @@
 
 -dontwarn org.tensorflow.**
 -dontwarn org.webrtc.**
+
+# Keep protocol DTOs and Enums
+-keep class com.streamlink.shared.protocol.** { *; }
+-keep class com.streamlink.shared.protocol.**$* { *; }
+
+-keepattributes Signature, InnerClasses, EnclosingMethod, *Annotation*
+-keepclassmembers class * extends java.lang.Enum {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+
+# Kotlinx Serialization
+-keepattributes *Annotation*, InnerClasses
+-dontnote kotlinx.serialization.AnnotationsKt
+-keepclassmembers class kotlinx.serialization.json.** { *** Companion; }
+-keepclasseswithmembers class com.streamlink.shared.protocol.** {
+    kotlinx.serialization.KSerializer serializer(...);
+}

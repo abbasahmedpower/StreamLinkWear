@@ -18,9 +18,9 @@ services:
     container_name: sl_signaling_1
     expose: ["8080"]
     environment:
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       NODE_ID: NODE_1
-      HORUS_SECRET: ${HORUS_SECRET_TOKEN:-"horus_default_secret_for_dev_only"}
+      HORUS_SECRET: ${HORUS_SECRET_TOKEN}
     depends_on:
       redis: { condition: service_healthy }
     networks: [streamlink]
@@ -31,9 +31,9 @@ services:
     container_name: sl_signaling_2
     expose: ["8080"]
     environment:
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       NODE_ID: NODE_2
-      HORUS_SECRET: ${HORUS_SECRET_TOKEN:-"horus_default_secret_for_dev_only"}
+      HORUS_SECRET: ${HORUS_SECRET_TOKEN}
     depends_on:
       redis: { condition: service_healthy }
     networks: [streamlink]
@@ -44,6 +44,7 @@ services:
     container_name: sl_redis
     command: >
       redis-server
+      --requirepass ${REDIS_PASSWORD}
       --appendonly yes
       --maxmemory 256mb
       --maxmemory-policy volatile-lru
@@ -65,7 +66,7 @@ services:
     command: >
       -n --fingerprint --lt-cred-mech
       --realm=streamlink.local
-      --user=streamlink:supersecret
+      --user=${TURN_USERNAME}:${TURN_PASSWORD}
       --min-port=49152 --max-port=49200
       --no-tcp-relay
     networks: [streamlink]

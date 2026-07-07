@@ -12,6 +12,7 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
+import android.content.pm.ServiceInfo
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.streamlink.app.core.StreamingOrchestrator
@@ -47,7 +48,15 @@ class CaptureService : Service() {
             val data = intent.getParcelableExtra<Intent>(EXTRA_DATA)
 
             if (data != null) {
-                startForeground(1, createNotification())
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                    }
+                    startForeground(1, createNotification(), type)
+                } else {
+                    startForeground(1, createNotification())
+                }
                 startCapture(resultCode, data)
             }
         } else if (action == ACTION_STOP) {

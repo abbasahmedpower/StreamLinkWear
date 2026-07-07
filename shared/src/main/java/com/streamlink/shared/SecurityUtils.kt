@@ -6,6 +6,7 @@ import java.io.File
 object SecurityUtils {
 
     fun isEmulator(): Boolean {
+        if (BuildConfig.DEBUG) return false // Allow emulator in debug builds
         return (Build.FINGERPRINT.startsWith("generic")
                 || Build.FINGERPRINT.startsWith("unknown")
                 || Build.MODEL.contains("google_sdk")
@@ -17,6 +18,7 @@ object SecurityUtils {
     }
 
     fun isRooted(): Boolean {
+        if (BuildConfig.DEBUG) return false // Allow rooted device in debug builds
         val paths = arrayOf(
             "/system/app/Superuser.apk",
             "/sbin/su",

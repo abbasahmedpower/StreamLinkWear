@@ -26,8 +26,8 @@ object WearModule {
 
     @Provides
     @Singleton
-    fun provideDirectSocketClient(discovery: NetworkDiscovery): DirectSocketClient {
-        return DirectSocketClient(discovery)
+    fun provideDirectSocketClient(@ApplicationContext context: android.content.Context, discovery: NetworkDiscovery): DirectSocketClient {
+        return DirectSocketClient(context, discovery)
     }
 
     @Provides
