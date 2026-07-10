@@ -33,20 +33,24 @@ class ContextIntelligenceEngine(
 
     init {
         for (assetName in MODEL_ASSET_NAMES) {
+            // Declare outside try so finally can always close them
+            var assetFileDescriptor: android.content.res.AssetFileDescriptor? = null
+            var fileInputStream: java.io.FileInputStream? = null
             try {
-                val assetFileDescriptor = context.assets.openFd(assetName)
+                assetFileDescriptor = context.assets.openFd(assetName)
                 if (assetFileDescriptor.declaredLength < 100) {
                     Log.w(tag, "Model $assetName is too small (${assetFileDescriptor.declaredLength} bytes), ignoring it")
                     continue
                 }
 
-                val fileInputStream = java.io.FileInputStream(assetFileDescriptor.fileDescriptor)
+                fileInputStream = java.io.FileInputStream(assetFileDescriptor.fileDescriptor)
                 val fileChannel = fileInputStream.channel
                 val modelBuffer = fileChannel.map(
                     java.nio.channels.FileChannel.MapMode.READ_ONLY,
                     assetFileDescriptor.startOffset,
                     assetFileDescriptor.declaredLength
                 )
+                // modelBuffer is a MappedByteBuffer — it stays valid after streams close
 
                 tflite = Interpreter(modelBuffer)
                 modelOutputClasses = tflite?.getOutputTensor(0)?.shape()?.lastOrNull() ?: 0
@@ -56,6 +60,10 @@ class ContextIntelligenceEngine(
                 // Try the next supported filename.
             } catch (e: Exception) {
                 Log.e(tag, "Failed to load TFLite model $assetName, trying fallback", e)
+            } finally {
+                // Always close the streams — the MappedByteBuffer keeps the data alive independently
+                try { fileInputStream?.close() } catch (_: Exception) {}
+                try { assetFileDescriptor?.close() } catch (_: Exception) {}
             }
         }
 
@@ -94,6 +102,8 @@ class ContextIntelligenceEngine(
     fun stop() {
         evaluationJob?.cancel()
         evaluationJob = null
+        tflite?.close()
+        tflite = null
         intelligenceDispatcher.close()
         Log.i(tag, "Intelligence engine stopped")
     }

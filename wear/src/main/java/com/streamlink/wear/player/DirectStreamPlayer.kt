@@ -37,6 +37,7 @@ class DirectStreamPlayer @Inject constructor(
     private var surface: Surface? = null
     private var connectJob: Job? = null
     private val released = AtomicBoolean(false)
+    private val refCount = java.util.concurrent.atomic.AtomicInteger(0)
 
     // ✅ Dedicated high-priority decoder thread
     private val decoderThread = HandlerThread(
@@ -191,20 +192,28 @@ class DirectStreamPlayer @Inject constructor(
         }
     }
 
+    fun acquire() {
+        refCount.incrementAndGet()
+    }
+
     fun release() {
-        if (!released.compareAndSet(false, true)) return
-        audioEngine.stop()
-        connectJob?.cancel()
-        client.close()
-        try {
-            decoder?.stop()
-            decoder?.release()
-        } catch (e: Exception) {
-            Log.w(tag, "Decoder release error: ${e.message}")
+        if (refCount.decrementAndGet() <= 0) {
+            if (!released.compareAndSet(false, true)) return
+            audioEngine.stop()
+            connectJob?.cancel()
+            client.close()
+            try {
+                decoder?.stop()
+                decoder?.release()
+            } catch (e: Exception) {
+                Log.w(tag, "Decoder release error: ${e.message}")
+            }
+            decoder = null
+            assembler.reset()
+            decoderThread.quit()
+            Log.i(tag, "Player released (refCount reached 0)")
+        } else {
+            Log.d(tag, "Player release skipped (refCount: ${refCount.get()})")
         }
-        decoder = null
-        assembler.reset()
-        decoderThread.quit()
-        Log.i(tag, "Player released")
     }
 }

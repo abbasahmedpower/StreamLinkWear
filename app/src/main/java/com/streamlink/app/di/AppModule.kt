@@ -6,6 +6,7 @@ import com.streamlink.app.core.StreamingOrchestrator
 import com.streamlink.app.stream.BackpressureController
 import com.streamlink.app.stream.MirrorDataPlane
 import com.streamlink.shared.AdaptiveResolutionController
+import com.streamlink.shared.ConnectionManager
 import com.streamlink.shared.DirectSocketServer
 import com.streamlink.shared.EventPipeline
 import com.streamlink.shared.LatencyTracker
@@ -80,6 +81,7 @@ object AppModule {
     @Provides
     @Singleton
     fun provideStreamingOrchestrator(
+        @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context,
         scope: CoroutineScope,
         events: EventPipeline,
         socketServer: DirectSocketServer,
@@ -87,8 +89,9 @@ object AppModule {
         mirrorDataPlane: MirrorDataPlane,
         hardwareEncoder: HardwareEncoder,
         latencyTracker: LatencyTracker,
-        thermalMonitor: ThermalMonitor
+        thermalMonitor: ThermalMonitor,
+        connectionManager: ConnectionManager
     ): StreamingOrchestrator {
-        return StreamingOrchestrator(scope, events, socketServer, streamRouter, mirrorDataPlane, hardwareEncoder, latencyTracker, thermalMonitor)
+        return StreamingOrchestrator(context, scope, events, socketServer, streamRouter, mirrorDataPlane, hardwareEncoder, latencyTracker, thermalMonitor, connectionManager)
     }
 }

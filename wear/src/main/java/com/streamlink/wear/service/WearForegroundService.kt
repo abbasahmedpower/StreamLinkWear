@@ -58,6 +58,11 @@ class WearForegroundService : Service() {
         }
     }
 
+    override fun onCreate() {
+        super.onCreate()
+        streamPlayer.acquire()
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
@@ -65,7 +70,6 @@ class WearForegroundService : Service() {
             }
             ACTION_STOP -> {
                 Log.i("WearFgService", "Stopping streaming service")
-                streamPlayer.release()
                 releaseWakeLock()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -83,7 +87,15 @@ class WearForegroundService : Service() {
 
     private fun startOrRecoverForeground(systemRestart: Boolean) {
         createNotificationChannel()
-        startForeground(NOTIF_ID, buildNotification())
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIF_ID,
+                buildNotification(),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            )
+        } else {
+            startForeground(NOTIF_ID, buildNotification())
+        }
         acquireWakeLock()
         if (systemRestart) {
             Log.w("WearFgService", "Recovered after system restart; waiting for UI Surface to resume player")
@@ -139,6 +151,7 @@ class WearForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        streamPlayer.release()
         scope.cancel()
         releaseWakeLock()
     }

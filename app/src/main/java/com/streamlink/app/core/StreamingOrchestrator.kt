@@ -21,6 +21,7 @@ import javax.inject.Inject
  * all streaming components: encoder, data-plane, recovery, quality control.
  */
 class StreamingOrchestrator @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val scope: CoroutineScope,
     private val events: EventPipeline,
     private val socketServer: DirectSocketServer,
@@ -28,7 +29,8 @@ class StreamingOrchestrator @Inject constructor(
     private val mirrorDataPlane: MirrorDataPlane,
     private val hardwareEncoder: HardwareEncoder,
     private val latencyTracker: com.streamlink.shared.LatencyTracker,
-    private val thermalMonitor: com.streamlink.shared.ThermalMonitor
+    private val thermalMonitor: com.streamlink.shared.ThermalMonitor,
+    private val connectionManager: com.streamlink.shared.ConnectionManager
 ) {
     private val tag = "StreamingOrchestrator"
     
@@ -64,6 +66,13 @@ class StreamingOrchestrator @Inject constructor(
 
         startRealtimeConsumer()
         startQualityControllerWiring()
+        // Phase B: Wire auto-reconnect — ConnectionManager monitors GlobalStreamState
+        // and retries with Exponential Backoff when FAILED state is detected.
+        connectionManager.watchState(scope) {
+            Log.i(tag, "🔄 Auto-reconnect triggered by ConnectionManager")
+            scope.launch { socketServer.start() }
+            mirrorDataPlane.start(scope)
+        }
     }
     
     private var currentWidth = com.streamlink.shared.StreamProtocol.WEAR_W_FULL
@@ -107,7 +116,12 @@ class StreamingOrchestrator @Inject constructor(
                     intelEngine.currentFps = currentFps
                     intelEngine.decoderQueueSize = socketServer.queueDepth
                     intelEngine.thermalLevel = thermalMonitor.thermalLevel.value
-                    intelEngine.batteryLevel = 100
+                    val realBattery = runCatching {
+                        val bm = context.getSystemService(android.content.Context.BATTERY_SERVICE)
+                            as? android.os.BatteryManager
+                        bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 100
+                    }.getOrDefault(100)
+                    intelEngine.batteryLevel = realBattery
                     intelEngine.cpuUsagePercent = 10f
                 }
             }
@@ -281,8 +295,10 @@ class StreamingOrchestrator @Inject constructor(
             }
         }
 
-        signalingClient.connect()
-        signalingClient.sendMessage("HOTC_KEY", "broadcast", hotcKeyPair.publicKeyBase64)
+        scope.launch {
+            signalingClient.connect()
+            signalingClient.sendMessage("HOTC_KEY", "broadcast", hotcKeyPair.publicKeyBase64)
+        }
 
         webRtcTransport = com.streamlink.shared.WebRtcTransport(
             context = context,

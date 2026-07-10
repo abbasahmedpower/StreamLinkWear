@@ -132,6 +132,8 @@ class WearMainActivity : ComponentActivity() {
         // Register ambient lifecycle
         lifecycle.addObserver(ambientObserver)
 
+        streamPlayer.acquire()
+
         // Start background service immediately
         WearForegroundService.start(this)
 
@@ -292,8 +294,8 @@ class WearMainActivity : ComponentActivity() {
         // Only release when explicitly stopped by user
         if (isFinishing) {
             WearForegroundService.stop(this)
-            streamPlayer.release()
         }
+        streamPlayer.release()
     }
 
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
