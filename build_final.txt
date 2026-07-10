@@ -1,0 +1,25 @@
+﻿Could not unzip C:\Users\A-ONE\.gradle\wrapper\dists\gradle-8.13-bin\5xuhj0ry160q40clulazy9h7d\gradle-8.13-bin.zip to C:\Users\A-ONE\.gradle\wrapper\dists\gradle-8.13-bin\5xuhj0ry160q40clulazy9h7d.
+Reason: zip END header not found
+.\gradlew.bat : Exception in thread "main" java.util.zip.ZipException: zip END header not found
+At line:3 char:1
++ .\gradlew.bat assembleDebug assembleRelease --no-daemon 2>&1 | Out-Fi ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Exception in th...eader not found:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+	at java.base/java.util.zip.ZipFile$Source.findEND(ZipFile.java:1489)
+	at java.base/java.util.zip.ZipFile$Source.initCEN(ZipFile.java:1497)
+	at java.base/java.util.zip.ZipFile$Source.<init>(ZipFile.java:1335)
+	at java.base/java.util.zip.ZipFile$Source.get(ZipFile.java:1298)
+	at java.base/java.util.zip.ZipFile$CleanableResource.<init>(ZipFile.java:716)
+	at java.base/java.util.zip.ZipFile.<init>(ZipFile.java:243)
+	at java.base/java.util.zip.ZipFile.<init>(ZipFile.java:172)
+	at java.base/java.util.zip.ZipFile.<init>(ZipFile.java:186)
+	at org.gradle.wrapper.Install.unzip(Install.java:239)
+	at org.gradle.wrapper.Install.access$900(Install.java:27)
+	at org.gradle.wrapper.Install$1.call(Install.java:81)
+	at org.gradle.wrapper.Install$1.call(Install.java:48)
+	at org.gradle.wrapper.ExclusiveFileAccessManager.access(ExclusiveFileAccessManager.java:69)
+	at org.gradle.wrapper.Install.createDist(Install.java:48)
+	at org.gradle.wrapper.WrapperExecutor.execute(WrapperExecutor.java:107)
+	at org.gradle.wrapper.GradleWrapperMain.main(GradleWrapperMain.java:63)

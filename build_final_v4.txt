@@ -1,0 +1,713 @@
+﻿To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+.\gradlew.bat : Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of 
+version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were 
+released at different times.
+At line:1 char:1
++ .\gradlew.bat clean assembleDebug assembleRelease --no-daemon 2>&1 |  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Warning: SDK pr...ifferent times.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+> Task :backend:clean UP-TO-DATE
+> Task :clean
+> Task :shared:clean
+> Task :shared:preBuild UP-TO-DATE
+> Task :shared:preDebugBuild UP-TO-DATE
+> Task :shared:writeDebugAarMetadata
+> Task :shared:generateDebugResValues FROM-CACHE
+> Task :shared:generateDebugResources FROM-CACHE
+> Task :shared:packageDebugResources FROM-CACHE
+> Task :shared:extractDeepLinksDebug FROM-CACHE
+> Task :shared:processDebugManifest FROM-CACHE
+> Task :shared:compileDebugLibraryResources FROM-CACHE
+> Task :shared:parseDebugLocalResources FROM-CACHE
+> Task :shared:generateDebugRFile FROM-CACHE
+> Task :shared:checkKotlinGradlePluginConfigurationErrors
+> Task :shared:generateDebugBuildConfig FROM-CACHE
+> Task :wear:clean
+> Task :wear:preBuild UP-TO-DATE
+> Task :wear:preDebugBuild UP-TO-DATE
+> Task :wear:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :wear:checkKotlinGradlePluginConfigurationErrors
+> Task :wear:generateDebugBuildConfig FROM-CACHE
+> Task :shared:kspDebugKotlin FROM-CACHE
+> Task :wear:generateDebugResValues FROM-CACHE
+> Task :wear:injectCrashlyticsMappingFileIdDebug
+> Task :wear:processDebugGoogleServices FROM-CACHE
+> Task :wear:mapDebugSourceSetPaths
+> Task :wear:generateDebugResources FROM-CACHE
+> Task :shared:javaPreCompileDebug FROM-CACHE
+> Task :wear:checkDebugAarMetadata
+> Task :shared:mergeDebugShaders
+> Task :shared:compileDebugShaders NO-SOURCE
+> Task :shared:generateDebugAssets UP-TO-DATE
+> Task :shared:packageDebugAssets
+> Task :shared:mergeDebugJniLibFolders
+> Task :shared:mergeDebugNativeLibs NO-SOURCE
+> Task :shared:stripDebugDebugSymbols NO-SOURCE
+> Task :shared:copyDebugJniLibsProjectOnly
+> Task :shared:copyDebugJniLibsProjectAndLocalJars
+> Task :shared:extractDeepLinksForAarDebug FROM-CACHE
+> Task :shared:prepareDebugArtProfile
+> Task :shared:prepareLintJarForPublish UP-TO-DATE
+> Task :shared:preReleaseBuild UP-TO-DATE
+> Task :shared:writeReleaseAarMetadata
+> Task :shared:generateReleaseResValues FROM-CACHE
+> Task :shared:generateReleaseResources FROM-CACHE
+> Task :shared:packageReleaseResources FROM-CACHE
+> Task :shared:extractDeepLinksRelease FROM-CACHE
+> Task :shared:processReleaseManifest FROM-CACHE
+> Task :shared:parseReleaseLocalResources FROM-CACHE
+> Task :shared:generateReleaseRFile FROM-CACHE
+> Task :shared:generateReleaseBuildConfig FROM-CACHE
+> Task :app:clean
+> Task :shared:kspReleaseKotlin FROM-CACHE
+> Task :shared:compileReleaseKotlin FROM-CACHE
+> Task :shared:javaPreCompileRelease FROM-CACHE
+> Task :shared:compileReleaseJavaWithJavac FROM-CACHE
+> Task :wear:mergeDebugResources FROM-CACHE
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:generateDebugBuildConfig FROM-CACHE
+> Task :wear:packageDebugResources FROM-CACHE
+> Task :wear:parseDebugLocalResources FROM-CACHE
+> Task :wear:createDebugCompatibleScreenManifests
+> Task :wear:extractDeepLinksDebug FROM-CACHE
+> Task :shared:transformReleaseClassesWithAsm FROM-CACHE
+> Task :app:generateDebugResValues FROM-CACHE
+> Task :app:injectCrashlyticsMappingFileIdDebug
+> Task :app:processDebugGoogleServices FROM-CACHE
+> Task :wear:processDebugMainManifest FROM-CACHE
+> Task :app:mapDebugSourceSetPaths
+> Task :app:checkDebugAarMetadata
+> Task :wear:processDebugManifest FROM-CACHE
+> Task :wear:processDebugManifestForPackage FROM-CACHE
+> Task :app:generateDebugResources
+> Task :shared:processReleaseJavaRes
+> Task :shared:extractProguardFiles
+> Task :shared:bundleLibRuntimeToJarRelease
+> Task :shared:bundleLibCompileToJarRelease
+> Task :shared:compileDebugKotlin
+> Task :shared:generateReleaseLintModel
+> Task :shared:createFullJarRelease
+> Task :shared:mergeReleaseJniLibFolders
+> Task :shared:mergeReleaseNativeLibs NO-SOURCE
+> Task :shared:stripReleaseDebugSymbols NO-SOURCE
+> Task :shared:copyReleaseJniLibsProjectAndLocalJars
+> Task :shared:extractDeepLinksForAarRelease UP-TO-DATE
+
+> Task :shared:compileDebugKotlin
+e: Daemon compilation failed: Could not connect to Kotlin compile daemon
+java.lang.RuntimeException: Could not connect to Kotlin compile daemon
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemon(GradleKotlinCompilerWork.kt:218)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemonOrFallbackImpl(GradleKotlinCompilerWo
+rk.kt:175)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.run(GradleKotlinCompilerWork.kt:135)
+	at org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction.execute(GradleCo
+mpilerRunnerWithWorkers.kt:73)
+	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:63)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:66)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:62)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:62)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:210)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:205)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:67)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:167)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:54)
+	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:59)
+	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:174)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQ
+ueue.java:194)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQue
+ue.java:127)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.ja
+va:169)
+	at org.gradle.internal.Factories$1.create(Factories.java:31)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:263)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue
+.java:164)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java
+:133)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:577)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:48)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1623)
+
+Failed to compile with Kotlin daemon: java.lang.RuntimeException: Could not connect to Kotlin compile daemon
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemon(GradleKotlinCompilerWork.kt:218)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemonOrFallbackImpl(GradleKotlinCompilerWork.kt:175)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.run(GradleKotlinCompilerWork.kt:135)
+	at org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction.execute(GradleCompilerRunnerWithWorkers.kt:73)
+	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:63)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:66)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:62)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:62)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:210)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:205)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:67)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:167)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:54)
+	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:59)
+	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:174)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQueue.java:194)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQueue.java:127)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.java:169)
+	at org.gradle.internal.Factories$1.create(Factories.java:31)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:263)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue.java:164)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java:133)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:577)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:48)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1623)
+Using fallback strategy: Compile without Kotlin daemon
+Try ./gradlew --stop if this issue persists.
+
+> Task :wear:javaPreCompileDebug FROM-CACHE
+> Task :wear:mergeDebugShaders
+> Task :wear:compileDebugShaders NO-SOURCE
+> Task :wear:generateDebugAssets UP-TO-DATE
+> Task :wear:mergeDebugAssets
+> Task :wear:compressDebugAssets
+> Task :wear:desugarDebugFileDependencies FROM-CACHE
+> Task :wear:processDebugResources
+> Task :app:mergeDebugResources
+> Task :wear:mergeDebugJniLibFolders
+> Task :wear:validateSigningDebug
+> Task :wear:writeDebugAppMetadata
+> Task :wear:writeDebugSigningConfigVersions
+> Task :wear:preReleaseBuild UP-TO-DATE
+> Task :wear:generateReleaseBuildConfig FROM-CACHE
+> Task :wear:checkDebugDuplicateClasses
+> Task :wear:checkReleaseAarMetadata
+> Task :shared:extractReleaseAnnotations
+> Task :app:packageDebugResources
+> Task :app:parseDebugLocalResources
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug FROM-CACHE
+> Task :wear:mergeDebugNativeLibs
+> Task :app:processDebugMainManifest FROM-CACHE
+> Task :app:processDebugManifest FROM-CACHE
+> Task :app:processDebugManifestForPackage FROM-CACHE
+> Task :app:javaPreCompileDebug FROM-CACHE
+> Task :app:mergeDebugShaders
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets
+> Task :wear:mergeExtDexDebug
+> Task :wear:mergeExtDexDebug FROM-CACHE
+> Task :app:compressDebugAssets
+> Task :wear:generateReleaseResValues FROM-CACHE
+> Task :app:desugarDebugFileDependencies FROM-CACHE
+> Task :wear:injectCrashlyticsMappingFileIdRelease
+> Task :wear:processReleaseGoogleServices FROM-CACHE
+> Task :wear:mapReleaseSourceSetPaths
+> Task :wear:generateReleaseResources FROM-CACHE
+
+> Task :wear:stripDebugDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libjingle_peerconnection_so.so, libtensorflowlite_jni.so.
+
+> Task :app:checkDebugDuplicateClasses
+> Task :app:mergeExtDexDebug FROM-CACHE
+> Task :app:mergeDebugJniLibFolders
+> Task :app:validateSigningDebug
+> Task :app:writeDebugAppMetadata
+> Task :app:writeDebugSigningConfigVersions
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:generateReleaseBuildConfig FROM-CACHE
+> Task :app:generateReleaseResValues FROM-CACHE
+> Task :app:checkReleaseAarMetadata
+> Task :app:injectCrashlyticsMappingFileIdRelease
+> Task :app:processDebugResources
+> Task :app:processReleaseGoogleServices FROM-CACHE
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:generateReleaseResources FROM-CACHE
+> Task :wear:mergeReleaseResources
+> Task :app:mergeDebugNativeLibs
+> Task :wear:packageReleaseResources
+> Task :wear:createReleaseCompatibleScreenManifests
+> Task :wear:extractDeepLinksRelease FROM-CACHE
+> Task :wear:processReleaseMainManifest FROM-CACHE
+> Task :wear:processReleaseManifest FROM-CACHE
+> Task :wear:processReleaseManifestForPackage FROM-CACHE
+> Task :wear:parseReleaseLocalResources
+> Task :wear:buildKotlinToolingMetadata
+> Task :wear:javaPreCompileRelease FROM-CACHE
+> Task :wear:extractProguardFiles
+> Task :wear:mergeReleaseJniLibFolders
+> Task :wear:mergeReleaseStartupProfile UP-TO-DATE
+> Task :wear:mergeReleaseShaders
+> Task :wear:compileReleaseShaders NO-SOURCE
+> Task :wear:generateReleaseAssets UP-TO-DATE
+> Task :wear:checkReleaseDuplicateClasses
+> Task :wear:extractReleaseVersionControlInfo
+> Task :wear:processApplicationManifestReleaseForBundle
+> Task :wear:collectReleaseDependencies
+> Task :wear:sdkReleaseDependencyData
+> Task :wear:validateSigningRelease
+> Task :wear:writeReleaseAppMetadata
+> Task :wear:writeReleaseSigningConfigVersions
+> Task :app:mergeReleaseResources
+
+> Task :app:stripDebugDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libjingle_peerconnection_so.so, libtensorflowlite_jni.so.
+
+> Task :wear:processReleaseResources
+> Task :app:packageReleaseResources
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease FROM-CACHE
+> Task :app:parseReleaseLocalResources
+> Task :app:processReleaseMainManifest FROM-CACHE
+> Task :app:processReleaseManifest FROM-CACHE
+> Task :app:processReleaseManifestForPackage FROM-CACHE
+> Task :app:buildKotlinToolingMetadata
+> Task :app:javaPreCompileRelease FROM-CACHE
+> Task :app:extractProguardFiles
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:mergeReleaseStartupProfile UP-TO-DATE
+> Task :app:mergeReleaseShaders
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:checkReleaseDuplicateClasses
+> Task :app:extractReleaseVersionControlInfo
+> Task :wear:kspReleaseKotlin FROM-CACHE
+> Task :app:processApplicationManifestReleaseForBundle
+> Task :wear:compileReleaseKotlin FROM-CACHE
+> Task :wear:compileReleaseJavaWithJavac FROM-CACHE
+> Task :shared:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :shared:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :shared:mergeReleaseShaders
+> Task :shared:compileReleaseShaders NO-SOURCE
+> Task :shared:generateReleaseAssets UP-TO-DATE
+> Task :app:collectReleaseDependencies
+> Task :app:sdkReleaseDependencyData
+> Task :app:validateSigningRelease
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
+> Task :wear:hiltAggregateDepsRelease
+> Task :shared:packageReleaseAssets
+> Task :shared:prepareReleaseArtProfile UP-TO-DATE
+> Task :app:mergeReleaseAssets
+> Task :shared:mergeReleaseJavaResource
+> Task :app:compressReleaseAssets FROM-CACHE
+> Task :app:mergeReleaseArtProfile
+> Task :shared:syncReleaseLibJars
+> Task :shared:bundleReleaseLocalLintAar
+> Task :shared:writeReleaseLintModelMetadata
+> Task :shared:generateReleaseLintVitalModel
+> Task :shared:copyReleaseJniLibsProjectOnly
+> Task :shared:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :shared:bundleReleaseAar
+> Task :shared:mapReleaseSourceSetPaths
+> Task :wear:mergeReleaseNativeLibs
+> Task :app:mergeReleaseNativeLibs
+> Task :wear:mergeReleaseArtProfile
+
+> Task :app:stripReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libjingle_peerconnection_so.so, libtensorflowlite_jni.so.
+
+> Task :wear:mergeReleaseAssets
+
+> Task :wear:stripReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libjingle_peerconnection_so.so, libtensorflowlite_jni.so.
+
+> Task :shared:lintVitalAnalyzeRelease
+> Task :shared:mergeReleaseResources FROM-CACHE
+> Task :wear:compressReleaseAssets FROM-CACHE
+> Task :app:extractReleaseNativeSymbolTables FROM-CACHE
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :shared:verifyReleaseResources FROM-CACHE
+> Task :shared:assembleRelease
+> Task :wear:hiltJavaCompileRelease
+> Task :app:processReleaseResources
+> Task :app:kspReleaseKotlin FROM-CACHE
+> Task :app:compileReleaseKotlin FROM-CACHE
+> Task :app:compileReleaseJavaWithJavac FROM-CACHE
+
+> Task :app:hiltAggregateDepsRelease
+WARNING: [Processor] Library 'C:\Users\A-ONE\.gradle\caches\8.13\transforms\202c19e3ab01832fd151e5806b4713b7\transformed\media-1.7.0-api.jar' contains references to both AndroidX and old support library. This seems like the library is partially migrated. Jetifier will try to rewrite the library anyway.
+ Example of androidX reference: 'androidx/versionedparcelable/VersionedParcel'
+ Example of support library reference: 'android/support/v4/media/AudioAttributesCompatParcelizer'
+
+> Task :app:bundleReleaseResources
+> Task :app:hiltJavaCompileRelease
+> Task :app:generateReleaseLintVitalReportModel
+> Task :wear:generateReleaseLintVitalReportModel
+> Task :wear:extractReleaseNativeSymbolTables FROM-CACHE
+> Task :wear:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:processReleaseJavaRes
+> Task :wear:processReleaseJavaRes
+> Task :wear:transformReleaseClassesWithAsm
+> Task :app:transformReleaseClassesWithAsm
+> Task :app:mergeReleaseJavaResource
+> Task :wear:mergeReleaseJavaResource
+> Task :app:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :wear:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :wear:bundleReleaseResources
+> Task :wear:expandReleaseArtProfileWildcards
+> Task :app:expandReleaseArtProfileWildcards
+
+> Task :shared:compileDebugKotlin
+exception: shared\src\main\java\com\streamlink\shared\AdaptiveBufferChannel.kt:55:51: warning: this is a delicate API 
+and its use requires care. Make sure you fully read and understand documentation of the declaration that is marked as 
+a delicate API.
+exception:     val isClosedForSend: Boolean get() = _channel.isClosedForSend
+exception:                                                   ^
+exception: shared\src\main\java\com\streamlink\shared\DirectSocketClient.kt:282:38: warning: unnecessary safe call on 
+a non-null receiver of type DataOutputStream?
+exception:                             cachedDos?.writeInt(encrypted.size)
+exception:                                      ^
+exception: shared\src\main\java\com\streamlink\shared\DirectSocketClient.kt:283:38: warning: unnecessary safe call on 
+a non-null receiver of type DataOutputStream?
+exception:                             cachedDos?.write(encrypted)
+exception:                                      ^
+exception: shared\src\main\java\com\streamlink\shared\NetworkDiscovery.kt:87:29: warning: 
+'resolveService(NsdServiceInfo!, NsdManager.ResolveListener!): Unit' is deprecated. Deprecated in Java
+exception:                 nsdManager?.resolveService(serviceInfo, resolveListener)
+exception:                             ^
+exception: shared\src\main\java\com\streamlink\shared\NetworkDiscovery.kt:110:27: warning: 'getter for host: 
+InetAddress!' is deprecated. Deprecated in Java
+exception:             val ip = info.host.hostAddress
+exception:                           ^
+exception: shared\src\main\java\com\streamlink\shared\telemetry\DeviceMonitor.kt:60:26: warning: 'getter for 
+connectionInfo: WifiInfo!' is deprecated. Deprecated in Java
+exception:             wifiManager?.connectionInfo?.let { info ->
+exception:                          ^
+exception: shared\src\main\java\com\streamlink\shared\telemetry\MemoryGovernor.kt:21:33: warning: 
+'TRIM_MEMORY_RUNNING_CRITICAL: Int' is deprecated. Deprecated in Java
+exception:             ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL,
+exception:                                 ^
+exception: shared\src\main\java\com\streamlink\shared\telemetry\MemoryGovernor.kt:22:33: warning: 
+'TRIM_MEMORY_COMPLETE: Int' is deprecated. Deprecated in Java
+exception:             ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> {
+exception:                                 ^
+exception: shared\src\main\java\com\streamlink\shared\telemetry\MemoryGovernor.kt:26:33: warning: 
+'TRIM_MEMORY_RUNNING_LOW: Int' is deprecated. Deprecated in Java
+exception:             ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW,
+exception:                                 ^
+exception: shared\src\main\java\com\streamlink\shared\telemetry\MemoryGovernor.kt:27:33: warning: 
+'TRIM_MEMORY_MODERATE: Int' is deprecated. Deprecated in Java
+exception:             ComponentCallbacks2.TRIM_MEMORY_MODERATE -> {
+exception:                                 ^
+
+> Task :shared:compileDebugJavaWithJavac
+> Task :shared:processDebugJavaRes
+> Task :shared:extractDebugAnnotations
+> Task :shared:mergeDebugJavaResource
+> Task :shared:transformDebugClassesWithAsm
+> Task :shared:mergeDebugGeneratedProguardFiles
+> Task :shared:mergeDebugConsumerProguardFiles
+> Task :app:minifyReleaseWithR8
+> Task :shared:bundleLibCompileToJarDebug
+> Task :shared:bundleLibRuntimeToJarDebug
+> Task :shared:syncDebugLibJars
+> Task :shared:bundleDebugAar
+> Task :shared:assembleDebug
+> Task :shared:bundleLibRuntimeToDirDebug
+> Task :app:kspDebugKotlin
+> Task :wear:kspDebugKotlin
+
+> Task :app:kspDebugKotlin
+e: Daemon compilation failed: Could not connect to Kotlin compile daemon
+java.lang.RuntimeException: Could not connect to Kotlin compile daemon
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemon(GradleKotlinCompilerWork.kt:218)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemonOrFallbackImpl(GradleKotlinCompilerWo
+rk.kt:175)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.run(GradleKotlinCompilerWork.kt:135)
+	at org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction.execute(GradleCo
+mpilerRunnerWithWorkers.kt:73)
+	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:63)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:66)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:62)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:62)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:210)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:205)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:67)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:167)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:54)
+	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:59)
+	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:174)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQ
+ueue.java:194)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQue
+ue.java:127)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.ja
+va:169)
+	at org.gradle.internal.Factories$1.create(Factories.java:31)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:263)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue
+.java:164)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java
+:133)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:577)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:48)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1623)
+
+Failed to compile with Kotlin daemon: java.lang.RuntimeException: Could not connect to Kotlin compile daemon
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemon(GradleKotlinCompilerWork.kt:218)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemonOrFallbackImpl(GradleKotlinCompilerWork.kt:175)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.run(GradleKotlinCompilerWork.kt:135)
+	at org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction.execute(GradleCompilerRunnerWithWorkers.kt:73)
+	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:63)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:66)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:62)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:62)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:210)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:205)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:67)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:167)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:54)
+	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:59)
+	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:174)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQueue.java:194)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQueue.java:127)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.java:169)
+	at org.gradle.internal.Factories$1.create(Factories.java:31)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:263)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue.java:164)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java:133)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:577)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:48)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1623)
+Using fallback strategy: Compile without Kotlin daemon
+Try ./gradlew --stop if this issue persists.
+
+> Task :wear:kspDebugKotlin
+e: Daemon compilation failed: Could not connect to Kotlin compile daemon
+java.lang.RuntimeException: Could not connect to Kotlin compile daemon
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemon(GradleKotlinCompilerWork.kt:218)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemonOrFallbackImpl(GradleKotlinCompilerWo
+rk.kt:175)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.run(GradleKotlinCompilerWork.kt:135)
+	at org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction.execute(GradleCo
+mpilerRunnerWithWorkers.kt:73)
+	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:63)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:66)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:62)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:62)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:210)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperati
+onRunner.java:205)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:67)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:167)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:54)
+	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:59)
+	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:174)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQ
+ueue.java:194)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQue
+ue.java:127)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.ja
+va:169)
+	at org.gradle.internal.Factories$1.create(Factories.java:31)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:263)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue
+.java:164)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java
+:133)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:577)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:48)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1623)
+
+Failed to compile with Kotlin daemon: java.lang.RuntimeException: Could not connect to Kotlin compile daemon
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemon(GradleKotlinCompilerWork.kt:218)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileWithDaemonOrFallbackImpl(GradleKotlinCompilerWork.kt:175)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.run(GradleKotlinCompilerWork.kt:135)
+	at org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction.execute(GradleCompilerRunnerWithWorkers.kt:73)
+	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:63)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:66)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:62)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:62)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:210)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:205)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:67)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:167)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:54)
+	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:59)
+	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:174)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQueue.java:194)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQueue.java:127)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.java:169)
+	at org.gradle.internal.Factories$1.create(Factories.java:31)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:263)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue.java:164)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java:133)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:577)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:48)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1623)
+Using fallback strategy: Compile without Kotlin daemon
+Try ./gradlew --stop if this issue persists.
+
+> Task :wear:mergeLibDexDebug
+> Task :app:mergeLibDexDebug
+> Task :app:lintVitalAnalyzeRelease
+> Task :wear:lintVitalAnalyzeRelease
+> Task :wear:lintVitalReportRelease
+> Task :wear:lintVitalRelease
+> Task :app:lintVitalReportRelease
+> Task :app:lintVitalRelease
+
+> Task :app:kspDebugKotlin
+exception: info: [ksp] loaded provider(s): 
+[dagger.hilt.processor.internal.uninstallmodules.KspUninstallModulesProcessor$Provider, 
+dagger.hilt.processor.internal.earlyentrypoint.KspEarlyEntryPointProcessor$Provider, 
+dagger.hilt.processor.internal.root.KspComponentTreeDepsProcessor$Provider, 
+dagger.hilt.android.processor.internal.bindvalue.KspBindValueProcessor$Provider, 
+dagger.hilt.processor.internal.generatesrootinput.KspGeneratesRootInputProcessor$Provider, 
+dagger.hilt.processor.internal.aliasof.KspAliasOfProcessor$Provider, 
+dagger.hilt.processor.internal.aggregateddeps.KspAggregatedDepsProcessor$Provider, 
+dagger.hilt.processor.internal.root.KspRootProcessor$Provider, 
+dagger.hilt.processor.internal.originatingelement.KspOriginatingElementProcessor$Provider, 
+dagger.hilt.processor.internal.definecomponent.KspDefineComponentProcessor$Provider, 
+dagger.hilt.android.processor.internal.viewmodel.KspViewModelProcessor$Provider, 
+dagger.hilt.android.processor.internal.customtestapplication.KspCustomTestApplicationProcessor$Provider, 
+dagger.hilt.android.processor.internal.androidentrypoint.KspAndroidEntryPointProcessor$Provider, 
+dagger.internal.codegen.KspComponentProcessor$Provider]
+
+> Task :wear:kspDebugKotlin
+exception: info: [ksp] loaded provider(s): [androidx.room.RoomKspProcessor$Provider, 
+dagger.hilt.processor.internal.uninstallmodules.KspUninstallModulesProcessor$Provider, 
+dagger.hilt.processor.internal.earlyentrypoint.KspEarlyEntryPointProcessor$Provider, 
+dagger.hilt.processor.internal.root.KspComponentTreeDepsProcessor$Provider, 
+dagger.hilt.android.processor.internal.bindvalue.KspBindValueProcessor$Provider, 
+dagger.hilt.processor.internal.generatesrootinput.KspGeneratesRootInputProcessor$Provider, 
+dagger.hilt.processor.internal.aliasof.KspAliasOfProcessor$Provider, 
+dagger.hilt.processor.internal.aggregateddeps.KspAggregatedDepsProcessor$Provider, 
+dagger.hilt.processor.internal.root.KspRootProcessor$Provider, 
+dagger.hilt.processor.internal.originatingelement.KspOriginatingElementProcessor$Provider, 
+dagger.hilt.processor.internal.definecomponent.KspDefineComponentProcessor$Provider, 
+dagger.hilt.android.processor.internal.viewmodel.KspViewModelProcessor$Provider, 
+dagger.hilt.android.processor.internal.customtestapplication.KspCustomTestApplicationProcessor$Provider, 
+dagger.hilt.android.processor.internal.androidentrypoint.KspAndroidEntryPointProcessor$Provider, 
+dagger.internal.codegen.KspComponentProcessor$Provider]
+
+> Task :app:compileDebugKotlin
+> Task :wear:compileDebugKotlin
+> Task :app:compileReleaseArtProfile
+> Task :wear:minifyReleaseWithR8
+> Task :app:shrinkReleaseRes
+> Task :app:uploadCrashlyticsMappingFileRelease
+
+> Task :wear:compileDebugKotlin
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/wear/src/main/java/com/streamlink/wear/rendering/StreamPlayerContainer.kt:55:38 'SCREEN_BRIGHT_WAKE_LOCK: Int' is deprecated. Deprecated in Java
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/wear/src/main/java/com/streamlink/wear/rendering/StreamPlayerContainer.kt:55:78 'ACQUIRE_CAUSES_WAKEUP: Int' is deprecated. Deprecated in Java
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/wear/src/main/java/com/streamlink/wear/rendering/StreamPlayerContainer.kt:64:40 Parameter 'surface' is never used, could be renamed to _
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/wear/src/main/java/com/streamlink/wear/tile/StreamLinkTileService.kt:44:45 'ResourceBuilders' is deprecated. Deprecated in Java
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/wear/src/main/java/com/streamlink/wear/tile/StreamLinkTileService.kt:46:33 'ResourceBuilders' is deprecated. Deprecated in Java
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/wear/src/main/java/com/streamlink/wear/ui/WearInfoScreen.kt:17:5 'ScalingLazyColumn(Modifier = ..., ScalingLazyListState = ..., PaddingValues = ..., Boolean = ..., Arrangement.Vertical = ..., Alignment.Horizontal = ..., FlingBehavior = ..., Boolean = ..., ScalingParams = ..., ScalingLazyListAnchorType = ..., AutoCenteringParams? = ..., ScalingLazyListScope.() -> Unit): Unit' is deprecated. Was moved to androidx.wear.compose.foundation.lazy package. Please use it instead
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/wear/src/main/java/com/streamlink/wear/ux/StreamHapticFeedback.kt:10:73 'VIBRATOR_SERVICE: String' is deprecated. Deprecated in Java
+
+> Task :app:uploadCrashlyticsMappingFileRelease FAILED
+
+> Task :app:compileDebugKotlin
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/app/src/main/java/com/streamlink/app/StreamLinkApp.kt:60:97 'TRIM_MEMORY_COMPLETE: Int' is deprecated. Deprecated in Java
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/app/src/main/java/com/streamlink/app/capture/CaptureService.kt:48:31 'getParcelableExtra(String!): T?' is deprecated. Deprecated in Java
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/app/src/main/java/com/streamlink/app/core/StreamingOrchestrator.kt:90:36 Parameter 'sec' is never used, could be renamed to _
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/app/src/main/java/com/streamlink/app/ui/MainActivity.kt:162:5 Parameter 'orchestrator' is never used
+
+[Incubating] Problems report is available at: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:uploadCrashlyticsMappingFileRelease'.
+> java.net.UnknownHostException: No such host is known (firebasecrashlyticssymbols.googleapis.com)
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 35m
+253 actionable tasks: 163 executed, 79 from cache, 11 up-to-date

@@ -1,0 +1,135 @@
+﻿To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+.\gradlew.bat : Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of 
+version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were 
+released at different times.
+At line:1 char:1
++ .\gradlew.bat clean assembleDebug assembleRelease --no-daemon 2>&1 |  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Warning: SDK pr...ifferent times.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+> Task :clean
+> Task :backend:clean UP-TO-DATE
+> Task :wear:clean
+> Task :wear:preBuild UP-TO-DATE
+> Task :wear:preDebugBuild UP-TO-DATE
+> Task :app:clean
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :shared:clean
+> Task :shared:preBuild UP-TO-DATE
+> Task :shared:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :wear:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :wear:checkKotlinGradlePluginConfigurationErrors
+> Task :shared:writeDebugAarMetadata
+> Task :shared:generateDebugResValues
+> Task :app:generateDebugBuildConfig
+> Task :wear:generateDebugBuildConfig
+> Task :shared:generateDebugResources
+> Task :shared:packageDebugResources
+> Task :shared:extractDeepLinksDebug
+> Task :shared:processDebugManifest
+> Task :app:generateDebugResValues FROM-CACHE
+> Task :wear:generateDebugResValues FROM-CACHE
+> Task :wear:checkDebugAarMetadata
+> Task :app:checkDebugAarMetadata
+> Task :wear:injectCrashlyticsMappingFileIdDebug
+> Task :app:injectCrashlyticsMappingFileIdDebug
+> Task :wear:processDebugGoogleServices
+> Task :app:processDebugGoogleServices
+> Task :app:mapDebugSourceSetPaths
+> Task :app:generateDebugResources
+> Task :wear:mapDebugSourceSetPaths
+> Task :wear:generateDebugResources
+> Task :wear:packageDebugResources
+> Task :app:packageDebugResources
+> Task :wear:createDebugCompatibleScreenManifests
+> Task :wear:extractDeepLinksDebug FROM-CACHE
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug FROM-CACHE
+> Task :wear:parseDebugLocalResources
+> Task :app:parseDebugLocalResources
+> Task :wear:mergeDebugResources
+> Task :app:mergeDebugResources
+> Task :shared:compileDebugLibraryResources
+> Task :shared:checkKotlinGradlePluginConfigurationErrors
+> Task :shared:parseDebugLocalResources
+> Task :shared:generateDebugBuildConfig
+> Task :shared:generateDebugRFile
+> Task :shared:javaPreCompileDebug
+> Task :app:javaPreCompileDebug
+> Task :wear:javaPreCompileDebug
+
+> Task :app:processDebugMainManifest
+[org.tensorflow:tensorflow-lite:2.14.0] C:\Users\A-ONE\.gradle\caches\8.13\transforms\0bd1ecd5e1a405db56cf596b4bf289f1\transformed\jetified-tensorflow-lite-2.14.0\AndroidManifest.xml Warning:
+	Namespace 'org.tensorflow.lite' is used in multiple modules and/or libraries: org.tensorflow:tensorflow-lite:2.14.0, org.tensorflow:tensorflow-lite-api:2.14.0. Please ensure that all modules and libraries have a unique namespace. For more information, See https://developer.android.com/studio/build/configure-app-module#set-namespace
+
+> Task :app:processDebugManifest
+> Task :app:mergeDebugShaders
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:desugarDebugFileDependencies
+
+> Task :wear:processDebugMainManifest
+[org.tensorflow:tensorflow-lite:2.14.0] C:\Users\A-ONE\.gradle\caches\8.13\transforms\0bd1ecd5e1a405db56cf596b4bf289f1\transformed\jetified-tensorflow-lite-2.14.0\AndroidManifest.xml Warning:
+	Namespace 'org.tensorflow.lite' is used in multiple modules and/or libraries: org.tensorflow:tensorflow-lite:2.14.0, org.tensorflow:tensorflow-lite-api:2.14.0. Please ensure that all modules and libraries have a unique namespace. For more information, See https://developer.android.com/studio/build/configure-app-module#set-namespace
+
+> Task :wear:processDebugManifest
+> Task :wear:mergeDebugShaders
+> Task :wear:compileDebugShaders NO-SOURCE
+> Task :wear:generateDebugAssets UP-TO-DATE
+> Task :wear:desugarDebugFileDependencies
+> Task :app:processDebugManifestForPackage
+> Task :app:checkDebugDuplicateClasses
+> Task :wear:checkDebugDuplicateClasses
+> Task :wear:mergeDebugJniLibFolders
+> Task :shared:kspDebugKotlin
+> Task :wear:processDebugManifestForPackage
+> Task :app:processDebugResources
+> Task :wear:mergeExtDexDebug
+> Task :app:mergeExtDexDebug
+> Task :app:processDebugResources FAILED
+
+[Incubating] Problems report is available at: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+62 actionable tasks: 57 executed, 4 from cache, 1 up-to-date
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:processDebugResources'.
+> A failure occurred while executing 
+com.android.build.gradle.internal.res.LinkApplicationAndroidResourcesTask$TaskAction
+   > Android resource linking failed
+     ERROR: D:\projects and 
+VS\projects\android\StreamLinkWear_Phase1\app\src\main\res\mipmap-anydpi-v26\ic_launcher.xml:4: AAPT: error: resource 
+mipmap/ic_launcher_foreground (aka com.streamlink.app:mipmap/ic_launcher_foreground) not found.
+         
+     ERROR: D:\projects and 
+VS\projects\android\StreamLinkWear_Phase1\app\src\main\res\mipmap-anydpi-v26\ic_launcher.xml:5: AAPT: error: resource 
+mipmap/ic_launcher_foreground (aka com.streamlink.app:mipmap/ic_launcher_foreground) not found.
+         
+     ERROR: D:\projects and 
+VS\projects\android\StreamLinkWear_Phase1\app\src\main\res\mipmap-anydpi-v26\ic_launcher_round.xml:4: AAPT: error: 
+resource mipmap/ic_launcher_foreground (aka com.streamlink.app:mipmap/ic_launcher_foreground) not found.
+         
+     ERROR: D:\projects and 
+VS\projects\android\StreamLinkWear_Phase1\app\src\main\res\mipmap-anydpi-v26\ic_launcher_round.xml:5: AAPT: error: 
+resource mipmap/ic_launcher_foreground (aka com.streamlink.app:mipmap/ic_launcher_foreground) not found.
+         
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 3m 58s

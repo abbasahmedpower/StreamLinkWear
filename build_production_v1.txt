@@ -1,0 +1,174 @@
+﻿To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+.\gradlew.bat : Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of 
+version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were 
+released at different times.
+At line:1 char:1
++ .\gradlew.bat assembleDebug --no-daemon 2>&1 | Out-File -FilePath "bu ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Warning: SDK pr...ifferent times.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+> Task :wear:preBuild UP-TO-DATE
+> Task :shared:preBuild UP-TO-DATE
+> Task :shared:preDebugBuild UP-TO-DATE
+> Task :wear:preDebugBuild UP-TO-DATE
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :wear:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :wear:checkKotlinGradlePluginConfigurationErrors
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :wear:generateDebugBuildConfig UP-TO-DATE
+> Task :shared:writeDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugBuildConfig UP-TO-DATE
+> Task :wear:generateDebugResValues UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :shared:generateDebugResValues UP-TO-DATE
+> Task :shared:generateDebugResources UP-TO-DATE
+> Task :shared:packageDebugResources UP-TO-DATE
+> Task :shared:extractDeepLinksDebug UP-TO-DATE
+> Task :shared:processDebugManifest UP-TO-DATE
+> Task :shared:compileDebugLibraryResources UP-TO-DATE
+> Task :shared:parseDebugLocalResources UP-TO-DATE
+> Task :shared:generateDebugRFile UP-TO-DATE
+> Task :shared:checkKotlinGradlePluginConfigurationErrors
+> Task :shared:generateDebugBuildConfig UP-TO-DATE
+> Task :wear:checkDebugAarMetadata UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :wear:injectCrashlyticsMappingFileIdDebug UP-TO-DATE
+> Task :app:injectCrashlyticsMappingFileIdDebug UP-TO-DATE
+> Task :app:processDebugGoogleServices UP-TO-DATE
+> Task :wear:processDebugGoogleServices UP-TO-DATE
+> Task :wear:mapDebugSourceSetPaths UP-TO-DATE
+> Task :wear:generateDebugResources UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :wear:mergeDebugResources UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :wear:packageDebugResources UP-TO-DATE
+> Task :wear:parseDebugLocalResources UP-TO-DATE
+> Task :wear:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :wear:extractDeepLinksDebug UP-TO-DATE
+> Task :wear:processDebugMainManifest UP-TO-DATE
+> Task :wear:processDebugManifest UP-TO-DATE
+> Task :wear:processDebugManifestForPackage UP-TO-DATE
+> Task :shared:javaPreCompileDebug UP-TO-DATE
+> Task :shared:mergeDebugShaders UP-TO-DATE
+> Task :shared:compileDebugShaders NO-SOURCE
+> Task :shared:generateDebugAssets UP-TO-DATE
+> Task :shared:packageDebugAssets UP-TO-DATE
+> Task :shared:mergeDebugJniLibFolders UP-TO-DATE
+> Task :shared:mergeDebugNativeLibs NO-SOURCE
+> Task :shared:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :shared:stripDebugDebugSymbols NO-SOURCE
+> Task :shared:copyDebugJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :shared:extractDeepLinksForAarDebug UP-TO-DATE
+> Task :shared:prepareDebugArtProfile UP-TO-DATE
+> Task :shared:prepareLintJarForPublish UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:mergeDebugShaders UP-TO-DATE
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets UP-TO-DATE
+> Task :app:compressDebugAssets UP-TO-DATE
+> Task :app:desugarDebugFileDependencies UP-TO-DATE
+> Task :wear:processDebugResources UP-TO-DATE
+> Task :wear:javaPreCompileDebug UP-TO-DATE
+> Task :wear:mergeDebugShaders UP-TO-DATE
+> Task :wear:compileDebugShaders NO-SOURCE
+> Task :wear:generateDebugAssets UP-TO-DATE
+> Task :app:checkDebugDuplicateClasses UP-TO-DATE
+> Task :shared:kspDebugKotlin
+> Task :wear:mergeDebugAssets UP-TO-DATE
+> Task :wear:compressDebugAssets UP-TO-DATE
+> Task :wear:desugarDebugFileDependencies UP-TO-DATE
+> Task :wear:checkDebugDuplicateClasses UP-TO-DATE
+> Task :app:mergeExtDexDebug UP-TO-DATE
+> Task :app:mergeDebugJniLibFolders UP-TO-DATE
+> Task :app:mergeDebugNativeLibs UP-TO-DATE
+> Task :app:stripDebugDebugSymbols UP-TO-DATE
+> Task :app:validateSigningDebug UP-TO-DATE
+> Task :app:writeDebugAppMetadata UP-TO-DATE
+> Task :app:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :wear:mergeExtDexDebug UP-TO-DATE
+> Task :wear:mergeDebugJniLibFolders UP-TO-DATE
+> Task :wear:mergeDebugNativeLibs UP-TO-DATE
+> Task :wear:stripDebugDebugSymbols UP-TO-DATE
+> Task :wear:validateSigningDebug UP-TO-DATE
+> Task :wear:writeDebugAppMetadata UP-TO-DATE
+> Task :wear:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :shared:compileDebugKotlin
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/shared/src/main/java/com/streamlink/shared/AdaptiveBufferChannel.kt:55:51 This is a delicate API and its use requires care. Make sure you fully read and understand documentation of the declaration that is marked as a delicate API.
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/shared/src/main/java/com/streamlink/shared/DirectSocketClient.kt:282:38 Unnecessary safe call on a non-null receiver of type DataOutputStream?
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/shared/src/main/java/com/streamlink/shared/DirectSocketClient.kt:283:38 Unnecessary safe call on a non-null receiver of type DataOutputStream?
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/shared/src/main/java/com/streamlink/shared/NetworkDiscovery.kt:87:29 'resolveService(NsdServiceInfo!, NsdManager.ResolveListener!): Unit' is deprecated. Deprecated in Java
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/shared/src/main/java/com/streamlink/shared/NetworkDiscovery.kt:110:27 'getter for host: InetAddress!' is deprecated. Deprecated in Java
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/shared/src/main/java/com/streamlink/shared/telemetry/DeviceMonitor.kt:60:26 'getter for connectionInfo: WifiInfo!' is deprecated. Deprecated in Java
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/shared/src/main/java/com/streamlink/shared/telemetry/MemoryGovernor.kt:21:33 'TRIM_MEMORY_RUNNING_CRITICAL: Int' is deprecated. Deprecated in Java
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/shared/src/main/java/com/streamlink/shared/telemetry/MemoryGovernor.kt:22:33 'TRIM_MEMORY_COMPLETE: Int' is deprecated. Deprecated in Java
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/shared/src/main/java/com/streamlink/shared/telemetry/MemoryGovernor.kt:26:33 'TRIM_MEMORY_RUNNING_LOW: Int' is deprecated. Deprecated in Java
+w: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/shared/src/main/java/com/streamlink/shared/telemetry/MemoryGovernor.kt:27:33 'TRIM_MEMORY_MODERATE: Int' is deprecated. Deprecated in Java
+
+> Task :shared:compileDebugJavaWithJavac UP-TO-DATE
+> Task :shared:processDebugJavaRes UP-TO-DATE
+> Task :shared:extractDebugAnnotations
+> Task :shared:mergeDebugJavaResource UP-TO-DATE
+> Task :shared:transformDebugClassesWithAsm
+> Task :shared:mergeDebugGeneratedProguardFiles UP-TO-DATE
+> Task :shared:mergeDebugConsumerProguardFiles UP-TO-DATE
+> Task :shared:bundleLibCompileToJarDebug
+> Task :shared:syncDebugLibJars
+> Task :shared:bundleLibRuntimeToJarDebug
+> Task :shared:bundleDebugAar
+> Task :shared:assembleDebug
+> Task :shared:bundleLibRuntimeToDirDebug
+> Task :app:kspDebugKotlin
+> Task :wear:kspDebugKotlin
+> Task :wear:compileDebugKotlin
+> Task :wear:compileDebugJavaWithJavac
+> Task :app:compileDebugKotlin
+> Task :wear:hiltAggregateDepsDebug FROM-CACHE
+> Task :app:compileDebugJavaWithJavac
+> Task :app:hiltAggregateDepsDebug FROM-CACHE
+> Task :wear:hiltJavaCompileDebug
+> Task :wear:processDebugJavaRes
+> Task :app:hiltJavaCompileDebug
+> Task :app:processDebugJavaRes
+> Task :wear:mergeLibDexDebug
+> Task :app:mergeLibDexDebug
+> Task :app:transformDebugClassesWithAsm
+> Task :wear:transformDebugClassesWithAsm
+> Task :wear:mergeDebugJavaResource
+> Task :app:mergeDebugJavaResource
+> Task :app:dexBuilderDebug
+> Task :app:mergeDebugGlobalSynthetics
+> Task :app:mergeProjectDexDebug
+> Task :wear:dexBuilderDebug
+> Task :wear:mergeDebugGlobalSynthetics
+> Task :wear:mergeProjectDexDebug
+> Task :app:packageDebug
+> Task :app:createDebugApkListingFileRedirect
+> Task :app:assembleDebug
+> Task :wear:packageDebug
+> Task :wear:createDebugApkListingFileRedirect
+> Task :wear:assembleDebug
+
+[Incubating] Problems report is available at: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 15m 6s
+122 actionable tasks: 38 executed, 2 from cache, 82 up-to-date

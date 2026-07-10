@@ -1,0 +1,143 @@
+﻿
+Welcome to Gradle 8.13!
+
+Here are the highlights of this release:
+ - Daemon JVM auto-provisioning
+ - Enhancements for Scala plugin and JUnit testing
+ - Improvements for build authors and plugin developers
+
+For more details see https://docs.gradle.org/8.13/release-notes.html
+
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+.\gradlew.bat : Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of 
+version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were 
+released at different times.
+At line:1 char:1
++ .\gradlew.bat clean assembleDebug assembleRelease --no-daemon 2>&1 |  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Warning: SDK pr...ifferent times.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+> Task :clean
+> Task :backend:clean
+> Task :wear:clean
+> Task :wear:preBuild UP-TO-DATE
+> Task :wear:preDebugBuild UP-TO-DATE
+> Task :wear:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :wear:checkKotlinGradlePluginConfigurationErrors
+> Task :app:clean
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :shared:clean
+> Task :shared:preBuild UP-TO-DATE
+> Task :shared:preDebugBuild UP-TO-DATE
+> Task :app:generateDebugBuildConfig
+> Task :wear:generateDebugBuildConfig
+> Task :app:generateDebugResValues
+> Task :shared:writeDebugAarMetadata
+> Task :shared:processDebugNavigationResources
+> Task :wear:generateDebugResValues
+> Task :shared:generateDebugResValues FROM-CACHE
+> Task :app:injectCrashlyticsMappingFileIdDebug
+> Task :shared:generateDebugResources
+> Task :shared:packageDebugResources
+> Task :shared:extractDeepLinksDebug
+> Task :shared:processDebugManifest
+> Task :wear:checkDebugAarMetadata
+> Task :app:checkDebugAarMetadata
+> Task :app:processDebugNavigationResources
+> Task :wear:processDebugNavigationResources
+> Task :shared:compileDebugLibraryResources FAILED
+> Task :app:compileDebugNavigationResources FAILED
+> Task :wear:compileDebugNavigationResources FAILED
+
+[Incubating] Problems report is available at: file:///D:/projects%20and%20VS/projects/android/StreamLinkWear_Phase1/build/reports/problems/problems-report.html
+
+FAILURE: Build completed with 3 failures.
+
+1: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':app:compileDebugNavigationResources'.
+> A failure occurred while executing 
+com.android.build.gradle.tasks.CompileNavigationXmlTask$CompileNavigationResourcesAction
+   > Could not isolate value 
+com.android.build.gradle.tasks.CompileNavigationXmlTask$CompileNavigationResourcesParams_Decorated@1f585a45 of type 
+CompileNavigationXmlTask.CompileNavigationResourcesParams
+      > Could not resolve all files for configuration ':app:detachedConfiguration2'.
+         > Failed to transform aapt2-8.13.2-14304508-windows.jar (com.android.tools.build:aapt2:8.13.2-14304508) to 
+match attributes {artifactType=_internal-android-aapt2-binary, org.gradle.libraryelements=jar, 
+org.gradle.status=release, org.gradle.usage=java-runtime}.
+            > Could not download aapt2-8.13.2-14304508-windows.jar (com.android.tools.build:aapt2:8.13.2-14304508)
+               > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2/8.13.2-1
+4304508/aapt2-8.13.2-14304508-windows.jar'.
+                  > Premature end of Content-Length delimited message body (expected: 2,523,727; received: 1,095,834)
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+2: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':shared:compileDebugLibraryResources'.
+> A failure occurred while executing 
+com.android.build.gradle.tasks.CompileLibraryResourcesTask$CompileLibraryResourcesAction
+   > Could not isolate value 
+com.android.build.gradle.tasks.CompileLibraryResourcesTask$CompileLibraryResourcesParams_Decorated@5a1b275f of type 
+CompileLibraryResourcesTask.CompileLibraryResourcesParams
+      > Could not resolve all files for configuration ':shared:detachedConfiguration2'.
+         > Failed to transform aapt2-8.13.2-14304508-windows.jar (com.android.tools.build:aapt2:8.13.2-14304508) to 
+match attributes {artifactType=_internal-android-aapt2-binary, org.gradle.libraryelements=jar, 
+org.gradle.status=release, org.gradle.usage=java-runtime}.
+            > Could not download aapt2-8.13.2-14304508-windows.jar (com.android.tools.build:aapt2:8.13.2-14304508)
+               > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2/8.13.2-1
+4304508/aapt2-8.13.2-14304508-windows.jar'.
+                  > Premature end of Content-Length delimited message body (expected: 2,523,727; received: 1,095,834)
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+3: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':wear:compileDebugNavigationResources'.
+> A failure occurred while executing 
+com.android.build.gradle.tasks.CompileNavigationXmlTask$CompileNavigationResourcesAction
+   > Could not isolate value 
+com.android.build.gradle.tasks.CompileNavigationXmlTask$CompileNavigationResourcesParams_Decorated@527cf043 of type 
+CompileNavigationXmlTask.CompileNavigationResourcesParams
+      > Could not resolve all files for configuration ':wear:detachedConfiguration2'.
+         > Failed to transform aapt2-8.13.2-14304508-windows.jar (com.android.tools.build:aapt2:8.13.2-14304508) to 
+match attributes {artifactType=_internal-android-aapt2-binary, org.gradle.libraryelements=jar, 
+org.gradle.status=release, org.gradle.usage=java-runtime}.
+            > Could not download aapt2-8.13.2-14304508-windows.jar (com.android.tools.build:aapt2:8.13.2-14304508)
+               > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2/8.13.2-1
+4304508/aapt2-8.13.2-14304508-windows.jar'.
+                  > Premature end of Content-Length delimited message body (expected: 2,523,727; received: 1,095,834)
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 1m 9s
+26 actionable tasks: 25 executed, 1 from cache
