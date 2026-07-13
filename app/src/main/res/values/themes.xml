@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        AppCompatActivity requires a Theme.AppCompat (or MaterialComponents) parent.
+        DayNight.NoActionBar gives us automatic dark/light switching without an ActionBar.
+        The actual UI theming is done inside Compose via StreamLinkTheme — this style
+        is only needed to satisfy the AppCompat Activity window background.
+    -->
+    <style name="Theme.StreamLink" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <!-- Match deep-space background so pre-compose window flicker is invisible -->
+        <item name="android:windowBackground">@color/sl_background</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="windowActionBar">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowTranslucentStatus">false</item>
+    </style>
+</resources>

@@ -31,8 +31,7 @@ class StreamLinkApp : Application(), ComponentCallbacks2 {
             android.os.StrictMode.setThreadPolicy(
                 android.os.StrictMode.ThreadPolicy.Builder()
                     .detectAll()
-                    .penaltyLog()
-                    .penaltyFlashScreen()
+                    .penaltyLog()   // violations logged to Logcat only — no red flash
                     .build()
             )
             android.os.StrictMode.setVmPolicy(

@@ -1,0 +1,3 @@
+D:/projects and VS/projects/android/StreamLinkWear_Phase1/app/.cxx/RelWithDebInfo/4v364sp7/arm64-v8a/CMakeFiles/streamengine.dir
+D:/projects and VS/projects/android/StreamLinkWear_Phase1/app/.cxx/RelWithDebInfo/4v364sp7/arm64-v8a/CMakeFiles/edit_cache.dir
+D:/projects and VS/projects/android/StreamLinkWear_Phase1/app/.cxx/RelWithDebInfo/4v364sp7/arm64-v8a/CMakeFiles/rebuild_cache.dir

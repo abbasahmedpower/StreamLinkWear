@@ -39,7 +39,8 @@ class StreamViewModel @Inject constructor(
     private val predictiveEngine: LocalPredictiveEngine,
     val player: DirectStreamPlayer,
     private val metrics: MetricsCollector,
-    val aiLogger: AIEventLogger
+    val aiLogger: AIEventLogger,
+    private val hapticFeedback: com.streamlink.wear.ux.StreamHapticFeedback
 ) : ViewModel() {
 
     val uiState: StateFlow<WearUiState> = GlobalStreamState.snapshot
@@ -69,6 +70,15 @@ class StreamViewModel @Inject constructor(
             motionProvider  = { wristSensor.currentMagnitude },
             networkProvider = { GlobalStreamState.snapshot.value.latencyMs.toFloat() }
         )
+        
+        viewModelScope.launch {
+            GlobalStreamState.snapshot
+                .map { it.state }
+                .distinctUntilChanged()
+                .collect { state ->
+                    hapticFeedback.triggerFeedback(state)
+                }
+        }
     }
 
     override fun onCleared() {

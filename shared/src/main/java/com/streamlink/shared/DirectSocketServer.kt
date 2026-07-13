@@ -71,41 +71,41 @@ class DirectSocketServer {
 
     private var encryptedChannel: EncryptedChannel? = null
 
-    /** Launched alongside the sender thread when a client connects. */
     private fun runInputReceiver(socket: java.net.Socket) {
         val dis = java.io.DataInputStream(socket.inputStream)
         try {
             while (running.get() && !socket.isClosed) {
-                // Read 4-byte length prefix
                 val len = dis.readInt()
-                if (len <= 0 || len > 1024) break // basic sanity check
+                if (len <= 0 || len > 1024) break
 
                 val encryptedBuf = ByteArray(len)
                 dis.readFully(encryptedBuf)
 
                 val ec = encryptedChannel
-                val decrypted = if (ec != null) ec.decrypt(encryptedBuf) else encryptedBuf
+                val decrypted = try {
+                    if (ec != null) ec.decrypt(encryptedBuf) else encryptedBuf
+                } catch (e: Exception) {
+                    Log.w(tag, "Decrypt failed, dropping malformed packet: ${e.message}")
+                    continue
+                }
                 if (decrypted == null || decrypted.size < StreamProtocol.INPUT_FRAME_SIZE) continue
 
-                // Inspect magic number quickly
-                val buf = java.nio.ByteBuffer.wrap(decrypted).order(java.nio.ByteOrder.BIG_ENDIAN)
-                val magic = buf.getInt()
-
-                if (magic == StreamProtocol.MAGIC_NUMBER_INPUT) {
-                    val event = TouchCodec.decode(decrypted)
-                    if (event != null) {
-                        onTouchEvent?.invoke(event)
+                try {
+                    val buf = java.nio.ByteBuffer.wrap(decrypted).order(java.nio.ByteOrder.BIG_ENDIAN)
+                    val magic = buf.getInt()
+                    if (magic == StreamProtocol.MAGIC_NUMBER_INPUT) {
+                        TouchCodec.decode(decrypted)?.let { onTouchEvent?.invoke(it) }
+                    } else if (magic == StreamProtocol.MAGIC_NUMBER_CONTROL) {
+                        ControlCodec.decode(decrypted)?.let { onControlMessage?.invoke(it) }
                     }
-                } else if (magic == StreamProtocol.MAGIC_NUMBER_CONTROL) {
-                    val msg = ControlCodec.decode(decrypted)
-                    if (msg != null) {
-                        onControlMessage?.invoke(msg)
-                    }
+                } catch (e: Exception) {
+                    Log.w(tag, "Malformed input frame ignored: ${e.message}")
                 }
-                // If magic doesn't match, it might be noise — skip silently
             }
-        } catch (e: java.io.IOException) {
+        } catch (e: IOException) {
             android.util.Log.w(tag, "Input receive loop ended: ${e.message}")
+        } catch (e: Exception) {
+            android.util.Log.e(tag, "Input receiver crashed unexpectedly: ${e.message}")
         }
     }
 
@@ -134,89 +134,84 @@ class DirectSocketServer {
                     break
                 }
 
-                Log.i(tag, "Watch connected: ${newClient.inetAddress.hostAddress}")
-                closeClient()  // Close old client first
-                newClient.tcpNoDelay = true
-                newClient.setPerformancePreferences(0, 1, 2)
-                clientSocket = newClient
+                try {
+                    newClient.tcpNoDelay = true
+                    newClient.setPerformancePreferences(0, 1, 2)
+                    newClient.soTimeout = 8_000
 
-                // ── ECDH Handshake ────────────────────────────────────────
-                val dis = java.io.DataInputStream(newClient.inputStream)
-                val dos = java.io.DataOutputStream(newClient.outputStream)
+                    Log.i(tag, "Watch connected: ${newClient.inetAddress.hostAddress}")
+                    closeClient()
+                    clientSocket = newClient
 
-                // 1. Read Watch's public key
-                val clientLen = dis.readInt()
-                if (clientLen <= 0 || clientLen > 8192) throw java.io.IOException("Invalid key length: $clientLen")
-                val clientBytes = ByteArray(clientLen)
-                dis.readFully(clientBytes)
-                val clientPub = String(clientBytes, Charsets.UTF_8)
+                    val dis = java.io.DataInputStream(newClient.inputStream)
+                    val dos = java.io.DataOutputStream(newClient.outputStream)
 
-                // 2. Read Watch's real screen dimensions (sent right after the public key)
-                val watchW = dis.readInt().coerceIn(200, 1000)
-                val watchH = dis.readInt().coerceIn(200, 1000)
-                Log.i(tag, "Watch dimensions received: ${watchW}×${watchH}")
-                onWatchDimensions?.invoke(watchW, watchH)
+                    val clientLen = dis.readInt()
+                    if (clientLen <= 0 || clientLen > 8192) throw java.io.IOException("Invalid key length: $clientLen")
+                    val clientBytes = ByteArray(clientLen)
+                    dis.readFully(clientBytes)
+                    val clientPub = String(clientBytes, Charsets.UTF_8)
 
-                if (!KeyExchange.validatePeerKey(clientPub)) {
-                    Log.e(tag, "❌ مفتاح غير صالح من الساعة (فشل التحقق من المنحنى) — رفض الاتصال")
-                    newClient.close()
-                    continue
-                }
+                    val watchW = dis.readInt().coerceIn(200, 1000)
+                    val watchH = dis.readInt().coerceIn(200, 1000)
+                    Log.i(tag, "Watch dimensions received: ${watchW}×${watchH}")
+                    onWatchDimensions?.invoke(watchW, watchH)
 
-                // Notify phone UI that a watch is trying to connect — show PIN entry screen
-                PairingManager.notifyWatchKnocked()
+                    if (!KeyExchange.validatePeerKey(clientPub)) {
+                        Log.e(tag, "❌ مفتاح غير صالح من الساعة — رفض الاتصال")
+                        newClient.close()
+                        continue
+                    }
 
-                // 3. Generate Phone's ephemeral key
-                val kp = KeyExchange.generateEphemeralKeyPair()
-                val pubBytes = kp.publicKeyBase64.toByteArray(Charsets.UTF_8)
+                    PairingManager.notifyWatchKnocked()
 
-                // 4. Send Phone's public key
-                dos.writeInt(pubBytes.size)
-                dos.write(pubBytes)
-                dos.flush()
+                    val kp = KeyExchange.generateEphemeralKeyPair()
+                    val pubBytes = kp.publicKeyBase64.toByteArray(Charsets.UTF_8)
 
-                // 5. Derive Session Key (pairingCode is included in HKDF info — Fail Closed)
-                val sessionKey = KeyExchange.deriveSessionKey(kp.privateKey, clientPub, pairingCode)
-                encryptedChannel = EncryptedChannel(sessionKey, "tcp-stream", "phone-to-watch")
+                    dos.writeInt(pubBytes.size)
+                    dos.write(pubBytes)
+                    dos.flush()
 
-                // 6. Read & verify Encrypted Auth Block from Watch
-                //    Wrong PIN → mismatched session key → GCM tag check fails → Fail Closed
-                val authBlockLen = dis.readInt()
-                if (authBlockLen <= 0 || authBlockLen > 256) {
-                    Log.e(tag, "❌ Invalid auth block length: $authBlockLen — dropping connection")
-                    newClient.close()
-                    continue
-                }
-                val authBlock = ByteArray(authBlockLen)
-                dis.readFully(authBlock)
+                    val sessionKey = KeyExchange.deriveSessionKey(kp.privateKey, clientPub, pairingCode)
+                    encryptedChannel = EncryptedChannel(sessionKey, "tcp-stream", "phone-to-watch")
 
-                val verified = KeyExchange.verifyAuthBlock(authBlock, sessionKey)
-                if (!verified) {
-                    Log.e(tag, "❌ PIN MISMATCH or MITM detected — closing socket immediately")
-                    PairingManager.notifyPinRejected()
-                    // Send rejection code, then hard-close
-                    try {
-                        newClient.outputStream.write(byteArrayOf(0x00))
-                        newClient.outputStream.flush()
-                    } catch (_: Exception) {}
-                    newClient.close()
-                    continue
-                }
+                    val authBlockLen = dis.readInt()
+                    if (authBlockLen <= 0 || authBlockLen > 256) {
+                        Log.e(tag, "❌ Invalid auth block length: $authBlockLen")
+                        newClient.close()
+                        continue
+                    }
+                    val authBlock = ByteArray(authBlockLen)
+                    dis.readFully(authBlock)
 
-                // 7. Send ACK — PIN verified, session is trusted
-                dos.writeByte(0x01)
-                dos.flush()
-                PairingManager.notifyPaired()
-                Log.i(tag, "✅ PIN verified. Handshake complete with Watch")
+                    val verified = KeyExchange.verifyAuthBlock(authBlock, sessionKey)
+                    if (!verified) {
+                        Log.e(tag, "❌ PIN MISMATCH or MITM detected")
+                        PairingManager.notifyPinRejected()
+                        try {
+                            newClient.outputStream.write(byteArrayOf(0x00))
+                            newClient.outputStream.flush()
+                        } catch (_: Exception) {}
+                        newClient.close()
+                        continue
+                    }
 
+                    dos.writeByte(0x01)
+                    dos.flush()
+                    PairingManager.notifyPaired()
+                    Log.i(tag, "✅ PIN verified. Handshake complete with Watch")
 
-                isClientConnected = true
+                    newClient.soTimeout = 0
+                    isClientConnected = true
 
-                // Launch touch receiver thread alongside the sender thread
-                Thread({ runInputReceiver(newClient) }, "SL-InputReceiver").apply {
-                    priority = Thread.MAX_PRIORITY - 2
-                    isDaemon = true
-                    start()
+                    Thread({ runInputReceiver(newClient) }, "SL-InputReceiver").apply {
+                        priority = Thread.MAX_PRIORITY - 2
+                        isDaemon = true
+                        start()
+                    }
+                } catch (e: Exception) {
+                    Log.w(tag, "Handshake failed, dropping this client only: ${e.message}")
+                    try { newClient.close() } catch (_: Exception) {}
                 }
             }
 

@@ -14,12 +14,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicLong
+import javax.inject.Singleton
 import javax.inject.Inject
 
 /**
  * StreamingOrchestrator — the single authority that owns and coordinates
  * all streaming components: encoder, data-plane, recovery, quality control.
  */
+@Singleton
 class StreamingOrchestrator @Inject constructor(
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val scope: CoroutineScope,
@@ -30,51 +32,19 @@ class StreamingOrchestrator @Inject constructor(
     private val hardwareEncoder: HardwareEncoder,
     private val latencyTracker: com.streamlink.shared.LatencyTracker,
     private val thermalMonitor: com.streamlink.shared.ThermalMonitor,
-    private val connectionManager: com.streamlink.shared.ConnectionManager
+    private val connectionManager: com.streamlink.shared.ConnectionManager,
+    private val discovery: com.streamlink.shared.NetworkDiscovery
 ) {
     private val tag = "StreamingOrchestrator"
-    
-    init {
-        streamRouter.socketServer = socketServer
-        socketServer.onTouchEvent = { event ->
-            // Use the zero-GC ring buffer instead of direct synchronous dispatch
-            publishTouch(
-                event.phase.wireType,
-                event.pointerId,
-                event.nx,
-                event.ny,
-                event.timestampUs
-            )
-        }
-        socketServer.onControlMessage = { msg ->
-            when (msg.command) {
-                StreamProtocol.CMD_SET_BITRATE -> {
-                    Log.i(tag, "AI Reverse Control: Adjusting Bitrate to ${msg.value} kbps")
-                    hardwareEncoder.setBitrate(msg.value)
-                }
-                StreamProtocol.CMD_GLOBAL_ACTION -> {
-                    Log.i(tag, "Remote global action: ${msg.value}")
-                    com.streamlink.app.control.RemoteControlAccessibilityService.instance?.performGlobalAction(msg.value)
-                }
-            }
-        }
-        socketServer.onWatchDimensions = { w, h ->
-            // Propagate real watch screen dimensions to the touch mapper immediately
-            com.streamlink.app.control.RemoteControlAccessibilityService.instance
-                ?.updateWatchDimensions(w, h)
-        }
 
-        startRealtimeConsumer()
-        startQualityControllerWiring()
-        // Phase B: Wire auto-reconnect — ConnectionManager monitors GlobalStreamState
-        // and retries with Exponential Backoff when FAILED state is detected.
-        connectionManager.watchState(scope) {
-            Log.i(tag, "🔄 Auto-reconnect triggered by ConnectionManager")
-            scope.launch { socketServer.start() }
-            mirrorDataPlane.start(scope)
-        }
-    }
-    
+    // ============================================================
+    // ⚠️ كل الـ state properties لازم تتعرّف هنا فوق، قبل init{}.
+    // السبب: Kotlin بينفذ الـ initializers بترتيب ظهورها في الملف.
+    // لو init{} استخدم property لسه معرّفتش، بتبقى null فعليًا
+    // (حتى لو النوع non-nullable) → NPE أو race condition صامت.
+    // متضفش أي property جديدة تحت init{} — ضيفها هنا فوق بس.
+    // ============================================================
+
     private var currentWidth = com.streamlink.shared.StreamProtocol.WEAR_W_FULL
     private var currentHeight = com.streamlink.shared.StreamProtocol.WEAR_H_FULL
     private var currentFps = com.streamlink.shared.StreamProtocol.WEAR_FPS_FULL
@@ -100,8 +70,82 @@ class StreamingOrchestrator @Inject constructor(
         }
     )
 
+    private val ringCapacity = 1024
+    private val mask = ringCapacity - 1
+
+    private val phaseBuffer = ByteArray(ringCapacity)
+    private val pointerBuffer = IntArray(ringCapacity)
+    private val nxBuffer = FloatArray(ringCapacity)
+    private val nyBuffer = FloatArray(ringCapacity)
+    private val timeBuffer = LongArray(ringCapacity)
+
+    private val writeIndex = java.util.concurrent.atomic.AtomicInteger(0)
+    private val readIndex = java.util.concurrent.atomic.AtomicInteger(0)
+
+    @Volatile private var runningRealtime = true
+    private val droppedTouchEvents = AtomicLong(0L)
+
+    // ============================================================
+    // init{} دايمًا في الآخر — كل حاجة يحتاجها موجودة ومتهيأة بالفعل
+    // ============================================================
+    init {
+        streamRouter.socketServer = socketServer
+        socketServer.onTouchEvent = { event ->
+            publishTouch(
+                event.phase.wireType,
+                event.pointerId,
+                event.nx,
+                event.ny,
+                event.timestampUs
+            )
+        }
+        socketServer.onControlMessage = { msg ->
+            when (msg.command) {
+                StreamProtocol.CMD_SET_BITRATE -> {
+                    Log.i(tag, "AI Reverse Control: Adjusting Bitrate to ${msg.value} kbps")
+                    hardwareEncoder.setBitrate(msg.value)
+                }
+                StreamProtocol.CMD_GLOBAL_ACTION -> {
+                    Log.i(tag, "Remote global action: ${msg.value}")
+                    com.streamlink.app.control.RemoteControlAccessibilityService.instance?.performGlobalAction(msg.value)
+                }
+            }
+        }
+        socketServer.onWatchDimensions = { w, h ->
+            com.streamlink.app.control.RemoteControlAccessibilityService.instance
+                ?.updateWatchDimensions(w, h)
+        }
+
+        startRealtimeConsumer()
+        startQualityControllerWiring()
+        connectionManager.watchState(scope) {
+            Log.i(tag, "🔄 Auto-reconnect triggered by ConnectionManager")
+            scope.launch { 
+                discovery.publishService(com.streamlink.shared.StreamProtocol.DIRECT_SOCKET_PORT)
+                socketServer.start() 
+            }
+            mirrorDataPlane.start(scope)
+        }
+    }
+
     private fun startQualityControllerWiring() {
         intelEngine.start()
+        scope.launch {
+            // Live quality/bitrate adjustments from SettingsPrefs
+            com.streamlink.app.core.SettingsPrefs.get(context).quality.collect { quality ->
+                val newBitrate = when (quality) {
+                    com.streamlink.app.core.StreamQuality.HD720   -> 1200
+                    com.streamlink.app.core.StreamQuality.FHD1080 -> 1800
+                    com.streamlink.app.core.StreamQuality.QHD1440 -> 2600
+                }
+                if (currentBitrate != newBitrate) {
+                    currentBitrate = newBitrate
+                    hardwareEncoder.setBitrate(newBitrate)
+                    Log.i(tag, "Quality setting changed to $quality, updated encoder bitrate to $newBitrate kbps")
+                }
+            }
+        }
+
         scope.launch {
             // ✅ FIX: Only poll when a session is actually active — avoids wasting
             // CPU and battery when the app is idle.
@@ -127,25 +171,6 @@ class StreamingOrchestrator @Inject constructor(
             }
         }
     }
-    
-    // ==========================================
-    // 🔥 ZERO-GC LOCK-FREE TOUCH RING BUFFER
-    // ==========================================
-    private val ringCapacity = 1024
-    private val mask = ringCapacity - 1
-    
-    private val phaseBuffer = ByteArray(ringCapacity)
-    private val pointerBuffer = IntArray(ringCapacity)
-    private val nxBuffer = FloatArray(ringCapacity)
-    private val nyBuffer = FloatArray(ringCapacity)
-    private val timeBuffer = LongArray(ringCapacity)
-    
-    private val writeIndex = java.util.concurrent.atomic.AtomicInteger(0)
-    private val readIndex = java.util.concurrent.atomic.AtomicInteger(0)
-    
-    @Volatile private var runningRealtime = true
-    // ✅ FIX: Track silently dropped touch events for diagnostics
-    private val droppedTouchEvents = AtomicLong(0L)
 
     fun publishTouch(phase: Byte, pointerId: Int, nx: Float, ny: Float, timestampUs: Long) {
         val w = writeIndex.get()
@@ -229,107 +254,111 @@ class StreamingOrchestrator @Inject constructor(
         events.sessionStart(java.util.UUID.randomUUID().toString(), StreamProtocol.MODE_MIRROR)
 
         // 1. Start TCP Server for Watch
-        scope.launch { socketServer.start() }
+        scope.launch {
+            discovery.publishService(com.streamlink.shared.StreamProtocol.DIRECT_SOCKET_PORT)
+            socketServer.start()
+        }
 
         // 1.5 Start WebRTC Fallback for global reach
         // ✅ FIX: Read signaling URL from BuildConfig so it can be configured
         // per environment (dev/staging/prod) without changing source code.
         val signalingUrl = try {
             com.streamlink.app.BuildConfig.SIGNALING_URL
-                .takeIf { it.isNotBlank() } ?: "wss://signaling.streamlink.com"
-        } catch (_: Exception) { "wss://signaling.streamlink.com" }
+        } catch (_: Exception) { "" }
 
-        val signalingClient = com.streamlink.shared.SignalingClient(
-            backendUrl = signalingUrl,
-            userId = "streamlink_phone_1",
-            deviceType = "PHONE"
-        )
-        // تبادل مفتاح ECDH خاص بقناة HOTC عبر نفس اتصال الـsignaling (منفصل عن مفتاح TCP المحلي)
-        var hotcEncryptedChannel: com.streamlink.shared.EncryptedChannel? = null
-        val hotcKeyPair = com.streamlink.shared.KeyExchange.generateEphemeralKeyPair()
+        if (signalingUrl.isNotBlank()) {
+            val signalingClient = com.streamlink.shared.SignalingClient(
+                backendUrl = signalingUrl,
+                userId = "streamlink_phone_1",
+                deviceType = "PHONE"
+            )
+            // تبادل مفتاح ECDH خاص بقناة HOTC عبر نفس اتصال الـsignaling (منفصل عن مفتاح TCP المحلي)
+            var hotcEncryptedChannel: com.streamlink.shared.EncryptedChannel? = null
+            val hotcKeyPair = com.streamlink.shared.KeyExchange.generateEphemeralKeyPair()
 
-        val hotcChannel = com.streamlink.shared.network.WebRtcHotcChannel(context).apply {
-            onEncryptedFrameReceived = { data ->
-                val ec = hotcEncryptedChannel
-                val decrypted = if (ec != null) {
-                    try { ec.decrypt(data) } catch (e: Exception) {
-                        Log.w(tag, "HOTC decrypt failed: ${e.message}"); null
-                    }
-                } else null
-
-                if (decrypted != null && decrypted.size >= StreamProtocol.INPUT_FRAME_SIZE) {
-                    val event = com.streamlink.shared.TouchCodec.decode(decrypted)
-                    if (event != null) {
-                        com.streamlink.shared.ai.TouchPerceptionHub.onRealTouch(event)
-                        com.streamlink.app.control.RemoteControlAccessibilityService.instance?.handle(event)
-                    }
-                }
-            }
-        }
-
-        // استقبال مفتاح الساعة العام عبر قناة الـsignaling واشتقاق مفتاح الجلسة
-        // ✅ FIX: 30-second timeout on key exchange — prevents permanent CONNECTING state
-        scope.launch {
-            val keyExchangeResult = withTimeoutOrNull(30_000L) {
-                var resolved = false
-                signalingClient.messages.collect { msg ->
-                    if (msg.optString("type") == "HOTC_KEY") {
-                        val peerKey = msg.optString("payload")
-                        if (com.streamlink.shared.KeyExchange.validatePeerKey(peerKey)) {
-                            // Using the same pairing code acquired by the TCP server for consistency
-                            val sessionKey = com.streamlink.shared.KeyExchange.deriveSessionKey(hotcKeyPair, peerKey, socketServer.pairingCode)
-                            hotcEncryptedChannel = com.streamlink.shared.EncryptedChannel(sessionKey, "tcp-stream", "phone-to-watch")
-
-                            Log.i(tag, "✅ HOTC session key derived over signaling")
-                            resolved = true
-                        } else {
-                            Log.e(tag, "❌ Rejected invalid HOTC key from peer — will retry")
+            val hotcChannel = com.streamlink.shared.network.WebRtcHotcChannel(context).apply {
+                onEncryptedFrameReceived = { data ->
+                    val ec = hotcEncryptedChannel
+                    val decrypted = if (ec != null) {
+                        try { ec.decrypt(data) } catch (e: Exception) {
+                            Log.w(tag, "HOTC decrypt failed: ${e.message}"); null
                         }
-                        if (resolved) return@collect
+                    } else null
+
+                    if (decrypted != null && decrypted.size >= StreamProtocol.INPUT_FRAME_SIZE) {
+                        val event = com.streamlink.shared.TouchCodec.decode(decrypted)
+                        if (event != null) {
+                            com.streamlink.shared.ai.TouchPerceptionHub.onRealTouch(event)
+                            com.streamlink.app.control.RemoteControlAccessibilityService.instance?.handle(event)
+                        }
                     }
                 }
             }
-            if (keyExchangeResult == null) {
-                Log.w(tag, "⚠️ HOTC key exchange timed out after 30s — falling back to LAN-only mode")
-                // LAN TCP stream continues unaffected; only WebRTC relay is unavailable
+
+            // استقبال مفتاح الساعة العام عبر قناة الـsignaling واشتقاق مفتاح الجلسة
+            // ✅ FIX: 30-second timeout on key exchange — prevents permanent CONNECTING state
+            scope.launch {
+                val keyExchangeResult = withTimeoutOrNull(30_000L) {
+                    var resolved = false
+                    signalingClient.messages.collect { msg ->
+                        if (msg.optString("type") == "HOTC_KEY") {
+                            val peerKey = msg.optString("payload")
+                            if (com.streamlink.shared.KeyExchange.validatePeerKey(peerKey)) {
+                                // Using the same pairing code acquired by the TCP server for consistency
+                                val sessionKey = com.streamlink.shared.KeyExchange.deriveSessionKey(hotcKeyPair, peerKey, socketServer.pairingCode)
+                                hotcEncryptedChannel = com.streamlink.shared.EncryptedChannel(sessionKey, "tcp-stream", "phone-to-watch")
+
+                                Log.i(tag, "✅ HOTC session key derived over signaling")
+                                resolved = true
+                            } else {
+                                Log.e(tag, "❌ Rejected invalid HOTC key from peer — will retry")
+                            }
+                            if (resolved) return@collect
+                        }
+                    }
+                }
+                if (keyExchangeResult == null) {
+                    Log.w(tag, "⚠️ HOTC key exchange timed out after 30s — falling back to LAN-only mode")
+                    // LAN TCP stream continues unaffected; only WebRTC relay is unavailable
+                }
+            }
+
+            scope.launch {
+                signalingClient.connect()
+                signalingClient.sendMessage("HOTC_KEY", "broadcast", hotcKeyPair.publicKeyBase64)
+            }
+
+            webRtcTransport = com.streamlink.shared.WebRtcTransport(
+                context = context,
+                signalingClient = signalingClient,
+                isOfferer = false, // Phone acts as answerer or offerer depending on role, assume Answerer
+                hotcChannel = hotcChannel
+            )
+            streamRouter.webRtcTransport = webRtcTransport
+            webRtcTransport?.initialize()
+
+            // 2.5 Start Metrics Telemetry to Backend
+            scope.launch {
+                GlobalStreamState.snapshot.collect { state ->
+                    if (state.fps > 0 || state.bitrateKbps > 0) {
+                        val report = latencyTracker.report()
+                        val payload = org.json.JSONObject().apply {
+                            put("fps", state.fps)
+                            put("bitrateKbps", state.bitrateKbps)
+                            put("packetLossPercent", report.lateFramePct)
+                            // ✅ FIX: Skip latencyMs entirely when no samples — avoids
+                            // misleading -1 values in the dashboard / adaptive logic.
+                            if (report.avgE2EMs > 0) put("latencyMs", report.avgE2EMs)
+                            if (report.jitterMs > 0)  put("jitterMs",  report.jitterMs)
+                        }
+                        signalingClient.sendMessage("METRICS", "broadcast", payload.toString())
+                    }
+                }
             }
         }
-
-        scope.launch {
-            signalingClient.connect()
-            signalingClient.sendMessage("HOTC_KEY", "broadcast", hotcKeyPair.publicKeyBase64)
-        }
-
-        webRtcTransport = com.streamlink.shared.WebRtcTransport(
-            context = context,
-            signalingClient = signalingClient,
-            isOfferer = false, // Phone acts as answerer or offerer depending on role, assume Answerer
-            hotcChannel = hotcChannel
-        )
-        streamRouter.webRtcTransport = webRtcTransport
-        webRtcTransport?.initialize()
 
         // 2. Start Data Plane
         mirrorDataPlane.start(scope)
-
-        // 2.5 Start Metrics Telemetry to Backend
-        scope.launch {
-            GlobalStreamState.snapshot.collect { state ->
-                if (state.fps > 0 || state.bitrateKbps > 0) {
-                    val report = latencyTracker.report()
-                    val payload = org.json.JSONObject().apply {
-                        put("fps", state.fps)
-                        put("bitrateKbps", state.bitrateKbps)
-                        put("packetLossPercent", report.lateFramePct)
-                        // ✅ FIX: Skip latencyMs entirely when no samples — avoids
-                        // misleading -1 values in the dashboard / adaptive logic.
-                        if (report.avgE2EMs > 0) put("latencyMs", report.avgE2EMs)
-                        if (report.jitterMs > 0)  put("jitterMs",  report.jitterMs)
-                    }
-                    signalingClient.sendMessage("METRICS", "broadcast", payload.toString())
-                }
-            }
-        }
 
         // 3. Start MediaProjection Capture Service
         // ✅ FIX: Wait for socket server to be ready (up to 3s) before starting
@@ -377,7 +406,10 @@ class StreamingOrchestrator @Inject constructor(
         Log.i(tag, "startStream (no context) → url=$url")
         GlobalStreamState.transition(GlobalStreamState.State.CONNECTING)
         events.sessionStart(java.util.UUID.randomUUID().toString(), StreamProtocol.MODE_MIRROR)
-        scope.launch { socketServer.start() }
+        scope.launch {
+            discovery.publishService(com.streamlink.shared.StreamProtocol.DIRECT_SOCKET_PORT)
+            socketServer.start()
+        }
         mirrorDataPlane.start(scope)
         GlobalStreamState.transition(GlobalStreamState.State.STREAM_STARTING)
         GlobalStreamState.transition(GlobalStreamState.State.STREAMING)

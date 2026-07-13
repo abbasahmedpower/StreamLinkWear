@@ -184,45 +184,41 @@ class WearMainActivity : ComponentActivity() {
         setContent {
             val streamState by GlobalStreamState.snapshot.collectAsState()
             var isPinScreen by remember { mutableStateOf(true) }
-            
+
             // Auto-hide PIN screen when successfully connected and streaming
             if (streamState.state == GlobalStreamState.State.STREAMING) {
                 isPinScreen = false
             }
 
-            if (isPinScreen) {
-                WearPinScreen(pinCode = generatedPin)
-            } else {
-                var surfaceReady by remember { mutableStateOf(false) }
-                var overlayVisible by remember { mutableStateOf(true) }
+            var surfaceReady by remember { mutableStateOf(false) }
+            var overlayVisible by remember { mutableStateOf(true) }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                ) {
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory = { context ->
-                            object : SurfaceView(context) {}.apply {
-                                holder.addCallback(object : android.view.SurfaceHolder.Callback {
-                                    override fun surfaceCreated(holder: android.view.SurfaceHolder) {
-                                        streamPlayer.setSurface(holder.surface)
-                                        streamPlayer.start(lifecycleScope)
-                                        surfaceReady = true
-                                        Log.i("WearMain", "Surface ready — streaming started")
-                                    }
-                                    override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, w: Int, h: Int) {
-                                        Log.d("WearMain", "Surface changed ${w}x${h}")
-                                    }
-                                    override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
-                                        streamPlayer.setSurface(null)
-                                        surfaceReady = false
-                                    }
-                                })
-                            }
+            Box(modifier = Modifier.fillMaxSize()) {
+                // Base layer — always composed so surfaceCreated() fires immediately
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { context ->
+                        object : SurfaceView(context) {}.apply {
+                            holder.addCallback(object : android.view.SurfaceHolder.Callback {
+                                override fun surfaceCreated(holder: android.view.SurfaceHolder) {
+                                    streamPlayer.setSurface(holder.surface)
+                                    streamPlayer.start(lifecycleScope)
+                                    surfaceReady = true
+                                    Log.i("WearMain", "Surface ready — streaming started")
+                                }
+                                override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, w: Int, h: Int) {
+                                    Log.d("WearMain", "Surface changed ${w}x${h}")
+                                }
+                                override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
+                                    streamPlayer.setSurface(null)
+                                    surfaceReady = false
+                                }
+                            })
                         }
-                    )
+                    }
+                )
 
+                if (!isPinScreen) {
                     // Illusionist Surface for 0-latency perceived touch
                     if (!overlayVisible) {
                         WearInteractiveScreen(
@@ -256,6 +252,10 @@ class WearMainActivity : ComponentActivity() {
                             }
                         }
                     )
+                }
+
+                if (isPinScreen) {
+                    WearPinScreen(pinCode = generatedPin)
                 }
             }
         }

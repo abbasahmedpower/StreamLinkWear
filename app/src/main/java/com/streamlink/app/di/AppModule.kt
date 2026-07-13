@@ -38,8 +38,14 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideHardwareEncoder(): HardwareEncoder {
-        return HardwareEncoder()
+    fun provideHardwareEncoder(@ApplicationContext context: Context): HardwareEncoder {
+        val quality = com.streamlink.app.core.SettingsPrefs.get(context).quality.value
+        val initialBitrateKbps = when (quality) {
+            com.streamlink.app.core.StreamQuality.HD720   -> 1200
+            com.streamlink.app.core.StreamQuality.FHD1080 -> 1800
+            com.streamlink.app.core.StreamQuality.QHD1440 -> 2600
+        }
+        return HardwareEncoder(initialBitrateKbps = initialBitrateKbps)
     }
 
     @Provides
@@ -66,10 +72,12 @@ object AppModule {
         return MirrorDataPlane(encoder, streamRouter, metrics, backpressure)
     }
 
+
     @Provides
     @Singleton
-    fun provideLatencyTracker(): LatencyTracker = LatencyTracker()
-
+    fun provideNetworkDiscovery(@ApplicationContext context: Context): com.streamlink.shared.NetworkDiscovery {
+        return com.streamlink.shared.NetworkDiscovery(context)
+    }
 
 
     @Provides
@@ -78,20 +86,4 @@ object AppModule {
         return ThermalMonitor(context).apply { start() }
     }
 
-    @Provides
-    @Singleton
-    fun provideStreamingOrchestrator(
-        @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context,
-        scope: CoroutineScope,
-        events: EventPipeline,
-        socketServer: DirectSocketServer,
-        streamRouter: com.streamlink.shared.StreamRouter,
-        mirrorDataPlane: MirrorDataPlane,
-        hardwareEncoder: HardwareEncoder,
-        latencyTracker: LatencyTracker,
-        thermalMonitor: ThermalMonitor,
-        connectionManager: ConnectionManager
-    ): StreamingOrchestrator {
-        return StreamingOrchestrator(context, scope, events, socketServer, streamRouter, mirrorDataPlane, hardwareEncoder, latencyTracker, thermalMonitor, connectionManager)
-    }
 }

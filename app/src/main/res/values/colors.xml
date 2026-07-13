@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Background colour referenced by themes.xml — must live in colors.xml not Color.kt -->
+    <color name="sl_background">#0F141B</color>
+</resources>

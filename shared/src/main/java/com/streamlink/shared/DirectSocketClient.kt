@@ -49,6 +49,7 @@ class DirectSocketClient(
         onStateChange: (Boolean) -> Unit,
         onChunk: ((WireChunk) -> Unit)? = null
     ) = withContext(Dispatchers.IO) {
+        discovery.startDiscovery()
         var attempt = 0
         val maxAttempts = 10
 
@@ -137,6 +138,7 @@ class DirectSocketClient(
         }
         onStateChange(false)
         Log.e(tag, "Max reconnect attempts exceeded")
+        discovery.stopDiscovery()
     }
 
     private fun receiveLoop(

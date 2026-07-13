@@ -5,7 +5,7 @@ import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import com.streamlink.shared.util.safeSystemService
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -39,7 +39,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
     @Inject lateinit var orchestrator: StreamingOrchestrator
 
@@ -98,24 +98,26 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            MaterialTheme(
-                colorScheme = darkColorScheme(
-                    primary   = Color(0xFF7C4DFF),
-                    secondary = Color(0xFF03DAC6),
-                    background = Color(0xFF0A0A12),
-                    surface   = Color(0xFF13131F)
-                )
-            ) {
-                var showInfoScreen by remember { mutableStateOf(false) }
+            val settingsPrefs = remember { com.streamlink.app.core.SettingsPrefs.get(this@MainActivity) }
+            var themeMode by remember { mutableStateOf(com.streamlink.app.ui.theme.ThemeMode.SYSTEM) }
 
-                if (showInfoScreen) {
-                    InfoScreen(onBack = { showInfoScreen = false })
-                } else {
-                    StreamLinkPhoneScreen(
+            com.streamlink.app.ui.theme.StreamLinkTheme(themeMode = themeMode) {
+                var showInfoScreen by remember { mutableStateOf(false) }
+                var showSettingsScreen by remember { mutableStateOf(false) }
+
+                when {
+                    showSettingsScreen -> SettingsScreen(
+                        onBack = { showSettingsScreen = false },
+                        themeMode = themeMode,
+                        onThemeModeChange = { themeMode = it }
+                    )
+                    showInfoScreen -> InfoScreen(onBack = { showInfoScreen = false })
+                    else -> StreamLinkPhoneScreen(
                         orchestrator = orchestrator,
                         onStartCapture = { requestScreenCapture() },
                         onStop = { orchestrator.stopStream(this@MainActivity) },
-                        onInfoClick = { showInfoScreen = true }
+                        onInfoClick = { showInfoScreen = true },
+                        onSettingsClick = { showSettingsScreen = true }
                     )
                 }
             }
@@ -146,7 +148,8 @@ fun StreamLinkPhoneScreen(
     orchestrator: StreamingOrchestrator,
     onStartCapture: () -> Unit,
     onStop: () -> Unit,
-    onInfoClick: () -> Unit
+    onInfoClick: () -> Unit,
+    onSettingsClick: () -> Unit
 ) {
     val state by GlobalStreamState.snapshot.collectAsStateWithLifecycle()
     val isStreaming  = state.state == GlobalStreamState.State.STREAMING
@@ -155,27 +158,27 @@ fun StreamLinkPhoneScreen(
 
     var aiEnabled by remember { mutableStateOf(true) }
 
-    val bgBrush = Brush.verticalGradient(
-        colors = listOf(Color(0xFF0A0A12), Color(0xFF13131F))
-    )
-
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(bgBrush)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         if (isStreaming) {
             PhoneRenderSurface(modifier = Modifier.fillMaxSize())
         }
 
-        // Info Button (Top Right)
-        IconButton(
-            onClick = onInfoClick,
+        // Top Right Actions
+        Row(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(16.dp)
         ) {
-            Text("ℹ️", fontSize = 24.sp)
+            IconButton(onClick = onSettingsClick) {
+                Text("⚙️", fontSize = 22.sp)
+            }
+            IconButton(onClick = onInfoClick) {
+                Text("ℹ️", fontSize = 24.sp)
+            }
         }
 
         Column(
@@ -190,12 +193,12 @@ fun StreamLinkPhoneScreen(
                 text = "StreamLink",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF7C4DFF)
+                color = MaterialTheme.colorScheme.primary
             )
             Text(
                 text = "Screen Mirror to Wear OS",
                 fontSize = 14.sp,
-                color = Color(0xFF888899)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(Modifier.height(8.dp))
@@ -223,7 +226,7 @@ fun StreamLinkPhoneScreen(
                 Button(
                     onClick = onStop,
                     modifier = Modifier.fillMaxWidth().height(56.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFCF6679)),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Text("Stop Casting", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -245,11 +248,11 @@ private fun NetworkQualityBar(latencyMs: Long, bitrateKbps: Int) {
         else                     -> "Poor"
     }
     val (barColor, barFraction) = when (quality) {
-        "Excellent" -> Pair(Color(0xFF4CAF50), 1.00f)
-        "Good"      -> Pair(Color(0xFF8BC34A), 0.72f)
-        "Degraded"  -> Pair(Color(0xFFFFB300), 0.44f)
-        "Poor"      -> Pair(Color(0xFFEF5350), 0.18f)
-        else        -> Pair(Color(0xFF444455), 0.00f)
+        "Excellent" -> Pair(com.streamlink.app.ui.theme.SemanticColors.Excellent, 1.00f)
+        "Good"      -> Pair(com.streamlink.app.ui.theme.SemanticColors.Good, 0.72f)
+        "Degraded"  -> Pair(com.streamlink.app.ui.theme.SemanticColors.Degraded, 0.44f)
+        "Poor"      -> Pair(com.streamlink.app.ui.theme.SemanticColors.Poor, 0.18f)
+        else        -> Pair(com.streamlink.app.ui.theme.SemanticColors.Neutral, 0.00f)
     }
     val animFraction by animateFloatAsState(
         targetValue = barFraction,
@@ -260,7 +263,7 @@ private fun NetworkQualityBar(latencyMs: Long, bitrateKbps: Int) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        color = Color(0xFF1C1C2E)
+        color = MaterialTheme.colorScheme.surfaceVariant
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
@@ -268,14 +271,14 @@ private fun NetworkQualityBar(latencyMs: Long, bitrateKbps: Int) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Network Quality", fontSize = 11.sp, color = Color(0xFF888899), fontWeight = FontWeight.Medium)
+                Text("Network Quality", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
                 Text(quality, fontSize = 11.sp, color = barColor, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(6.dp))
             Box(
                 modifier = Modifier.fillMaxWidth().height(5.dp)
                     .clip(RoundedCornerShape(3.dp))
-                    .background(Color(0xFF2A2A40))
+                    .background(MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Box(
                     modifier = Modifier.fillMaxWidth(animFraction).fillMaxHeight()
@@ -292,7 +295,7 @@ private fun AiToggleRow(enabled: Boolean, onToggle: (Boolean) -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        color = Color(0xFF1C1C2E)
+        color = MaterialTheme.colorScheme.surfaceVariant
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -300,20 +303,20 @@ private fun AiToggleRow(enabled: Boolean, onToggle: (Boolean) -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
-                Text("AI Bitrate Optimizer", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                Text("AI Bitrate Optimizer", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                 Text(
-                    text = if (enabled) "TFLite active — adapting in real-time" else "Manual / fixed bitrate",
+                    text = if (enabled) "Adaptive bitrate — optimizing in real-time" else "Manual / fixed bitrate",
                     fontSize = 10.sp,
-                    color = if (enabled) Color(0xFF7C4DFF) else Color(0xFF888899)
+                    color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Switch(
                 checked = enabled,
                 onCheckedChange = onToggle,
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor   = Color.White,
-                    checkedTrackColor   = Color(0xFF7C4DFF),
-                    uncheckedTrackColor = Color(0xFF2A2A40)
+                    checkedThumbColor   = MaterialTheme.colorScheme.onPrimary,
+                    checkedTrackColor   = MaterialTheme.colorScheme.primary,
+                    uncheckedTrackColor = MaterialTheme.colorScheme.outlineVariant
                 )
             )
         }
@@ -329,9 +332,9 @@ private fun StreamStatusCard(
     latencyMs: Long
 ) {
     val statusColor = when {
-        isStreaming  -> Color(0xFF4CAF50)
-        isConnecting -> Color(0xFFFFB300)
-        else         -> Color(0xFF555566)
+        isStreaming  -> com.streamlink.app.ui.theme.SemanticColors.Streaming
+        isConnecting -> com.streamlink.app.ui.theme.SemanticColors.Connecting
+        else         -> com.streamlink.app.ui.theme.SemanticColors.Idle
     }
     val statusLabel = when {
         isStreaming  -> "● LIVE"
@@ -342,7 +345,7 @@ private fun StreamStatusCard(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = Color(0xFF1C1C2E),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         tonalElevation = 4.dp
     ) {
         Column(
@@ -374,8 +377,8 @@ private fun StreamStatusCard(
 @Composable
 private fun MetricPill(label: String, value: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-        Text(label, color = Color(0xFF888899), fontSize = 11.sp)
+        Text(value, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
     }
 }
 
@@ -399,7 +402,7 @@ private fun PulsingCastButton(onClick: () -> Unit) {
             .fillMaxWidth()
             .height(64.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF7C4DFF)
+            containerColor = MaterialTheme.colorScheme.primary
         ),
         shape = RoundedCornerShape(20.dp),
         elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp)
@@ -408,7 +411,7 @@ private fun PulsingCastButton(onClick: () -> Unit) {
             "▶  Start Casting Screen",
             fontSize = 17.sp,
             fontWeight = FontWeight.Bold,
-            color = Color.White
+            color = MaterialTheme.colorScheme.onPrimary
         )
     }
 }

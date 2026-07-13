@@ -2,7 +2,7 @@ package com.streamlink.app.ui
 
 import android.os.Bundle
 import android.widget.Toast
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -40,7 +40,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class MobilePinInputActivity : ComponentActivity() {
+class MobilePinInputActivity : AppCompatActivity() {
 
     @Inject
     lateinit var socketServer: DirectSocketServer

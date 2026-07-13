@@ -1,0 +1,5 @@
+# ninja log v5
+1	1494	8047428703552000	CMakeFiles/streamengine.dir/stream_engine.cpp.o	4284407433df19d3
+1497	1818	8047428706730484	D:/projects and VS/projects/android/StreamLinkWear_Phase1/app/build/intermediates/cxx/RelWithDebInfo/4v364sp7/obj/arm64-v8a/libstreamengine.so	26c38a48e0c6c548
+0	21	0	clean	df73bb5c185647d3
+0	15	0	clean	df73bb5c185647d3

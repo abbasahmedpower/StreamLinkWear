@@ -1,0 +1,14 @@
+# ninja log v5
+1	1901	8045631990891555	CMakeFiles/streamengine.dir/stream_engine.cpp.o	bdeab6e0f830e3d6
+1907	2102	8045631992906784	D:/projects and VS/projects/android/StreamLinkWear_Phase1/app/build/intermediates/cxx/Debug/1z1d5hc5/obj/armeabi-v7a/libstreamengine.so	a909759bc4af6f64
+4	881	8045633076953675	CMakeFiles/streamengine.dir/stream_engine.cpp.o	5384a1f3b8578a16
+882	1055	8045633078723453	D:/projects and VS/projects/android/StreamLinkWear_Phase1/app/build/intermediates/cxx/Debug/1z1d5hc5/obj/armeabi-v7a/libstreamengine.so	eea429b62e1754d8
+0	23	0	clean	df73bb5c185647d3
+6	1276	8047418731706926	CMakeFiles/streamengine.dir/stream_engine.cpp.o	5384a1f3b8578a16
+1277	1553	8047418735277734	D:/projects and VS/projects/android/StreamLinkWear_Phase1/app/build/intermediates/cxx/Debug/1z1d5hc5/obj/armeabi-v7a/libstreamengine.so	eea429b62e1754d8
+0	34	0	clean	df73bb5c185647d3
+16	1758	8047659991886885	CMakeFiles/streamengine.dir/stream_engine.cpp.o	5384a1f3b8578a16
+1760	2397	8047659998507270	D:/projects and VS/projects/android/StreamLinkWear_Phase1/app/build/intermediates/cxx/Debug/1z1d5hc5/obj/armeabi-v7a/libstreamengine.so	eea429b62e1754d8
+0	16	0	clean	df73bb5c185647d3
+11	1587	8047662092350348	CMakeFiles/streamengine.dir/stream_engine.cpp.o	5384a1f3b8578a16
+1588	1843	8047662094898482	D:/projects and VS/projects/android/StreamLinkWear_Phase1/app/build/intermediates/cxx/Debug/1z1d5hc5/obj/armeabi-v7a/libstreamengine.so	eea429b62e1754d8

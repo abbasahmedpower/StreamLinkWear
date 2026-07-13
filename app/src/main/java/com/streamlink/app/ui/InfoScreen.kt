@@ -13,7 +13,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -23,19 +22,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamlink.app.R
-import com.streamlink.app.about.AboutStrings
 
 @Composable
 fun InfoScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val bgBrush = Brush.verticalGradient(
-        colors = listOf(Color(0xFF040B16), Color(0xFF0A192F))
-    )
-
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(bgBrush)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         Column(
             modifier = Modifier
@@ -49,7 +43,7 @@ fun InfoScreen(onBack: () -> Unit) {
                 modifier = Modifier
                     .size(160.dp)
                     .clip(CircleShape),
-                color = Color(0xFF112240),
+                color = MaterialTheme.colorScheme.surfaceVariant,
                 tonalElevation = 12.dp,
                 shadowElevation = 8.dp
             ) {
@@ -65,10 +59,10 @@ fun InfoScreen(onBack: () -> Unit) {
 
             // Company Name
             Text(
-                text = AboutStrings.get("app_name"),
+                text = androidx.compose.ui.res.stringResource(R.string.app_title),
                 fontSize = 32.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = Color(0xFF64FFDA), // Cyan/Teal tone
+                color = MaterialTheme.colorScheme.primary, // Using primary from MaterialTheme
                 textAlign = TextAlign.Center
             )
 
@@ -77,7 +71,7 @@ fun InfoScreen(onBack: () -> Unit) {
             // Developer Info
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF112240)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(
@@ -85,16 +79,16 @@ fun InfoScreen(onBack: () -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = AboutStrings.get("developer"),
+                        text = androidx.compose.ui.res.stringResource(R.string.info_developer_label),
                         fontSize = 16.sp,
-                        color = Color(0xFF8892B0)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "Eng/Abbas AboAlatta",
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFE6F1FF)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -115,10 +109,10 @@ fun InfoScreen(onBack: () -> Unit) {
                         }
                         context.startActivity(Intent.createChooser(intent, "Send Email"))
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF233554)),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(AboutStrings.get("contact"), color = Color(0xFF64FFDA))
+                    Text(androidx.compose.ui.res.stringResource(R.string.info_send_email), color = MaterialTheme.colorScheme.onSecondaryContainer)
                 }
 
                 // Website
@@ -127,10 +121,10 @@ fun InfoScreen(onBack: () -> Unit) {
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://horus-alferdous.com"))
                         context.startActivity(intent)
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF233554)),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(AboutStrings.get("website"), color = Color(0xFF64FFDA))
+                    Text(androidx.compose.ui.res.stringResource(R.string.info_website_label), color = MaterialTheme.colorScheme.onSecondaryContainer)
                 }
             }
 
@@ -138,9 +132,9 @@ fun InfoScreen(onBack: () -> Unit) {
 
             // Version Info
             Text(
-                text = "${AboutStrings.get("version")} 4.0-ultra",
+                text = "${androidx.compose.ui.res.stringResource(R.string.info_version_label)} 4.0-ultra",
                 fontSize = 14.sp,
-                color = Color(0xFF8892B0),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Medium
             )
 
@@ -152,10 +146,10 @@ fun InfoScreen(onBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF64FFDA)),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Text("Back to Home", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0A192F))
+                Text(androidx.compose.ui.res.stringResource(R.string.info_back_home), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
             }
         }
     }

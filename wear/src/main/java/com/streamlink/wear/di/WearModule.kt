@@ -63,4 +63,10 @@ object WearModule {
             android.util.Log.i("SmartWatchUXEngine", "Dynamic params: ${bitrate}bps, ${fps}fps")
         }
     }
+
+    @Provides
+    @Singleton
+    fun provideStreamHapticFeedback(@ApplicationContext context: Context): com.streamlink.wear.ux.StreamHapticFeedback {
+        return com.streamlink.wear.ux.StreamHapticFeedback(context)
+    }
 }
