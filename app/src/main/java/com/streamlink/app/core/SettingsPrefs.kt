@@ -14,19 +14,21 @@ class SettingsPrefs private constructor(context: Context) {
     )
     val quality: StateFlow<StreamQuality> = _quality
 
-    private val _bufferSeconds = MutableStateFlow(prefs.getInt("buffer_s", 30))
-    val bufferSeconds: StateFlow<Int> = _bufferSeconds
+    // ✅ FIXED: كان bufferSeconds بمدى 10-60 ثانية — delay حرفي كان هيكسر
+    // أي تفاعل remote-control. بقى bufferJitterMs بمدى واقعي (0-800ms)،
+    // وموصول فعليًا بـ DirectStreamPlayer على الساعة عبر control channel.
+    private val _bufferJitterMs = MutableStateFlow(prefs.getInt("buffer_jitter_ms", 150))
+    val bufferJitterMs: StateFlow<Int> = _bufferJitterMs
 
     fun setQuality(q: StreamQuality) {
         _quality.value = q
         prefs.edit().putString("quality", q.name).apply()
-        // TODO: غير موصولة بمحرك التشفير الفعلي (HardwareEncoder) — راجع StartStreamingUseCase.kt
-        // لتوصيل القيمة دي فعليًا بـ profile الترميز.
     }
-    fun setBufferSeconds(s: Int) {
-        _bufferSeconds.value = s
-        prefs.edit().putInt("buffer_s", s).apply()
-        // TODO: غير موصولة بـ BackpressureController.kt الفعلي.
+
+    fun setBufferJitterMs(ms: Int) {
+        val clamped = ms.coerceIn(0, 800)
+        _bufferJitterMs.value = clamped
+        prefs.edit().putInt("buffer_jitter_ms", clamped).apply()
     }
 
     companion object {

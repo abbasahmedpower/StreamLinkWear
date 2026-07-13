@@ -147,6 +147,24 @@ class StreamingOrchestrator @Inject constructor(
         }
 
         scope.launch {
+            // مزامنة فورية — أي تغيير في bufferJitterMs يتبعت للساعة على طول
+            com.streamlink.app.core.SettingsPrefs.get(context).bufferJitterMs.collect { ms ->
+                socketServer.sendControlToWatch(StreamProtocol.CMD_SET_BUFFER_JITTER_MS, ms)
+            }
+        }
+
+        scope.launch {
+            // كمان نبعت القيمة الحالية فور اكتمال أي pairing جديد، عشان ساعة
+            // اتصلت لسه متفضلش شغالة بالـ default المبرمج جوه الكود
+            com.streamlink.shared.PairingManager.state.collect { state ->
+                if (state is com.streamlink.shared.PairingManager.PairingState.Paired) {
+                    val ms = com.streamlink.app.core.SettingsPrefs.get(context).bufferJitterMs.value
+                    socketServer.sendControlToWatch(StreamProtocol.CMD_SET_BUFFER_JITTER_MS, ms)
+                }
+            }
+        }
+
+        scope.launch {
             // ✅ FIX: Only poll when a session is actually active — avoids wasting
             // CPU and battery when the app is idle.
             GlobalStreamState.snapshot.collect { snapshot ->

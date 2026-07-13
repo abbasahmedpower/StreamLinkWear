@@ -47,7 +47,8 @@ class DirectSocketClient(
 
     suspend fun connect(
         onStateChange: (Boolean) -> Unit,
-        onChunk: ((WireChunk) -> Unit)? = null
+        onChunk: ((WireChunk) -> Unit)? = null,
+        onControlMessage: ((ControlCodec.ControlMessage) -> Unit)? = null
     ) = withContext(Dispatchers.IO) {
         discovery.startDiscovery()
         var attempt = 0
@@ -128,7 +129,7 @@ class DirectSocketClient(
                 
                 // Launch touch sender as a sibling coroutine alongside the receive loop
                 startTouchSenderOnce()
-                receiveLoop(s.inputStream, onChunk)
+                receiveLoop(s.inputStream, onChunk, onControlMessage)
                 
                 onStateChange(false)
             } catch (e: IOException) {
@@ -143,7 +144,8 @@ class DirectSocketClient(
 
     private fun receiveLoop(
         stream: java.io.InputStream,
-        onChunk: ((WireChunk) -> Unit)?
+        onChunk: ((WireChunk) -> Unit)?,
+        onControlMessage: ((ControlCodec.ControlMessage) -> Unit)? = null
     ) {
         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DISPLAY)
         val dis = java.io.DataInputStream(stream)
@@ -183,6 +185,22 @@ class DirectSocketClient(
                 val buffer = java.nio.ByteBuffer.wrap(decrypted, 0, decryptedSize).order(java.nio.ByteOrder.BIG_ENDIAN)
 
                 val magic = buffer.getInt()
+
+                // ✅ رسايل تحكم من الموبايل (زي تحديث jitter-buffer) بتستخدم نفس
+                // الـ wire المرقّم بالطول بس بـ magic مختلف. لازم نتعامل معاها هنا
+                // ونعمل continue — مش نسيبها توصل للـ fatal check تحت اللي بيقفل الاتصال.
+                if (magic == StreamProtocol.MAGIC_NUMBER_CONTROL) {
+                    if (decryptedSize >= 10) {
+                        val version = buffer.get()
+                        if (version == StreamProtocol.PROTOCOL_VERSION) {
+                            val command = buffer.get().toInt()
+                            val value = buffer.getInt()
+                            onControlMessage?.invoke(ControlCodec.ControlMessage(command, value))
+                        }
+                    }
+                    continue
+                }
+
                 if (magic != StreamProtocol.MAGIC_NUMBER) {
                     Log.e(tag, "Invalid MAGIC_NUMBER. Expected ${StreamProtocol.MAGIC_NUMBER}, got $magic")
                     return

@@ -44,6 +44,9 @@ class DirectSocketServer {
     }
     private val bytesSent = AtomicLong(0L)
 
+    private data class ControlTask(val payload: ByteArray)
+    private val controlQueue = LockFreeSpscQueue<ControlTask>(16)
+
     // Queue Metrics
     val queueDepth: Int get() = iFrameQueue.size + pFrameQueue.size
     @Volatile var droppedFrames: Long = 0L
@@ -227,6 +230,37 @@ class DirectSocketServer {
         var cachedForSocket: Socket? = null
         while (running.get() && !Thread.currentThread().isInterrupted) {
             try {
+                // ✅ رسايل التحكم (زي jitter-buffer target) بيتاخد لها أولوية —
+                // صغيرة وحساسة للتوقيت، ولازم تعدي من نفس الـ thread ده بالظبط.
+                val ctrl = controlQueue.poll()
+                if (ctrl != null) {
+                    val socket = clientSocket
+                    if (socket != null && !socket.isClosed) {
+                        try {
+                            if (cachedDos == null || cachedForSocket !== socket) {
+                                cachedDos = java.io.DataOutputStream(socket.outputStream)
+                                cachedForSocket = socket
+                            }
+                            val ec = encryptedChannel
+                            if (ec != null) {
+                                val encWire = WireBufferPool.acquire()
+                                val outSize = ec.encrypt(ctrl.payload, 0, ctrl.payload.size, encWire, 0)
+                                cachedDos!!.writeInt(outSize)
+                                cachedDos!!.write(encWire, 0, outSize)
+                                WireBufferPool.release(encWire)
+                            } else {
+                                cachedDos!!.writeInt(ctrl.payload.size)
+                                cachedDos!!.write(ctrl.payload)
+                            }
+                        } catch (e: IOException) {
+                            Log.w(tag, "Control send failed: ${e.message}")
+                            cachedDos = null
+                            cachedForSocket = null
+                        }
+                    }
+                    continue
+                }
+
                 var task = iFrameQueue.poll()
                 if (task == null) task = pFrameQueue.poll()
 
@@ -324,6 +358,21 @@ class DirectSocketServer {
             }
         }
         return true
+    }
+
+    /**
+     * يبعت أمر تحكم للساعة (phone → watch). بيتمرر عبر نفس الـ sender thread
+     * بتاع الفيديو عشان مايحصلش تداخل كتابة على نفس الـ DataOutputStream
+     * من تريدين مختلفين في نفس الوقت.
+     */
+    @Synchronized
+    fun sendControlToWatch(command: Int, value: Int) {
+        if (!isClientConnected) return
+        val payload = ByteArray(10)
+        ControlCodec.encodeDirect(command, value, payload)
+        if (!controlQueue.offer(ControlTask(payload))) {
+            Log.w(tag, "Control queue full — dropping command=$command")
+        }
     }
 
     private fun closeClient() {

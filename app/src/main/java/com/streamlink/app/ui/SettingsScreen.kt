@@ -43,7 +43,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val prefs = remember { SettingsPrefs.get(context) }
     val quality by prefs.quality.collectAsState()
-    val bufferSeconds by prefs.bufferSeconds.collectAsState()
+    val bufferJitterMs by prefs.bufferJitterMs.collectAsState()
     // ✅ تحقق: نفس النمط المستخدم فعليًا في MainActivity.kt سطر 151 (collectAsStateWithLifecycle)
     val streamState by GlobalStreamState.snapshot.collectAsStateWithLifecycle()
     val isStreaming = streamState.state == GlobalStreamState.State.STREAMING
@@ -121,13 +121,13 @@ fun SettingsScreen(
                             Column {
                                 Text(stringResource(R.string.settings_buffer_size), style = MaterialTheme.typography.bodyLarge)
                                 Text(
-                                    "${bufferSeconds}s · " + stringResource(R.string.settings_buffer_recommended),
+                                    "${bufferJitterMs}ms · " + stringResource(R.string.settings_buffer_recommended),
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(onClick = { if (bufferSeconds > 10) prefs.setBufferSeconds(bufferSeconds - 5) }) { Text("−", fontWeight = FontWeight.Bold) }
-                                IconButton(onClick = { if (bufferSeconds < 60) prefs.setBufferSeconds(bufferSeconds + 5) }) { Text("+", fontWeight = FontWeight.Bold) }
+                                IconButton(onClick = { if (bufferJitterMs > 0) prefs.setBufferJitterMs(bufferJitterMs - 50) }) { Text("−", fontWeight = FontWeight.Bold) }
+                                IconButton(onClick = { if (bufferJitterMs < 800) prefs.setBufferJitterMs(bufferJitterMs + 50) }) { Text("+", fontWeight = FontWeight.Bold) }
                             }
                         }
                     }

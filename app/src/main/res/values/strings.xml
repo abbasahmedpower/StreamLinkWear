@@ -40,8 +40,8 @@
     <string name="settings_status_idle">Idle — Not Casting</string>
     <string name="settings_streaming_settings">Streaming Settings</string>
     <string name="settings_default_quality">Default Quality</string>
-    <string name="settings_buffer_size">Buffer Size</string>
-    <string name="settings_buffer_recommended">Recommended for stability</string>
+    <string name="settings_buffer_size">Jitter Buffer</string>
+    <string name="settings_buffer_recommended">Absorbs network jitter (0–800ms)</string>
     <string name="settings_appearance">Appearance</string>
     <string name="settings_theme_mode">Theme Mode</string>
     <string name="settings_theme_system">System</string>

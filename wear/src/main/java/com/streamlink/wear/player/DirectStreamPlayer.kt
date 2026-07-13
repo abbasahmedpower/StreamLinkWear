@@ -55,6 +55,14 @@ class DirectStreamPlayer @Inject constructor(
     // ✅ Single reused BufferInfo (no per-frame allocation)
     private val bufferInfo = MediaCodec.BufferInfo()
 
+    // ✅ Jitter buffer target — بيتزامن Live من الموبايل عبر CMD_SET_BUFFER_JITTER_MS.
+    // 0 = نفس السلوك القديم zero-buffer المباشر.
+    @Volatile private var bufferTargetMs: Long = 150L
+
+    private data class TimedNal(val nal: FrameAssembler.AssembledNal, val arrivalUptimeMs: Long)
+    private val jitterQueue = ArrayDeque<TimedNal>(64)
+    private val jitterQueueLock = Any()
+
     fun setSurface(surface: Surface?) {
         this.surface = surface
     }
@@ -72,8 +80,9 @@ class DirectStreamPlayer @Inject constructor(
                 onStateChange = { connected ->
                     Log.i(tag, "Socket connected=$connected")
                     if (!connected) {
-                        idrReceived.set(false)  // Reset IDR gate on reconnect
+                        idrReceived.set(false)
                         assembler.reset()
+                        synchronized(jitterQueueLock) { jitterQueue.clear() }
                     }
                 },
                 onChunk = { chunk ->
@@ -82,6 +91,12 @@ class DirectStreamPlayer @Inject constructor(
                     } else {
                         val assembled = assembler.onChunk(chunk) ?: return@connect
                         feedDecoder(assembled)
+                    }
+                },
+                onControlMessage = { msg ->
+                    if (msg.command == StreamProtocol.CMD_SET_BUFFER_JITTER_MS) {
+                        bufferTargetMs = msg.value.toLong().coerceIn(0L, 800L)
+                        Log.i(tag, "Jitter buffer target updated → ${bufferTargetMs}ms")
                     }
                 }
             )
@@ -166,14 +181,37 @@ class DirectStreamPlayer @Inject constructor(
     private fun feedDecoder(nal: FrameAssembler.AssembledNal) {
         if (released.get()) return
 
-        // IDR gate: don't start decoding until first keyframe
         if (!idrReceived.get()) {
             if (!nal.isKeyframe) return
             idrReceived.set(true)
             Log.i(tag, "First IDR received — decoding started")
         }
 
-        decoderCallback.enqueueNal(nal)
+        if (bufferTargetMs <= 0L) {
+            decoderCallback.enqueueNal(nal)   // نفس السلوك القديم zero-buffer
+            return
+        }
+
+        val timed = TimedNal(nal, android.os.SystemClock.uptimeMillis())
+        synchronized(jitterQueueLock) {
+            if (jitterQueue.size >= 64) {
+                jitterQueue.removeFirstOrNull()
+                Log.w(tag, "Jitter queue overflow — dropped oldest buffered NAL")
+            }
+            jitterQueue.addLast(timed)
+        }
+        decoderHandler.postDelayed({ drainDueNals() }, bufferTargetMs)
+    }
+
+    private fun drainDueNals() {
+        val now = android.os.SystemClock.uptimeMillis()
+        val due = ArrayList<FrameAssembler.AssembledNal>(4)
+        synchronized(jitterQueueLock) {
+            while (jitterQueue.isNotEmpty() && now - jitterQueue.first().arrivalUptimeMs >= bufferTargetMs) {
+                due.add(jitterQueue.removeFirst().nal)
+            }
+        }
+        due.forEach { decoderCallback.enqueueNal(it) }
     }
 
     private fun submitNalToBuffer(
@@ -202,6 +240,7 @@ class DirectStreamPlayer @Inject constructor(
             audioEngine.stop()
             connectJob?.cancel()
             client.close()
+            synchronized(jitterQueueLock) { jitterQueue.clear() }
             try {
                 decoder?.stop()
                 decoder?.release()
