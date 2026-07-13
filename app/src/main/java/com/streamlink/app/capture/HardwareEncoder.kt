@@ -125,7 +125,7 @@ class HardwareEncoder(
         
         // ✅ FIX: Hysteresis — prevent rapid reconfigurations that cause video stuttering
         val now = System.currentTimeMillis()
-        if (now - lastReconfigureMs < 1000L) {
+        if (now - lastReconfigureMs < 2000L) {
             Log.d(tag, "Ignoring rapid reconfigure request (${now - lastReconfigureMs}ms ago)")
             return
         }
@@ -174,7 +174,7 @@ class HardwareEncoder(
                 return
             }
 
-            if (info.size <= 0) {
+            if (info.size <= 0 || paused.get()) {
                 codec.releaseOutputBuffer(index, false)
                 return
             }
@@ -276,6 +276,29 @@ class HardwareEncoder(
         encoderThread.quit()
         outputChannel.close()
         Log.i(tag, "Encoder released")
+    }
+
+    private val paused = AtomicBoolean(false)
+
+    fun pause() {
+        if (!paused.compareAndSet(false, true)) return
+        Log.i(tag, "Encoder paused to save battery/thermal")
+    }
+
+    fun resume() {
+        if (!paused.compareAndSet(true, false)) return
+        Log.i(tag, "Encoder resumed")
+        forceKeyframe()
+    }
+
+    fun setThermalThrottled(throttled: Boolean) {
+        val priority = if (throttled) Process.THREAD_PRIORITY_DISPLAY else Process.THREAD_PRIORITY_URGENT_DISPLAY
+        try {
+            Process.setThreadPriority(encoderThread.threadId, priority)
+            Log.i(tag, "Encoder thread priority updated (throttled=$throttled)")
+        } catch (e: Exception) {
+            Log.w(tag, "Failed to update thread priority: ${e.message}")
+        }
     }
 
     fun currentBitrateKbps(): Int = currentBitrateKbps

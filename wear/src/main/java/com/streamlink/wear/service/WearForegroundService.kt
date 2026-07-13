@@ -114,7 +114,10 @@ class WearForegroundService : Service() {
         wakeLock = pm.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
             "StreamLinkWear::StreamWakeLock"
-        ).apply { acquire(30 * 60 * 1000L)  } // 30 min max
+        ).apply {
+            setReferenceCounted(false)
+            acquire(30 * 60 * 1000L) // 30 min max
+        }
     }
 
     private fun releaseWakeLock() {
@@ -134,6 +137,9 @@ class WearForegroundService : Service() {
             .setSmallIcon(android.R.drawable.ic_media_play) // Mandatory for foreground service
             .setContentIntent(openIntent)
             .setOngoing(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setLocalOnly(true)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()
     }
 

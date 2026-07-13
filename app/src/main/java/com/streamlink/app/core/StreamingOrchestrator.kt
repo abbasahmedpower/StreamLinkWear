@@ -118,6 +118,7 @@ class StreamingOrchestrator @Inject constructor(
 
         startRealtimeConsumer()
         startQualityControllerWiring()
+        startBatteryListener()
         connectionManager.watchState(scope) {
             Log.i(tag, "🔄 Auto-reconnect triggered by ConnectionManager")
             scope.launch { 
@@ -128,8 +129,29 @@ class StreamingOrchestrator @Inject constructor(
         }
     }
 
+    private fun startBatteryListener() {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                val level = intent?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                val scale = intent?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1) ?: -1
+                if (level != -1 && scale != -1) {
+                    val pct = (level * 100) / scale
+                    if (pct <= 20) {
+                        hardwareEncoder.setThermalThrottled(true)
+                        Log.i(tag, "Battery <= 20%, applying thermal/battery throttle")
+                    } else {
+                        hardwareEncoder.setThermalThrottled(false)
+                    }
+                }
+            }
+        }
+        context.registerReceiver(
+            receiver, 
+            android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED)
+        )
+    }
+
     private fun startQualityControllerWiring() {
-        intelEngine.start()
         scope.launch {
             // Live quality/bitrate adjustments from SettingsPrefs
             com.streamlink.app.core.SettingsPrefs.get(context).quality.collect { quality ->
@@ -378,6 +400,9 @@ class StreamingOrchestrator @Inject constructor(
         // 2. Start Data Plane
         mirrorDataPlane.start(scope)
 
+        intelEngine.start()
+        hardwareEncoder.resume()
+
         // 3. Start MediaProjection Capture Service
         // ✅ FIX: Wait for socket server to be ready (up to 3s) before starting
         // capture, ensuring encoder has a destination before producing frames.
@@ -428,6 +453,8 @@ class StreamingOrchestrator @Inject constructor(
             discovery.publishService(com.streamlink.shared.StreamProtocol.DIRECT_SOCKET_PORT)
             socketServer.start()
         }
+        intelEngine.start()
+        hardwareEncoder.resume()
         mirrorDataPlane.start(scope)
         GlobalStreamState.transition(GlobalStreamState.State.STREAM_STARTING)
         GlobalStreamState.transition(GlobalStreamState.State.STREAMING)
@@ -435,6 +462,8 @@ class StreamingOrchestrator @Inject constructor(
 
     fun stopStream(context: Context) {
         Log.i(tag, "Stopping stream")
+        intelEngine.stop()
+        hardwareEncoder.pause()
         com.streamlink.shared.ai.TouchPerceptionHub.reset()
         val serviceIntent = Intent(context, CaptureService::class.java).apply {
             action = CaptureService.ACTION_STOP
@@ -450,9 +479,10 @@ class StreamingOrchestrator @Inject constructor(
         }
     }
 
-    // Suspend overload for use from coroutines (backward compatibility)
     suspend fun stopStream() {
         Log.i(tag, "Stopping stream (no context)")
+        intelEngine.stop()
+        hardwareEncoder.pause()
         com.streamlink.shared.ai.TouchPerceptionHub.reset()
         mirrorDataPlane.stop()
         socketServer.close()
