@@ -15,18 +15,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
- * DirectStreamPlayer — H.264 async decoder.
- *
- * Fixed:
- * - Uses MediaCodec.Callback ASYNC mode (zero blocking on hot path)
- * - FrameAssembler reassembles multi-chunk NALs before feeding decoder
- * - Reuses single MediaCodec.BufferInfo instance
- * - Dedicated decoder thread at URGENT_DISPLAY priority
- * - IDR-only start: waits for keyframe before decoding to avoid green frames
+ * DirectStreamPlayer — H.264 Async Decoder with Zero-Allocation Jitter Buffer.
  */
+@Singleton
 class DirectStreamPlayer @Inject constructor(
     private val client: DirectSocketClient,
     private val audioEngine: AudioPlaybackEngine
@@ -37,34 +33,46 @@ class DirectStreamPlayer @Inject constructor(
     private var surface: Surface? = null
     private var connectJob: Job? = null
     private val released = AtomicBoolean(false)
-    private val refCount = java.util.concurrent.atomic.AtomicInteger(0)
+    private val refCount = AtomicInteger(0)
 
-    // ✅ Dedicated high-priority decoder thread
+    // ✅ تتبع زمن البث المتزامن لامتصاص Jitter الشبكة بدقة نانوية
+    @Volatile private var jitterBufferMs = 100
+    private var firstFrameSystemTimeUs = -1L
+    private var firstFramePtsUs = -1L
+
     private val decoderThread = HandlerThread(
         "SL-Decoder",
         Process.THREAD_PRIORITY_URGENT_DISPLAY
     ).also { it.start() }
     private val decoderHandler = Handler(decoderThread.looper)
 
-    // ✅ NAL assembler (handles multi-chunk NALs)
     private val assembler = FrameAssembler()
-
-    // ✅ Wait for first IDR before starting decode (avoids green/corrupt frames)
     private val idrReceived = AtomicBoolean(false)
 
-    // ✅ Single reused BufferInfo (no per-frame allocation)
-    private val bufferInfo = MediaCodec.BufferInfo()
-
-    // ✅ Jitter buffer target — بيتزامن Live من الموبايل عبر CMD_SET_BUFFER_JITTER_MS.
-    // 0 = نفس السلوك القديم zero-buffer المباشر.
-    @Volatile private var bufferTargetMs: Long = 150L
-
-    private data class TimedNal(val nal: FrameAssembler.AssembledNal, val arrivalUptimeMs: Long)
-    private val jitterQueue = ArrayDeque<TimedNal>(64)
-    private val jitterQueueLock = Any()
+    /**
+     * ✅ خفيف الوزن — مسبق التخصيص في Pool لمنع أي GC على الـ Hot Path.
+     * يجب أن يكون خارج الـ anonymous object لأن Kotlin لا يسمح بتعريف class داخله.
+     */
+    private class ScheduledNal(
+        var nal: FrameAssembler.AssembledNal? = null,
+        var targetSystemTimeUs: Long = 0L
+    ) {
+        fun reset() {
+            nal = null
+            targetSystemTimeUs = 0L
+        }
+    }
 
     fun setSurface(surface: Surface?) {
         this.surface = surface
+    }
+
+    /**
+     * تحديث قيمة الـ Buffer ديناميكياً أثناء تشغيل البث دون انقطاع
+     */
+    fun setJitterBufferMs(ms: Int) {
+        this.jitterBufferMs = ms.coerceIn(0, 1000)
+        Log.i(tag, "Jitter Buffer dynamically updated to: ${this.jitterBufferMs} ms")
     }
 
     fun start(scope: CoroutineScope) {
@@ -73,6 +81,7 @@ class DirectStreamPlayer @Inject constructor(
             return
         }
         released.set(false)
+        resetJitterBuffer()
         initDecoder()
         audioEngine.start()
         connectJob = scope.launch(Dispatchers.IO) {
@@ -82,7 +91,7 @@ class DirectStreamPlayer @Inject constructor(
                     if (!connected) {
                         idrReceived.set(false)
                         assembler.reset()
-                        synchronized(jitterQueueLock) { jitterQueue.clear() }
+                        resetJitterBuffer()
                     }
                 },
                 onChunk = { chunk ->
@@ -95,8 +104,7 @@ class DirectStreamPlayer @Inject constructor(
                 },
                 onControlMessage = { msg ->
                     if (msg.command == StreamProtocol.CMD_SET_BUFFER_JITTER_MS) {
-                        bufferTargetMs = msg.value.toLong().coerceIn(0L, 800L)
-                        Log.i(tag, "Jitter buffer target updated → ${bufferTargetMs}ms")
+                        setJitterBufferMs(msg.value)
                     }
                 }
             )
@@ -105,7 +113,6 @@ class DirectStreamPlayer @Inject constructor(
 
     private fun initDecoder() {
         try {
-            // Use the agreed resolution from StreamProtocol
             val format = MediaFormat.createVideoFormat(
                 MediaFormat.MIMETYPE_VIDEO_AVC,
                 StreamProtocol.WEAR_W_FULL,
@@ -116,39 +123,44 @@ class DirectStreamPlayer @Inject constructor(
             }
 
             val codec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-
-            // ✅ ASYNC mode — no blocking dequeueInputBuffer ever
             codec.setCallback(decoderCallback, decoderHandler)
             codec.configure(format, surface, null, 0)
             codec.start()
             decoder = codec
-            Log.i(tag, "Decoder started (async callback mode)")
+            Log.i(tag, "Decoder started (async callback mode with Jitter Buffer integration)")
         } catch (e: Exception) {
             Log.e(tag, "Decoder init failed", e)
         }
     }
 
+    private fun resetJitterBuffer() {
+        firstFrameSystemTimeUs = -1L
+        firstFramePtsUs = -1L
+        decoderCallback.clear()
+    }
+
     /**
-     * ✅ ASYNC callback — called by decoder thread when input buffer is free.
-     * No blocking, no polling. Zero stutter.
+     * ✅ الـ ASYNC Callback الأقوى لمعالجة وضخ البيانات تزامناً مع زمن الـ Playback المستهدف.
      */
     private val decoderCallback = object : MediaCodec.Callback() {
-        // Queue of assembled NALs waiting for free input buffers
-        private val pendingNals = ArrayDeque<FrameAssembler.AssembledNal>(32)
-
-        override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {
-            val nal = synchronized(pendingNals) { pendingNals.removeFirstOrNull() } ?: run {
-                // No pending NAL — buffer will be released on next feedDecoder call
-                synchronized(freeInputBuffers) { freeInputBuffers.add(index) }
-                return
-            }
-            submitNalToBuffer(codec, index, nal)
+        
+        // مسبح كائنات جاهز ومسبق التخصيص لمنع الـ GC نهائياً على مسار البيانات
+        private val pendingNals = ArrayDeque<ScheduledNal>(32)
+        private val freeInputBuffers = ArrayDeque<Int>(8)
+        private val scheduledPool = ArrayDeque<ScheduledNal>(32).apply {
+            for (i in 0..31) { add(ScheduledNal()) }
         }
 
-        override fun onOutputBufferAvailable(
-            codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo
-        ) {
-            // Render immediately — the buffer info reuse is safe here (Callback delivers one at a time)
+        private val processQueueRunnable = Runnable { processQueue() }
+
+        override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {
+            synchronized(this) {
+                freeInputBuffers.addLast(index)
+            }
+            decoderHandler.post(processQueueRunnable)
+        }
+
+        override fun onOutputBufferAvailable(codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
             codec.releaseOutputBuffer(index, true)
         }
 
@@ -161,19 +173,88 @@ class DirectStreamPlayer @Inject constructor(
             Log.d(tag, "Output format changed: $format")
         }
 
-        // ✅ Feed NAL to a free input buffer
-        private val freeInputBuffers = ArrayDeque<Int>(8)
-
         fun enqueueNal(nal: FrameAssembler.AssembledNal) {
-            val freeIdx = synchronized(freeInputBuffers) { freeInputBuffers.removeFirstOrNull() }
-            if (freeIdx != null) {
-                val c = decoder ?: return
-                submitNalToBuffer(c, freeIdx, nal)
-            } else {
-                synchronized(pendingNals) {
-                    if (pendingNals.size < 32) pendingNals.addLast(nal)
-                    else Log.w(tag, "NAL queue full — dropping frame")
+            val nowUs = System.nanoTime() / 1000
+
+            // مزامنة التوقيت مع أول إطار مستلم لتحديد خط الأساس (Baseline)
+            if (firstFrameSystemTimeUs == -1L) {
+                firstFrameSystemTimeUs = nowUs
+                firstFramePtsUs = nal.timestampUs
+            }
+
+            // حساب وقت التشغيل الفعلي المستهدف للإطار الحالي مضافاً إليه قيمة الـ Jitter Buffer
+            val targetSystemTimeUs = firstFrameSystemTimeUs + 
+                    (nal.timestampUs - firstFramePtsUs) + 
+                    (jitterBufferMs * 1000L)
+
+            synchronized(this) {
+                val scheduled = scheduledPool.removeFirstOrNull() ?: ScheduledNal()
+                scheduled.nal = nal
+                scheduled.targetSystemTimeUs = targetSystemTimeUs
+
+                if (pendingNals.size < 32) {
+                    pendingNals.addLast(scheduled)
+                } else {
+                    Log.w(tag, "NAL queue full — dropping frame to prevent memory pressure")
+                    scheduled.reset()
+                    scheduledPool.addLast(scheduled)
                 }
+            }
+            scheduleNextProcess()
+        }
+
+        private fun scheduleNextProcess() {
+            val nowUs = System.nanoTime() / 1000
+            val next = synchronized(this) { pendingNals.firstOrNull() }
+            
+            if (next != null) {
+                val delayMs = ((next.targetSystemTimeUs - nowUs) / 1000).coerceAtLeast(0)
+                decoderHandler.removeCallbacks(processQueueRunnable)
+                if (delayMs <= 0) {
+                    decoderHandler.post(processQueueRunnable)
+                } else {
+                    // جدولة ذكية عبر نظام الميقاتي الخاص بالخيط لتوفير البطارية والـ CPU
+                    decoderHandler.postDelayed(processQueueRunnable, delayMs)
+                }
+            }
+        }
+
+        private fun processQueue() {
+            val nowUs = System.nanoTime() / 1000
+            val codec = decoder ?: return
+
+            while (true) {
+                val scheduled = synchronized(this) {
+                    val first = pendingNals.firstOrNull()
+                    if (first != null && first.targetSystemTimeUs <= nowUs && freeInputBuffers.isNotEmpty()) {
+                        pendingNals.removeFirst()
+                    } else {
+                        null
+                    }
+                } ?: break
+
+                val freeIdx = synchronized(this) { freeInputBuffers.removeFirstOrNull() }
+
+                if (freeIdx != null && scheduled.nal != null) {
+                    submitNalToBuffer(codec, freeIdx, scheduled.nal!!)
+                }
+
+                synchronized(this) {
+                    scheduled.reset()
+                    scheduledPool.addLast(scheduled)
+                }
+            }
+            scheduleNextProcess()
+        }
+
+        fun clear() {
+            synchronized(this) {
+                pendingNals.forEach {
+                    it.reset()
+                    scheduledPool.addLast(it)
+                }
+                pendingNals.clear()
+                freeInputBuffers.clear()
             }
         }
     }
@@ -187,38 +268,10 @@ class DirectStreamPlayer @Inject constructor(
             Log.i(tag, "First IDR received — decoding started")
         }
 
-        if (bufferTargetMs <= 0L) {
-            decoderCallback.enqueueNal(nal)   // نفس السلوك القديم zero-buffer
-            return
-        }
-
-        val timed = TimedNal(nal, android.os.SystemClock.uptimeMillis())
-        synchronized(jitterQueueLock) {
-            if (jitterQueue.size >= 64) {
-                jitterQueue.removeFirstOrNull()
-                Log.w(tag, "Jitter queue overflow — dropped oldest buffered NAL")
-            }
-            jitterQueue.addLast(timed)
-        }
-        decoderHandler.postDelayed({ drainDueNals() }, bufferTargetMs)
+        decoderCallback.enqueueNal(nal)
     }
 
-    private fun drainDueNals() {
-        val now = android.os.SystemClock.uptimeMillis()
-        val due = ArrayList<FrameAssembler.AssembledNal>(4)
-        synchronized(jitterQueueLock) {
-            while (jitterQueue.isNotEmpty() && now - jitterQueue.first().arrivalUptimeMs >= bufferTargetMs) {
-                due.add(jitterQueue.removeFirst().nal)
-            }
-        }
-        due.forEach { decoderCallback.enqueueNal(it) }
-    }
-
-    private fun submitNalToBuffer(
-        codec: MediaCodec,
-        index: Int,
-        nal: FrameAssembler.AssembledNal
-    ) {
+    private fun submitNalToBuffer(codec: MediaCodec, index: Int, nal: FrameAssembler.AssembledNal) {
         try {
             val buf = codec.getInputBuffer(index) ?: return
             buf.clear()
@@ -240,7 +293,6 @@ class DirectStreamPlayer @Inject constructor(
             audioEngine.stop()
             connectJob?.cancel()
             client.close()
-            synchronized(jitterQueueLock) { jitterQueue.clear() }
             try {
                 decoder?.stop()
                 decoder?.release()
@@ -249,6 +301,7 @@ class DirectStreamPlayer @Inject constructor(
             }
             decoder = null
             assembler.reset()
+            resetJitterBuffer()
             decoderThread.quit()
             Log.i(tag, "Player released (refCount reached 0)")
         } else {

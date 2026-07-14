@@ -73,7 +73,7 @@ class MainActivity : AppCompatActivity() {
                 com.streamlink.shared.PairingManager.state.collect { pairingState ->
                     when (pairingState) {
                         is com.streamlink.shared.PairingManager.PairingState.WaitingForPin -> {
-                            startActivity(Intent(this@MainActivity, MobilePinInputActivity::class.java))
+                            startActivity(Intent(this@MainActivity, MobileQrScannerActivity::class.java))
                         }
                         is com.streamlink.shared.PairingManager.PairingState.PinRejected -> {
                             android.widget.Toast.makeText(

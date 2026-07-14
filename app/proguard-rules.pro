@@ -30,3 +30,29 @@
 -keep class io.getstream.** { *; }
 -dontwarn org.tensorflow.**
 -dontwarn org.webrtc.**
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ML Kit Barcode Scanning
+# بدون الـ rules دي الـ R8 بيمسح كلاسات داخلية بتتعمل لها reflection وقت التشغيل
+# ─────────────────────────────────────────────────────────────────────────────
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_barcode.** { *; }
+-keep class com.google.android.gms.vision.** { *; }
+-dontwarn com.google.mlkit.**
+-dontwarn com.google.android.gms.internal.mlkit_vision_barcode.**
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CameraX
+# ─────────────────────────────────────────────────────────────────────────────
+-keep class androidx.camera.core.** { *; }
+-keep class androidx.camera.camera2.** { *; }
+-keep class androidx.camera.lifecycle.** { *; }
+-keep class androidx.camera.view.** { *; }
+-dontwarn androidx.camera.**
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Shared Module — كل الـ data classes والـ enums والـ protocol
+# محتاجين يكونوا محمييين عشان بيتعملوا serialize/deserialize بالاسم
+# ─────────────────────────────────────────────────────────────────────────────
+-keep class com.streamlink.shared.** { *; }
+-keepnames class com.streamlink.shared.** { *; }

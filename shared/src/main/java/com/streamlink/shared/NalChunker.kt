@@ -1,7 +1,6 @@
 package com.streamlink.shared
 
 import java.nio.ByteBuffer
-import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -137,5 +136,10 @@ data class HardenedFrame(
     val timestampUs: Long,
     val isKeyframe: Boolean,
     val sps: ByteArray? = null,
-    val pps: ByteArray? = null
-)
+    val pps: ByteArray? = null,
+    val releaseCallback: (() -> Unit)? = null
+) {
+    fun release() {
+        releaseCallback?.invoke()
+    }
+}

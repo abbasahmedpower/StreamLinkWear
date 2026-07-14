@@ -64,6 +64,7 @@ class MirrorDataPlane(
     }
 
     private fun processPacket(packet: FramePacket) {
+        var hardened: HardenedFrame? = null
         try {
             // ✅ FIX N1: No buffer.duplicate() — build MediaCodec.BufferInfo directly from
             // FramePacket fields. HardenedFrameProcessor receives the original ByteBuffer
@@ -81,9 +82,10 @@ class MirrorDataPlane(
             packet.buffer.position(packet.offset)
             packet.buffer.limit(packet.offset + packet.size)
 
-            val hardened: HardenedFrame = HardenedFrameProcessor.processAndObtain(
+            hardened = HardenedFrameProcessor.processAndObtain(
                 packet.buffer, info
-            ) ?: return  // Config frame — skip
+            )
+            if (hardened == null) return  // Config frame — skip
 
             // ✅ FIX N3: Real queue depth from StreamRouter
             val queueDepth = streamRouter.queueDepth
@@ -116,6 +118,7 @@ class MirrorDataPlane(
         } finally {
             // ✅ Always release — idempotent via AtomicBoolean in FramePacket
             packet.release()
+            hardened?.release()
         }
     }
 

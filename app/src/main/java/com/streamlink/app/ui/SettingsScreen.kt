@@ -26,7 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.streamlink.app.R
 import com.streamlink.app.core.LocaleManager
 import com.streamlink.app.core.SettingsPrefs
-import com.streamlink.app.core.StreamQuality
+import com.streamlink.shared.QualityMode
 import com.streamlink.app.ui.theme.ForceLtr
 import com.streamlink.app.ui.theme.SemanticColors
 import com.streamlink.app.ui.theme.ThemeMode
@@ -103,9 +103,12 @@ fun SettingsScreen(
                                 onClick = { showQualityMenu = true }
                             )
                             DropdownMenu(expanded = showQualityMenu, onDismissRequest = { showQualityMenu = false }) {
-                                StreamQuality.entries.forEach { q ->
+                                com.streamlink.shared.QualityMode.entries.forEach { q ->
                                     DropdownMenuItem(
-                                        text = { Text(q.label) },
+                                        text = { Column {
+                                            Text(q.label, style = MaterialTheme.typography.bodyMedium)
+                                            Text(q.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        } },
                                         onClick = { prefs.setQuality(q); showQualityMenu = false },
                                         trailingIcon = { if (q == quality) Icon(Icons.Default.Check, contentDescription = null) }
                                     )
@@ -127,7 +130,7 @@ fun SettingsScreen(
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { if (bufferJitterMs > 0) prefs.setBufferJitterMs(bufferJitterMs - 50) }) { Text("−", fontWeight = FontWeight.Bold) }
-                                IconButton(onClick = { if (bufferJitterMs < 800) prefs.setBufferJitterMs(bufferJitterMs + 50) }) { Text("+", fontWeight = FontWeight.Bold) }
+                                IconButton(onClick = { if (bufferJitterMs < 1000) prefs.setBufferJitterMs(bufferJitterMs + 50) }) { Text("+", fontWeight = FontWeight.Bold) }
                             }
                         }
                     }

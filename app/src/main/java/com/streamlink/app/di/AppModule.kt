@@ -40,12 +40,8 @@ object AppModule {
     @Singleton
     fun provideHardwareEncoder(@ApplicationContext context: Context): HardwareEncoder {
         val quality = com.streamlink.app.core.SettingsPrefs.get(context).quality.value
-        val initialBitrateKbps = when (quality) {
-            com.streamlink.app.core.StreamQuality.HD720   -> 1200
-            com.streamlink.app.core.StreamQuality.FHD1080 -> 1800
-            com.streamlink.app.core.StreamQuality.QHD1440 -> 2600
-        }
-        return HardwareEncoder(initialBitrateKbps = initialBitrateKbps)
+        // targetBitrateKbps is defined directly on QualityMode — no switch needed here.
+        return HardwareEncoder(initialBitrateKbps = quality.targetBitrateKbps)
     }
 
     @Provides

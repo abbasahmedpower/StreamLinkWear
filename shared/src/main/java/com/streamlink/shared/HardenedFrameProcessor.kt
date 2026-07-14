@@ -25,14 +25,15 @@ object HardenedFrameProcessor {
 
         // For keyframes, prepend cached SPS+PPS if available
         return if (isKeyframe && cachedSps != null && cachedPps != null) {
-            val combined = buildKeyframeWithParams(buf, info)
+            val (combined, releaseCallback) = buildKeyframeWithParams(buf, info)
             HardenedFrame(
                 buffer = combined,
                 size = combined.limit(),
                 timestampUs = info.presentationTimeUs,
                 isKeyframe = true,
                 sps = cachedSps,
-                pps = cachedPps
+                pps = cachedPps,
+                releaseCallback = releaseCallback
             )
         } else {
             val view = buf.duplicate().apply {
@@ -43,7 +44,8 @@ object HardenedFrameProcessor {
                 buffer = view,
                 size = info.size,
                 timestampUs = info.presentationTimeUs,
-                isKeyframe = isKeyframe
+                isKeyframe = isKeyframe,
+                releaseCallback = null
             )
         }
     }
@@ -72,11 +74,12 @@ object HardenedFrameProcessor {
         }
     }
 
-    private fun buildKeyframeWithParams(buf: ByteBuffer, info: MediaCodec.BufferInfo): ByteBuffer {
-        val sps = cachedSps ?: return buf.duplicate()
-        val pps = cachedPps ?: return buf.duplicate()
+    private fun buildKeyframeWithParams(buf: ByteBuffer, info: MediaCodec.BufferInfo): Pair<ByteBuffer, () -> Unit> {
+        val sps = cachedSps ?: return Pair(buf.duplicate()) {}
+        val pps = cachedPps ?: return Pair(buf.duplicate()) {}
         val totalSize = sps.size + pps.size + info.size
-        val combined = ByteBuffer.allocateDirect(totalSize)
+        
+        val combined = ByteBufferPool.acquire(totalSize)
         combined.put(sps)
         combined.put(pps)
         val view = buf.duplicate()
@@ -84,7 +87,12 @@ object HardenedFrameProcessor {
         view.limit(info.offset + info.size)
         combined.put(view)
         combined.flip()
-        return combined
+        
+        val releaseCallback = {
+            ByteBufferPool.release(combined)
+        }
+        
+        return Pair(combined, releaseCallback)
     }
 
     private fun findNextStart(data: ByteArray, from: Int): Int {

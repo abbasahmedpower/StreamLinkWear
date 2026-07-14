@@ -18,6 +18,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -255,7 +256,30 @@ class WearMainActivity : ComponentActivity() {
                 }
 
                 if (isPinScreen) {
-                    WearPinScreen(pinCode = generatedPin)
+                    val ip = remember { com.streamlink.shared.NetworkUtils.getLocalIpAddress() ?: "127.0.0.1" }
+
+                    // Auto-refresh QR every 60 seconds to avoid stale sessions
+                    var currentPin by remember { mutableStateOf(generatedPin) }
+                    var refreshTick by remember { mutableStateOf(0) }
+                    LaunchedEffect(Unit) {
+                        while (isPinScreen) {
+                            delay(60_000L)
+                            val newPin = com.streamlink.wear.security.WatchPinEngine.generateSecurePin()
+                            socketClient.pairingCode = newPin
+                            currentPin = newPin
+                            refreshTick++
+                            Log.i("WearMain", "QR refreshed — new PIN generated (tick=$refreshTick)")
+                        }
+                    }
+
+                    val payload = remember(currentPin) {
+                        com.streamlink.shared.ConnectionPayload(
+                            ip = ip,
+                            port = com.streamlink.shared.StreamProtocol.DIRECT_SOCKET_PORT,
+                            pairingCode = currentPin
+                        ).toJson()
+                    }
+                    WearPairingScreen(qrPayload = payload, pinCode = currentPin)
                 }
             }
         }
@@ -311,42 +335,46 @@ class WearMainActivity : ComponentActivity() {
 }
 
 @Composable
-fun WearPinScreen(pinCode: String) {
+fun WearPairingScreen(qrPayload: String, pinCode: String) {
     MaterialTheme {
+        val qrBitmap = remember(qrPayload) {
+            com.streamlink.wear.ui.QrGenerator.generateQrCode(qrPayload, 200)?.asImageBitmap()
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(4.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "رمز الاقتران الآمن",
+                text = "امسح الكود بهاتفك",
                 color = Color(0xFF94A3B8),
                 fontSize = 11.sp,
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
-            // PIN displayed in two groups of 3 for easy reading on a small watch face
+            if (qrBitmap != null) {
+                androidx.compose.foundation.Image(
+                    bitmap = qrBitmap,
+                    contentDescription = "QR Code",
+                    modifier = Modifier.height(110.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Fallback PIN displayed in two groups of 3
             Text(
                 text = pinCode.chunked(3).joinToString("  "),
                 color = Color(0xFF10B981),
-                fontSize = 30.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 3.sp,
+                letterSpacing = 2.sp,
                 textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(
-                text = "أدخله في تطبيق الهاتف",
-                color = Color.White,
-                fontSize = 10.sp,
-                textAlign = TextAlign.Center,
-                lineHeight = 14.sp
             )
         }
     }

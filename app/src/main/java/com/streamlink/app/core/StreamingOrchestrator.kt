@@ -105,6 +105,11 @@ class StreamingOrchestrator @Inject constructor(
                     Log.i(tag, "AI Reverse Control: Adjusting Bitrate to ${msg.value} kbps")
                     hardwareEncoder.setBitrate(msg.value)
                 }
+                StreamProtocol.CMD_SET_QUALITY_MODE -> {
+                    val newMode = com.streamlink.shared.QualityMode.values().getOrNull(msg.value) ?: com.streamlink.shared.QualityMode.BALANCED
+                    Log.i(tag, "Received QUALITY_MODE control from watch: $newMode")
+                    com.streamlink.app.core.SettingsPrefs.get(context).setQuality(newMode)
+                }
                 StreamProtocol.CMD_GLOBAL_ACTION -> {
                     Log.i(tag, "Remote global action: ${msg.value}")
                     com.streamlink.app.control.RemoteControlAccessibilityService.instance?.performGlobalAction(msg.value)
@@ -155,15 +160,19 @@ class StreamingOrchestrator @Inject constructor(
         scope.launch {
             // Live quality/bitrate adjustments from SettingsPrefs
             com.streamlink.app.core.SettingsPrefs.get(context).quality.collect { quality ->
-                val newBitrate = when (quality) {
-                    com.streamlink.app.core.StreamQuality.HD720   -> 1200
-                    com.streamlink.app.core.StreamQuality.FHD1080 -> 1800
-                    com.streamlink.app.core.StreamQuality.QHD1440 -> 2600
-                }
-                if (currentBitrate != newBitrate) {
+                val newBitrate = quality.targetBitrateKbps
+                val newFps = quality.targetFps
+                
+                if (currentBitrate != newBitrate || currentFps != newFps) {
                     currentBitrate = newBitrate
-                    hardwareEncoder.setBitrate(newBitrate)
-                    Log.i(tag, "Quality setting changed to $quality, updated encoder bitrate to $newBitrate kbps")
+                    currentFps = newFps
+                    // Ensure the encoder gets the new profile
+                    hardwareEncoder.reconfigure(
+                        com.streamlink.shared.ResolutionProfile(
+                            quality.name, currentWidth, currentHeight, currentFps, currentBitrate
+                        )
+                    )
+                    Log.i(tag, "Quality setting changed to $quality, updated encoder to $newBitrate kbps @ $newFps fps")
                 }
             }
         }

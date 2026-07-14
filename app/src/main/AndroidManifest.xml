@@ -21,6 +21,9 @@
 
     <!-- Android 13+ notification permission -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- Camera permission for QR scanning -->
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- ─── Queries (Android 11+) — allows opening browser/email — NANO-FIX N2 -->
     <queries>
@@ -59,11 +62,11 @@
             </intent-filter>
         </activity>
 
-        <!-- PIN Pairing screen — launched when a watch tries to connect -->
+        <!-- QR Scanner screen — launched when connecting to a watch -->
         <activity
-            android:name=".ui.MobilePinInputActivity"
+            android:name=".ui.MobileQrScannerActivity"
             android:exported="false"
-            android:label="Pair with Watch"
+            android:label="Scan Watch QR"
             android:windowSoftInputMode="adjustResize" />
 
         <service
