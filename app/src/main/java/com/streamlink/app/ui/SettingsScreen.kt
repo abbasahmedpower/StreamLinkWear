@@ -215,9 +215,16 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
+                                    val sharedPrefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
+                                    sharedPrefs.edit().putString("selected_language", lang.tag).apply()
                                     LocaleManager.setLocale(lang.tag)
                                     showLanguageDialog = false
-                                    activity?.recreate()
+                                    
+                                    val intent = android.content.Intent(context, MainActivity::class.java).apply {
+                                        flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK or android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                                    }
+                                    context.startActivity(intent)
+                                    activity?.finish()
                                 }
                                 .padding(vertical = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,

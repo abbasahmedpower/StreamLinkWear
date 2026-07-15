@@ -64,7 +64,7 @@ import javax.inject.Inject
 private const val CONNECTION_TIMEOUT_MS = 5_000L
 
 @AndroidEntryPoint
-class MobileQrScannerActivity : ComponentActivity() {
+class MobileQrScannerActivity : BaseActivity() {
 
     @Inject
     lateinit var socketServer: DirectSocketServer
