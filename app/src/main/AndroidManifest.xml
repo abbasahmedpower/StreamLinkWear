@@ -87,6 +87,12 @@
                 android:resource="@xml/accessibility_service_config"/>
         </service>
 
+        <!-- ✅ Phone-side Foreground Service — keeps streaming alive in background -->
+        <service
+            android:name=".stream.PhoneStreamingForegroundService"
+            android:foregroundServiceType="connectedDevice"
+            android:exported="false" />
+
     </application>
 
 </manifest>

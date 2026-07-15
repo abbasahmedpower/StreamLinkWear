@@ -15,7 +15,6 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,11 +44,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.compose.animation.AnimatedVisibility
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.streamlink.shared.ConnectionPayload
 import com.streamlink.shared.DirectSocketServer
+import com.streamlink.shared.trustedDeviceStore
+import com.streamlink.app.stream.PhoneStreamingForegroundService
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -84,10 +86,66 @@ class MobileQrScannerActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         cameraExecutor = Executors.newSingleThreadExecutor()
 
+        // ✅ Trust on First Use — إذا الجهاز موثوق، اتصل تلقائياً بدون QR
+        if (trustedDeviceStore.hasTrustedDevice) {
+            Log.i("QrScanner", "Trusted device found — attempting auto-connect")
+            val code = trustedDeviceStore.trustedPairingCode ?: ""
+            if (code.isNotEmpty()) {
+                autoConnectWithTrustedDevice(code)
+                return // لا داعي لفتح الكاميرا
+            }
+        }
+
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             startCameraAndScanner()
         } else {
             requestPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    /**
+     * اتصال تلقائي بالجهاز الموثوق دون الحاجة لمسح QR.
+     * يُعيد محاولة الاتصال مرة واحدة إذا فشل (قد تكون الساعة خارج النطاق).
+     */
+    private fun autoConnectWithTrustedDevice(pairingCode: String) {
+        socketServer.pairingCode = pairingCode
+        setContent {
+            // عرض شاشة بسيطة «جاري الاتصال…» بدل كاميرا QR
+            AutoConnectScreen(
+                deviceName = trustedDeviceStore.trustedDeviceName ?: "الجهاز الموثوق"
+            )
+        }
+        kotlinx.coroutines.MainScope().launch {
+            val connected = withTimeoutOrNull(CONNECTION_TIMEOUT_MS) {
+                var elapsed = 0L
+                while (elapsed < CONNECTION_TIMEOUT_MS) {
+                    if (socketServer.isClientConnected) return@withTimeoutOrNull true
+                    delay(250)
+                    elapsed += 250
+                }
+                null
+            }
+            if (connected == true) {
+                trustedDeviceStore.updateLastSeen()
+                PhoneStreamingForegroundService.start(this@MobileQrScannerActivity)
+                Toast.makeText(this@MobileQrScannerActivity, "✅ تم الاتصال!", Toast.LENGTH_SHORT).show()
+                finish()
+            } else {
+                // الجهاز غير موجود على الشبكة — افتح الكاميرا كـ fallback
+                Log.w("QrScanner", "Auto-connect failed — falling back to QR scan")
+                Toast.makeText(
+                    this@MobileQrScannerActivity,
+                    "تعذّر الاتصال التلقائي — امسح الـ QR مجدداً",
+                    Toast.LENGTH_LONG
+                ).show()
+                socketServer.pairingCode = ""
+                if (ContextCompat.checkSelfPermission(this@MobileQrScannerActivity, Manifest.permission.CAMERA)
+                        == PackageManager.PERMISSION_GRANTED) {
+                    startCameraAndScanner()
+                } else {
+                    requestPermissionLauncher.launch(Manifest.permission.CAMERA)
+                }
+            }
         }
     }
 
@@ -127,6 +185,13 @@ class MobileQrScannerActivity : ComponentActivity() {
             }
 
             if (connected == true) {
+                // ✅ حفظ الجهاز كموثوق — المرة القادمة بدون QR
+                trustedDeviceStore.trust(
+                    deviceId = payload.pairingCode, // نستخدم pairingCode كـ unique identifier مؤقت
+                    pairingCode = payload.pairingCode,
+                    deviceName = "الهاتف"
+                )
+                PhoneStreamingForegroundService.start(this@MobileQrScannerActivity)
                 Toast.makeText(
                     this@MobileQrScannerActivity,
                     "✅ تم الاتصال بالساعة بنجاح!",
@@ -257,6 +322,46 @@ fun QrScannerScreen(onQrScanned: (String) -> Unit) {
                     textAlign = TextAlign.Center
                 )
             }
+        }
+    }
+}
+
+
+/**
+ * شاشة الاتصال التلقائي — تظهر بدل كاميرا QR عندما يوجد جهاز موثوق محفوظ.
+ * تجربة ذهبية — اضغط وابدأ، بدون إعداد.
+ */
+@Composable
+fun AutoConnectScreen(deviceName: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0A0A0F)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 32.dp)
+        ) {
+            CircularProgressIndicator(
+                color = Color(0xFF10B981),
+                strokeWidth = 3.dp
+            )
+            Spacer(Modifier.height(24.dp))
+            Text(
+                text = "جاري الاتصال بالساعة…",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "الجهاز: $deviceName",
+                color = Color(0xFF6B7280),
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
