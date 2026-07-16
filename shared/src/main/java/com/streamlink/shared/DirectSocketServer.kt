@@ -9,11 +9,11 @@ import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.LockSupport
-import com.streamlink.shared.util.LockFreeSpscQueue
+import com.streamlink.shared.util.LockFreeMpmcQueue
 
 /**
  * Non-blocking TCP server for H.264 chunk delivery.
- * Uses a dedicated sender thread (LockFreeSpscQueue) to avoid
+ * Uses a dedicated sender thread (LockFreeMpmcQueue) to avoid
  * blocking the encoder on TCP write.
  *
  * Handshake protocol (per accepted client):
@@ -40,15 +40,18 @@ class DirectSocketServer {
         var isKeyframe: Boolean = false
     }
 
-    private val iFrameQueue = LockFreeSpscQueue<SendTask>(64)
-    private val pFrameQueue = LockFreeSpscQueue<SendTask>(256)
-    private val freeTasks = LockFreeSpscQueue<SendTask>(512).apply {
+    // ✅ FIX #1: MPMC بدل SPSC — الكيوهات دي بيتكتب/يتقرا منها فعليًا من
+    // أكتر من Thread (audio capture thread + video mirror thread + الـ
+    // eviction path جوه sendPooledWire نفسها).
+    private val iFrameQueue = LockFreeMpmcQueue<SendTask>(64)
+    private val pFrameQueue = LockFreeMpmcQueue<SendTask>(256)
+    private val freeTasks = LockFreeMpmcQueue<SendTask>(512).apply {
         repeat(512) { offer(SendTask()) }
     }
     private val bytesSent = AtomicLong(0L)
 
     private data class ControlTask(val payload: ByteArray)
-    private val controlQueue = LockFreeSpscQueue<ControlTask>(16)
+    private val controlQueue = LockFreeMpmcQueue<ControlTask>(16)
 
     // Queue Metrics
     val queueDepth: Int get() = iFrameQueue.size + pFrameQueue.size
@@ -69,13 +72,18 @@ class DirectSocketServer {
     var onWatchDimensions: ((widthPx: Int, heightPx: Int) -> Unit)? = null
 
     /**
-     * Pairing code injected by the Phone UI. Must match what the Watch sends
-     * in its own HKDF derivation, otherwise the session key will differ and
-     * decryption will silently fail — i.e., Fail Closed by design.
+     * Pairing code injected by the Phone UI. يجب ضبطه قبل أي اتصال.
+     * ✅ FIX #5 (أمني): مفيش قيمة افتراضية ("000000") بعد كده — لو
+     * فضل null وقت الـ handshake، الاتصال بيترفض بالكامل (Fail Closed)
+     * بدل ما يستمر بقيمة تخمينية معروفة.
      */
-    @Volatile var pairingCode: String = "000000"
+    @Volatile var pairingCode: String? = null
 
-    private var encryptedChannel: EncryptedChannel? = null
+    // ✅ FIX #2: @Volatile — الحقل ده بيتكتب في accept-thread وبيتقرا في
+    // runSender() (اللي بيبدأ شغال *قبل* ما الـ handshake يخلص، يعني
+    // من غير @Volatile مفيش ضمان JMM إنه هيشوف القيمة الجديدة — ثغرة
+    // ممكن تخلي الفيديو يتبعت من غير تشفير بصمت في أسوأ سيناريو).
+    @Volatile private var encryptedChannel: EncryptedChannel? = null
 
     private fun runInputReceiver(socket: java.net.Socket) {
         val dis = java.io.DataInputStream(socket.inputStream)
@@ -169,6 +177,15 @@ class DirectSocketServer {
                         continue
                     }
 
+                    // ✅ FIX #5: Fail Closed — لو مفيش pairingCode متسجل، إرفض
+                    // الاتصال تمامًا بدل ما تكمل بقيمة افتراضية ضعيفة.
+                    val code = pairingCode
+                    if (code == null) {
+                        Log.e(tag, "\u274c رفض الاتصال — لم يتم تعيين كود الاقتران بعد (Fail Closed)")
+                        newClient.close()
+                        continue
+                    }
+
                     PairingManager.notifyWatchKnocked()
 
                     val kp = KeyExchange.generateEphemeralKeyPair()
@@ -178,7 +195,7 @@ class DirectSocketServer {
                     dos.write(pubBytes)
                     dos.flush()
 
-                    val sessionKey = KeyExchange.deriveSessionKey(kp.privateKey, clientPub, pairingCode)
+                    val sessionKey = KeyExchange.deriveSessionKey(kp.privateKey, clientPub, code)
                     encryptedChannel = EncryptedChannel(sessionKey, "tcp-stream", "phone-to-watch")
 
                     val authBlockLen = dis.readInt()
@@ -210,8 +227,13 @@ class DirectSocketServer {
                     newClient.soTimeout = 0
                     isClientConnected = true
 
-                    Thread({ runInputReceiver(newClient) }, "SL-InputReceiver").apply {
-                        priority = Thread.MAX_PRIORITY - 2
+                    // ✅ FIX #6: Process.setThreadPriority بدل Thread.priority — تأثيره
+                    // حقيقي على ART عكس Java Thread priority الضعيف. خيط استقبال
+                    // اللمس محتاج أولوية فعلية عشان الـ touch latency يكون منخفض.
+                    Thread({
+                        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+                        runInputReceiver(newClient)
+                    }, "SL-InputReceiver").apply {
                         isDaemon = true
                         start()
                     }
@@ -415,42 +437,46 @@ class DirectSocketServer {
     }
 
     /**
-     * نقل السوكيت حياً إلى المسار الجديد (WiFi P2P أو WAN Cellular)
+     * نقل السوكيت حياً إلى المسار الجديد (WiFi P2P أو WAN Cellular).
+     * ✅ FIX #4: أصبحت suspend fun — بعد ما كانت بتنادي runBlocking{}
+     * جوه Dispatchers.Default thread، وده كان بيجمّد خيط من الـ pool
+     * المحدود لحد ما الـ Mutex يفضى، وممكن يعمل deadlock لو حصل
+     * handover تاني في نفس اللحظة. دلوقتي مفيش أي blocking خالص.
      */
-    fun migrateTransportSocket(newHost: String, newPort: Int, isRelay: Boolean): Boolean {
+    suspend fun migrateTransportSocket(newHost: String, newPort: Int, isRelay: Boolean): Boolean {
         return try {
             // 1. إغلاق السوكيت القديم بأمان لمنع الـ Resource Leaks
             clientSocket?.runCatching { close() }
-            
+
             Log.d(tag, "Establishing new socket connection to $newHost:$newPort")
-            
+
             // 2. إنشاء اتصال سوكيت جديد بالمسار الجديد
             val newSocket = java.net.Socket()
-            newSocket.connect(java.net.InetSocketAddress(newHost, newPort), 5000) // 5 ثواني Timeout للاتصال
+            newSocket.connect(java.net.InetSocketAddress(newHost, newPort), 5000)
             newSocket.tcpNoDelay = true
             newSocket.setPerformancePreferences(0, 1, 2)
             newSocket.soTimeout = 0
-            
+
             this.clientSocket = newSocket
             this.isClientConnected = true
-            
-            Thread({ runInputReceiver(newSocket) }, "SL-InputReceiver-Migrated").apply {
-                priority = Thread.MAX_PRIORITY - 2
+
+            Thread({
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+                runInputReceiver(newSocket)
+            }, "SL-InputReceiver-Migrated").apply {
                 isDaemon = true
                 start()
             }
-            
+
             // 3. فك تجميد حلقة الإرسال لتستأنف عملها فوراً
             isTransportPaused = false
-            
-            // 4. تحديث الـ Bitrate ديناميكياً بناءً على نوع الشبكة
-            kotlinx.coroutines.runBlocking {
-                GlobalStreamState.update { 
-                    this.copy(bitrateKbps = if (isRelay) 800 else 2500)
-                }
+
+            // 4. ✅ FIX #4: نداء مباشر بدون runBlocking — الدالة نفسها suspend الآن
+            GlobalStreamState.update {
+                this.copy(bitrateKbps = if (isRelay) 800 else 2500)
             }
-            
-            Log.i(tag, "Successfully migrated socket to ${if(isRelay) "WAN" else "Local WiFi"}")
+
+            Log.i(tag, "Successfully migrated socket to ${if (isRelay) "WAN" else "Local WiFi"}")
             true
         } catch (e: Exception) {
             Log.e(tag, "Failed to migrate socket to $newHost", e)

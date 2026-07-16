@@ -41,17 +41,19 @@ object ByteBufferPool {
 
     /**
      * Returns a ByteBuffer to the pool for reuse.
+     * ✅ FIX (nano): إصلاح سباق TOCTOU — الكود القديم كان بيعمل
+     * check-then-act: لو خيطين وصلوا للشرط سوا وقت currentSize==31،
+     * الاتنين بيعدوه وبيتجاوزوا الـ MAX. النمط الجديد: increment أولاً
+     * ثم تحقق — لو تجاوزنا الحد، نرجّع العداد ونسيب الـ GC ياخد البفر ده.
      */
     fun release(buffer: ByteBuffer) {
-        // Only pool buffers of the exact default size
-        if (buffer.capacity() == DEFAULT_BUFFER_SIZE) {
-            if (currentSize.get() < MAX_POOL_SIZE) {
-                buffer.clear()
-                pool.offer(buffer)
-                currentSize.incrementAndGet()
-            }
-            // If pool is full, we simply let the GC handle this buffer
+        if (buffer.capacity() != DEFAULT_BUFFER_SIZE) return
+        if (currentSize.incrementAndGet() > MAX_POOL_SIZE) {
+            currentSize.decrementAndGet() // رجّع العداد، سيب الـ GC ياخد البفر ده
+            return
         }
+        buffer.clear()
+        pool.offer(buffer)
     }
 
     /**

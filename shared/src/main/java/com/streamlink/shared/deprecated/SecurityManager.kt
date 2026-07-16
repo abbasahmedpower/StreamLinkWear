@@ -1,4 +1,4 @@
-package com.streamlink.shared
+package com.streamlink.shared.deprecated
 
 import java.nio.ByteBuffer
 import java.util.Base64
@@ -11,6 +11,7 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import com.streamlink.shared.StreamProtocol
 
 object SecurityManager {
 

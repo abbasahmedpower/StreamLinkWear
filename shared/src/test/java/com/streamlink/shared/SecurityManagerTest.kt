@@ -3,6 +3,7 @@ package com.streamlink.shared
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import com.streamlink.shared.deprecated.SecurityManager
 
 class SecurityManagerTest {
 

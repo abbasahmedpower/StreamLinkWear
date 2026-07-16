@@ -387,7 +387,8 @@ class StreamingOrchestrator @Inject constructor(
                             val peerKey = msg.optString("payload")
                             if (com.streamlink.shared.KeyExchange.validatePeerKey(peerKey)) {
                                 // Using the same pairing code acquired by the TCP server for consistency
-                                val sessionKey = com.streamlink.shared.KeyExchange.deriveSessionKey(hotcKeyPair, peerKey, socketServer.pairingCode)
+                                val code = socketServer.pairingCode ?: return@collect
+                                val sessionKey = com.streamlink.shared.KeyExchange.deriveSessionKey(hotcKeyPair, peerKey, code)
                                 hotcEncryptedChannel = com.streamlink.shared.EncryptedChannel(sessionKey, "tcp-stream", "phone-to-watch")
 
                                 Log.i(tag, "✅ HOTC session key derived over signaling")
@@ -541,7 +542,10 @@ class StreamingOrchestrator @Inject constructor(
         socketServer.pauseTransport()
     }
 
-    fun migrateTransportSocket(newHost: String, newPort: Int, isRelay: Boolean): Boolean {
+    // ✅ FIX #4: suspend fun — بعد ما DirectSocketServer.migrateTransportSocket
+    // بقت suspend، الـ wrapper هنا لازم يبقى suspend كمان عشان المستدعي (HandoverCoordinator)
+    // يقدر يناديها جوه scope.launch{} بدون runBlocking.
+    suspend fun migrateTransportSocket(newHost: String, newPort: Int, isRelay: Boolean): Boolean {
         return socketServer.migrateTransportSocket(newHost, newPort, isRelay)
     }
 }

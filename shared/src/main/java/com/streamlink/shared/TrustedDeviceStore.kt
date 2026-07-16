@@ -56,10 +56,13 @@ class TrustedDeviceStore private constructor(context: Context) {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
     } catch (e: Exception) {
-        // Fallback for older devices where Keystore init may fail.
-        // Unencrypted prefs — still functional but less secure.
-        Log.w(tag, "EncryptedSharedPreferences init failed, falling back to plain prefs: ${e.message}")
-        context.getSharedPreferences(PREFS_FILE + "_plain", Context.MODE_PRIVATE)
+        // ✅ FIX #5 (أمني): بدل Fallback لتخزين PIN بنص صريح، نرفع SecurityException.
+        // الـ caller (شاشة الـ Onboarding) يمسك الاستثناء ده ويطلب QR كل مرة
+        // بدل ما يحفظ الـ pairingCode على القرص بدون تشفير من غير ما المستخدم يدري.
+        // الأجهزة اللي Keystore فيها فاشل (نادر جداً) هتحتاج QR في كل جلسة — وده
+        // أفضل بكتير من تسريب بيانات الأمان بصمت.
+        Log.e(tag, "فشل تهيئة Keystore — رفض التهيئة لضمان أمان بيانات الاقتران: ${e.message}")
+        throw SecurityException("Cannot initialize TrustedDeviceStore without Android Keystore", e)
     }
 
     // ── In-Memory Cache ───────────────────────────────────────────────────────

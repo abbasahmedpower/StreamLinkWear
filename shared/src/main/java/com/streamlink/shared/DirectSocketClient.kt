@@ -32,8 +32,11 @@ class DirectSocketClient(
     private val closed = AtomicBoolean(false)
     private var encryptedChannel: EncryptedChannel? = null
 
-    // Pairing code — set by the Wear UI before attempting to connect
-    @Volatile var pairingCode: String = "000000"
+    // Pairing code — set by the Wear UI before attempting to connect.
+    // ✅ FIX #5 (أمني): مفيش قيمة افتراضية ("000000") — لو فضل null وقت
+    // الـ handshake، الاتصال بيترفض بالكامل (Fail Closed) بدل ما
+    // يستمر بصوت بقيمة تخمينية معروفة.
+    @Volatile var pairingCode: String? = null
 
     /**
      * Manual IP fallback — set by the UI when mDNS discovery times out
@@ -126,7 +129,16 @@ class DirectSocketClient(
                     continue
                 }
 
-                val sessionKey = KeyExchange.deriveSessionKey(kp.privateKey, theirPub, pairingCode)
+                // ✅ FIX #5: Fail Closed — لو مفيش pairingCode متسجل، إرفض الاتصال
+                val code = pairingCode
+                if (code == null) {
+                    Log.e(tag, "\u274c رفض الاتصال — لم يتم تعيين كود الاقتران (Fail Closed)")
+                    s.close()
+                    delay(2000)
+                    continue
+                }
+
+                val sessionKey = KeyExchange.deriveSessionKey(kp.privateKey, theirPub, code)
                 encryptedChannel = EncryptedChannel(sessionKey, "tcp-stream", "phone-to-watch")
 
                 // 6. Send Encrypted Auth Block for Fail Closed PIN verification

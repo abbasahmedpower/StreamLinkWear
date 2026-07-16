@@ -37,6 +37,9 @@ android {
     testOptions {
         unitTests.returnDefaultValues = true
         targetSdk 36
+        unitTests.all {
+            it.useJUnitPlatform()
+        }
     }
     kotlinOptions { jvmTarget = "17" }
     compileOptions {
@@ -70,10 +73,7 @@ dependencies {
     // Testing
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.0'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.0'
     testImplementation 'io.mockk:mockk:1.13.8'
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
-}
-
-tasks.withType(Test) {
-    useJUnitPlatform()
 }

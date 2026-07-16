@@ -1,6 +1,5 @@
-package com.streamlink.shared.security
+package com.streamlink.shared.deprecated
 
-import com.streamlink.shared.SecurityManager
 import com.streamlink.shared.FramePacket
 import java.nio.ByteBuffer
 
