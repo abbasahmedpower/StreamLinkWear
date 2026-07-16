@@ -268,15 +268,8 @@ This is currently a solo/closed-development project. If you've been given access
 
 ---
 
-## 📄 License
 
-Proprietary — All Rights Reserved. Contact the author for licensing inquiries.
 
----
-
-<div align="center">
-<sub>Built by Eng. Abbas Ahmed AboAlatta — engineered for real conditions, down to the byte and the cache line, not just for demos.</sub>
-</div>
 
 ## 📄 License
 
@@ -285,5 +278,5 @@ Proprietary — All Rights Reserved. See [`LICENSE`](LICENSE) for details, or co
 ---
 
 <div align="center">
-<sub>Built by Eng. Abbas AboAlatta — engineered for real conditions, not just demos.</sub>
+<sub>Built by <big>Eng. Abbas Ahmed AboAlatta</big> — engineered for real conditions, down to the byte and the cache line, not just for demos.</sub>
 </div>
