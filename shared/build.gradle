@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace 'com.streamlink.shared'
-    compileSdk 35
+    compileSdk 36
     defaultConfig {
         minSdk 29
 
@@ -20,7 +20,15 @@ android {
         
         buildConfigField "String", "TURN_USERNAME", "\"${secrets.getProperty('TURN_USERNAME', 'streamlink')}\""
         buildConfigField "String", "TURN_PASSWORD", "\"${secrets.getProperty('TURN_PASSWORD', 'supersecret')}\""
-        buildConfigField "String", "HORUS_SECRET_TOKEN", "\"${secrets.getProperty('HORUS_SECRET_TOKEN', 'NASA_GRADE_SECRET_TOKEN_HORUS')}\""
+        
+        def horusToken = secrets.getProperty('HORUS_SECRET_TOKEN')
+        if (horusToken == null || horusToken.isEmpty()) {
+            throw new GradleException(
+                "\n\n❌ HORUS_SECRET_TOKEN مش موجود في secrets.properties!\n" +
+                "   الـ build هيوقف عشان مايتنشرش APK بتوكن افتراضي معروف.\n"
+            )
+        }
+        buildConfigField "String", "HORUS_SECRET_TOKEN", "\"${horusToken}\""
     }
     buildFeatures {
         buildConfig = true
@@ -28,7 +36,7 @@ android {
     }
     testOptions {
         unitTests.returnDefaultValues = true
-        targetSdk 35
+        targetSdk 36
     }
     kotlinOptions { jvmTarget = "17" }
     compileOptions {
@@ -36,7 +44,7 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     lint {
-        targetSdk 35
+        targetSdk 36
     }
 }
 

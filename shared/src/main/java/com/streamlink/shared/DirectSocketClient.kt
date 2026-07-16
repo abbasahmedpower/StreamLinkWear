@@ -34,6 +34,19 @@ class DirectSocketClient(
 
     // Pairing code — set by the Wear UI before attempting to connect
     @Volatile var pairingCode: String = "000000"
+
+    /**
+     * Manual IP fallback — set by the UI when mDNS discovery times out
+     * (AP/client isolation networks block multicast silently). Takes priority
+     * over discovery.discoveredHost once set. Sticky across reconnects on
+     * purpose: a network that blocks multicast won't start allowing it
+     * mid-session, so there's no point re-waiting on discovery each retry.
+     */
+    @Volatile var manualHostOverride: String? = null
+
+    companion object {
+        private const val DISCOVERY_TIMEOUT_MS = 15_000L
+    }
     data class WireChunk(
         val nalSeq: Int,           // ✅ Global NAL sequence (for FrameAssembler grouping)
         val chunkIdx: Int,         // ✅ Chunk index within this NAL (0..totalChunks-1)
@@ -48,15 +61,25 @@ class DirectSocketClient(
     suspend fun connect(
         onStateChange: (Boolean) -> Unit,
         onChunk: ((WireChunk) -> Unit)? = null,
-        onControlMessage: ((ControlCodec.ControlMessage) -> Unit)? = null
+        onControlMessage: ((ControlCodec.ControlMessage) -> Unit)? = null,
+        onDiscoveryTimedOut: (() -> Unit)? = null
     ) = withContext(Dispatchers.IO) {
         discovery.startDiscovery()
         var attempt = 0
         val maxAttempts = 10
+        val discoveryStartMs = System.currentTimeMillis()
+        var timeoutFired = false
 
         while (!closed.get() && attempt < maxAttempts) {
-            val host = discovery.discoveredHost.value
+            val host = manualHostOverride ?: discovery.discoveredHost.value
             if (host == null) {
+                if (!timeoutFired &&
+                    System.currentTimeMillis() - discoveryStartMs >= DISCOVERY_TIMEOUT_MS
+                ) {
+                    timeoutFired = true
+                    Log.w(tag, "mDNS discovery timed out after ${DISCOVERY_TIMEOUT_MS}ms — no phone found, waiting for manual IP or late discovery")
+                    onDiscoveryTimedOut?.invoke()
+                }
                 delay(1000)
                 continue
             }

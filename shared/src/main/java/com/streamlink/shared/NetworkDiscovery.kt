@@ -27,6 +27,8 @@ class NetworkDiscovery(private val context: Context) {
     private val _discoveredHost = MutableStateFlow<String?>(null)
     val discoveredHost: StateFlow<String?> = _discoveredHost
 
+    @Volatile private var isPublishing = false
+
     // ── Phone: Publish service ─────────────────────────────────────────────
 
     fun publishService(port: Int) {
@@ -34,17 +36,28 @@ class NetworkDiscovery(private val context: Context) {
             Log.w(tag, "NSD unavailable — skipping publish, fallback mode expected")
             return
         }
+        if (isPublishing) {
+            Log.i(tag, "Already publishing — unregistering stale listener before re-publish")
+            try { manager.unregisterService(registrationListener) } catch (_: Exception) {}
+        }
         val serviceInfo = NsdServiceInfo().apply {
             serviceName = SERVICE_NAME
             serviceType = SERVICE_TYPE
             setPort(port)
         }
-        manager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
-        Log.i(tag, "Publishing NSD service on port $port")
+        try {
+            manager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
+            isPublishing = true
+            Log.i(tag, "Publishing NSD service on port $port")
+        } catch (e: IllegalArgumentException) {
+            Log.w(tag, "registerService rejected (listener race): ${e.message}")
+        }
     }
 
     fun stopPublish() {
+        if (!isPublishing) return
         try { nsdManager?.unregisterService(registrationListener) } catch (_: Exception) {}
+        isPublishing = false
     }
 
     private val registrationListener = object : NsdManager.RegistrationListener {
@@ -53,14 +66,18 @@ class NetworkDiscovery(private val context: Context) {
         }
         override fun onRegistrationFailed(info: NsdServiceInfo, code: Int) {
             Log.e(tag, "Registration failed: $code")
+            isPublishing = false
         }
         override fun onServiceUnregistered(info: NsdServiceInfo) {
             Log.i(tag, "Service unregistered")
+            isPublishing = false
         }
         override fun onUnregistrationFailed(info: NsdServiceInfo, code: Int) {
             Log.e(tag, "Unregistration failed: $code")
         }
     }
+
+    @Volatile private var isDiscovering = false
 
     // ── Watch: Discover service ────────────────────────────────────────────
 
@@ -69,12 +86,16 @@ class NetworkDiscovery(private val context: Context) {
             Log.w(tag, "NSD unavailable — cannot auto-discover, user must enter IP manually")
             return
         }
+        if (isDiscovering) return
         manager.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
+        isDiscovering = true
         Log.i(tag, "Starting NSD discovery for $SERVICE_TYPE")
     }
 
     fun stopDiscovery() {
+        if (!isDiscovering) return
         try { nsdManager?.stopServiceDiscovery(discoveryListener) } catch (_: Exception) {}
+        isDiscovering = false
     }
 
     private val discoveryListener = object : NsdManager.DiscoveryListener {

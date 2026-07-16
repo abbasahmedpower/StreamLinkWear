@@ -10,12 +10,12 @@ plugins {
 
 android {
     namespace 'com.streamlink.app'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.streamlink.app"
         minSdk 29
-        targetSdk 35
+        targetSdk 36
         versionCode 5
         versionName "1.0.0"
 
@@ -138,6 +138,9 @@ dependencies {
     ksp "com.google.dagger:hilt-compiler:2.56.2"
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
     implementation "org.tensorflow:tensorflow-lite:2.14.0"
+    // Wear OS Telemetry Bridge
+    implementation "com.google.android.gms:play-services-wearable:19.0.0"
+    implementation "com.google.code.gson:gson:2.10.1"
 
     implementation platform('com.google.firebase:firebase-bom:32.7.0')
     implementation 'com.google.firebase:firebase-analytics'

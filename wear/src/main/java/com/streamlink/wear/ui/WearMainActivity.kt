@@ -5,6 +5,8 @@ import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,6 +60,9 @@ class WearMainActivity : ComponentActivity() {
     @Inject lateinit var streamPlayer: DirectStreamPlayer
     @Inject lateinit var uxEngine: com.streamlink.wear.ai.SmartWatchUXEngine
     @Inject lateinit var socketClient: com.streamlink.shared.DirectSocketClient
+    
+    // Telemetry overlay ViewModel — receives real-time data from the phone
+    private val telemetryViewModel: WearTelemetryViewModel by viewModels()
     
     // webRtcSender = null لغاية ما يتعمل نظير WebRTC حقيقي على جانب الساعة (Phase 2).
     // لحد كده الـorchestrator بيشتغل على TCP المحلي بس (نفس السلوك القديم بالظبط)
@@ -120,6 +125,40 @@ class WearMainActivity : ComponentActivity() {
             }
         }
     )
+
+    private val manualIpLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val data = result.data
+        if (data == null) {
+            Log.i("WearMain", "Manual IP entry cancelled (no data)")
+            return@registerForActivityResult
+        }
+        val typed = androidx.core.app.RemoteInput.getResultsFromIntent(data)
+            ?.getCharSequence(EXTRA_IP_INPUT)?.toString()?.trim()
+        when {
+            typed == null -> Log.i("WearMain", "Manual IP entry cancelled")
+            isValidIpv4(typed) -> {
+                streamPlayer.connectManually(typed)
+                Log.i("WearMain", "Manual IP accepted: $typed")
+            }
+            else -> {
+                android.widget.Toast.makeText(this, "IP غير صالح — جرب تاني", android.widget.Toast.LENGTH_SHORT).show()
+                Log.w("WearMain", "Rejected invalid manual IP input: $typed")
+            }
+        }
+    }
+
+    private fun launchManualIpEntry() {
+        val remoteInputs = arrayOf(
+            android.app.RemoteInput.Builder(EXTRA_IP_INPUT)
+                .setLabel("IP بتاع الموبايل")
+                .build()
+        )
+        val intent = android.content.Intent("android.support.wearable.input.action.REMOTE_INPUT")
+        intent.putExtra("android.support.wearable.input.extra.REMOTE_INPUTS", remoteInputs)
+        manualIpLauncher.launch(intent)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -184,6 +223,7 @@ class WearMainActivity : ComponentActivity() {
         
         setContent {
             val streamState by GlobalStreamState.snapshot.collectAsState()
+            val discoveryTimedOut by streamPlayer.discoveryTimedOut.collectAsState()
             var isPinScreen by remember { mutableStateOf(true) }
 
             // Auto-hide PIN screen when successfully connected and streaming
@@ -219,6 +259,13 @@ class WearMainActivity : ComponentActivity() {
                     }
                 )
 
+                if (discoveryTimedOut && streamState.state != GlobalStreamState.State.STREAMING) {
+                    DiscoveryFallbackBanner(
+                        onTap = { launchManualIpEntry() },
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
+                }
+
                 if (!isPinScreen) {
                     // Illusionist Surface for 0-latency perceived touch
                     if (!overlayVisible) {
@@ -253,6 +300,27 @@ class WearMainActivity : ComponentActivity() {
                             }
                         }
                     )
+                }
+
+                // --- Telemetry HUD Overlay (long-press to toggle) ---
+                var showTelemetry by remember { mutableStateOf(false) }
+                if (!isPinScreen) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                detectTapGestures(onLongPress = { showTelemetry = !showTelemetry })
+                            }
+                    )
+                    if (showTelemetry) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xDD0A1128))
+                        ) {
+                            WearTelemetryScreen(viewModel = telemetryViewModel)
+                        }
+                    }
                 }
 
                 if (isPinScreen) {
@@ -377,5 +445,37 @@ fun WearPairingScreen(qrPayload: String, pinCode: String) {
                 textAlign = TextAlign.Center
             )
         }
+    }
+}
+
+private const val EXTRA_IP_INPUT = "extra_manual_ip"
+
+private fun isValidIpv4(input: String): Boolean {
+    val parts = input.split(".")
+    if (parts.size != 4) return false
+    return parts.all { part ->
+        val n = part.toIntOrNull()
+        n != null && n in 0..255 && part == n.toString()
+    }
+}
+
+@Composable
+fun DiscoveryFallbackBanner(onTap: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .padding(bottom = 10.dp)
+            .background(
+                Color(0xCC1E293B),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+            )
+            .clickable { onTap() }
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = "مش لاقي الموبايل تلقائيًا\nاضغط لإدخال IP يدويًا",
+            color = Color(0xFFF59E0B),
+            fontSize = 9.sp,
+            textAlign = TextAlign.Center
+        )
     }
 }

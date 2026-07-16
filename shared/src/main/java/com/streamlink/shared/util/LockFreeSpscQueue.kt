@@ -34,16 +34,22 @@ class LockFreeSpscQueue<T : Any>(capacity: Int) {
     }
 
     fun poll(): T? {
-        val h = head.get()
-        val t = tail.get() // Consumer reads producer's tail to check if empty
-        if (h == t) {
-            return null // Empty
+        while (true) {
+            val h = head.get()
+            val t = tail.get() // Consumer reads producer's tail to check if empty
+            if (h == t) {
+                return null // Empty
+            }
+            val idx = (h and mask).toInt()
+            val item = buffer.get(idx) ?: return null
+            
+            // CAS بدل lazySet — لو thread تاني سبقك ياخد نفس الـ slot، حاول تاني
+            if (head.compareAndSet(h, h + 1)) {
+                buffer.lazySet(idx, null)
+                return item
+            }
+            // فشل الـ CAS = thread تاني ياخد نفس العنصر بالظبط قبلك، جرب مرة تانية
         }
-        val idx = (h and mask).toInt()
-        val item = buffer.get(idx) ?: return null
-        buffer.lazySet(idx, null)
-        head.lazySet(h + 1)
-        return item
     }
 
     fun clear() {

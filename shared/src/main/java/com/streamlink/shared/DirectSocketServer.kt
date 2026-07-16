@@ -354,7 +354,14 @@ class DirectSocketServer {
                     old.wire = null
                     freeTasks.offer(old)
                 }
-                q.offer(task)
+                if (!q.offer(task)) {
+                    // لو لسه مليانة رغم الـ eviction (سباق نادر) — منعًا لتسريب wire buffer
+                    WireBufferPool.release(task.wire!!)
+                    task.wire = null
+                    freeTasks.offer(task)
+                    droppedFrames++
+                    Log.e(tag, "I-frame dropped even after eviction — queue still saturated")
+                }
             }
         }
         return true

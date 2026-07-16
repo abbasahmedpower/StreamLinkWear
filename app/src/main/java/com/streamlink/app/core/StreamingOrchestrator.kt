@@ -10,7 +10,13 @@ import com.streamlink.shared.DirectSocketServer
 import com.streamlink.shared.EventPipeline
 import com.streamlink.shared.GlobalStreamState
 import com.streamlink.shared.StreamProtocol
+import com.streamlink.shared.telemetry.MetricsCollector
+import com.streamlink.shared.telemetry.FuzzyDecisionEngine
+import com.streamlink.app.telemetry.HardwareActuator
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicLong
@@ -49,6 +55,12 @@ class StreamingOrchestrator @Inject constructor(
     private var currentHeight = com.streamlink.shared.StreamProtocol.WEAR_H_FULL
     private var currentFps = com.streamlink.shared.StreamProtocol.WEAR_FPS_FULL
     private var currentBitrate = com.streamlink.shared.StreamProtocol.WEAR_BPS_FULL
+
+    val metricsCollector = MetricsCollector(context, scope)
+    val fuzzyDecisionEngine = FuzzyDecisionEngine(metricsCollector, scope)
+    private val hardwareActuator = HardwareActuator(hardwareEncoder)
+
+    @Volatile var isFuzzyOptimizationEnabled = true
 
     private val intelEngine = com.streamlink.shared.StreamingIntelligenceEngine(
         scope = scope,
@@ -157,6 +169,27 @@ class StreamingOrchestrator @Inject constructor(
     }
 
     private fun startQualityControllerWiring() {
+        // Wire Fuzzy Engine to Hardware Actuator
+        fuzzyDecisionEngine.controlActionsFlow
+            .onEach { action ->
+                if (isFuzzyOptimizationEnabled) {
+                    hardwareActuator.applyControlAction(action)
+                }
+            }
+            .launchIn(scope)
+
+        // Poll DirectSocketServer metrics every 1 second
+        scope.launch {
+            while (runningRealtime) {
+                metricsCollector.updateTcpStats(
+                    queueDepth = socketServer.queueDepth,
+                    totalDroppedFrames = socketServer.droppedFrames,
+                    averageDelayMs = socketServer.averageDelayMs
+                )
+                delay(1000)
+            }
+        }
+
         scope.launch {
             // Live quality/bitrate adjustments from SettingsPrefs
             com.streamlink.app.core.SettingsPrefs.get(context).quality.collect { quality ->

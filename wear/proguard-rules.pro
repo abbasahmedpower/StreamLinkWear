@@ -1,4 +1,6 @@
--keep class com.streamlink.** { *; }
+-keep class com.streamlink.wear.service.WearForegroundService { *; }
+-keep class com.streamlink.wear.tile.StreamLinkTileService { *; }
+-keep class com.streamlink.wear.WearApp { *; }
 -keep class org.webrtc.** { *; }
 -keep class io.getstream.** { *; }
 -keep class kotlinx.coroutines.** { *; }

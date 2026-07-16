@@ -14,6 +14,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
@@ -28,6 +30,10 @@ class DirectStreamPlayer @Inject constructor(
     private val audioEngine: AudioPlaybackEngine
 ) {
     private val tag = "DirectStreamPlayer"
+
+    private val _discoveryTimedOut = MutableStateFlow(false)
+    /** true = mDNS couldn't find the phone within 15s → UI should offer manual IP entry */
+    val discoveryTimedOut: StateFlow<Boolean> = _discoveryTimedOut
 
     private var decoder: MediaCodec? = null
     private var surface: Surface? = null
@@ -88,7 +94,9 @@ class DirectStreamPlayer @Inject constructor(
             client.connect(
                 onStateChange = { connected ->
                     Log.i(tag, "Socket connected=$connected")
-                    if (!connected) {
+                    if (connected) {
+                        _discoveryTimedOut.value = false
+                    } else {
                         idrReceived.set(false)
                         assembler.reset()
                         resetJitterBuffer()
@@ -106,9 +114,20 @@ class DirectStreamPlayer @Inject constructor(
                     if (msg.command == StreamProtocol.CMD_SET_BUFFER_JITTER_MS) {
                         setJitterBufferMs(msg.value)
                     }
+                },
+                onDiscoveryTimedOut = {
+                    Log.w(tag, "Auto-discovery timed out — signaling UI for manual IP entry")
+                    _discoveryTimedOut.value = true
                 }
             )
         }
+    }
+
+    /** Called by the UI once the user types the phone's IP manually. */
+    fun connectManually(host: String) {
+        client.manualHostOverride = host
+        _discoveryTimedOut.value = false
+        Log.i(tag, "Manual IP override accepted: $host")
     }
 
     private fun initDecoder() {

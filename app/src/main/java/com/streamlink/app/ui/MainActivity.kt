@@ -9,6 +9,8 @@ import com.streamlink.shared.util.safeSystemService
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import com.streamlink.app.ui.viewmodel.TelemetryViewModel
+import com.streamlink.app.ui.viewmodel.TelemetryViewModelFactory
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
@@ -33,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.streamlink.app.core.StreamingOrchestrator
+import com.streamlink.app.core.WearTelemetrySender
 import com.streamlink.shared.GlobalStreamState
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
@@ -42,6 +45,13 @@ import javax.inject.Inject
 class MainActivity : BaseActivity() {
 
     @Inject lateinit var orchestrator: StreamingOrchestrator
+    
+    private val telemetryViewModel: TelemetryViewModel by viewModels {
+        TelemetryViewModelFactory(
+            orchestrator = orchestrator,
+            wearSender = WearTelemetrySender(applicationContext)
+        )
+    }
 
     private val captureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -112,12 +122,10 @@ class MainActivity : BaseActivity() {
                         onThemeModeChange = { themeMode = it }
                     )
                     showInfoScreen -> InfoScreen(onBack = { showInfoScreen = false })
-                    else -> StreamLinkPhoneScreen(
-                        orchestrator = orchestrator,
+                    else -> HorusTelemetryScreen(
+                        viewModel = telemetryViewModel,
                         onStartCapture = { requestScreenCapture() },
-                        onStop = { orchestrator.stopStream(this@MainActivity) },
-                        onInfoClick = { showInfoScreen = true },
-                        onSettingsClick = { showSettingsScreen = true }
+                        onStopCapture = { orchestrator.stopStream(this@MainActivity) }
                     )
                 }
             }
