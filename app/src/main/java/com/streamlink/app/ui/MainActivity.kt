@@ -1,9 +1,14 @@
 package com.streamlink.app.ui
 
+import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.Bundle
+import android.util.Rational
+import com.streamlink.app.core.PipModeState
 import com.streamlink.shared.util.safeSystemService
 // import androidx.appcompat.app.AppCompatActivity (Inherits from BaseActivity instead)
 import androidx.activity.compose.setContent
@@ -107,6 +112,16 @@ class MainActivity : BaseActivity() {
             }
         }
 
+        // Keep PictureInPictureParams in sync with GlobalStreamState so setAutoEnterEnabled
+        // (API 31+) only ever fires while a stream is actually live — never on the idle/setup screen.
+        lifecycleScope.launch {
+            lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                GlobalStreamState.snapshot.collect {
+                    runCatching { setPictureInPictureParams(buildPipParams()) }
+                }
+            }
+        }
+
         setContent {
             val settingsPrefs = remember { com.streamlink.app.core.SettingsPrefs.get(this@MainActivity) }
             var themeMode by remember { mutableStateOf(com.streamlink.app.ui.theme.ThemeMode.SYSTEM) }
@@ -139,6 +154,37 @@ class MainActivity : BaseActivity() {
             return
         }
         captureLauncher.launch(mpm.createScreenCaptureIntent())
+    }
+
+    /**
+     * Portrait 9:16 matches the phone's own screen far more often than the video content's
+     * true aspect ratio (which varies per-app) — the system clamps to it anyway, and a fixed
+     * ratio avoids a jarring PiP-window resize mid-stream if the mirrored app rotates.
+     */
+    private fun buildPipParams(): PictureInPictureParams {
+        val isStreaming = GlobalStreamState.snapshot.value.state == GlobalStreamState.State.STREAMING
+        val builder = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(9, 16))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // API 31+: let the system auto-enter PiP on user-leave instead of racing it below.
+            builder.setAutoEnterEnabled(isStreaming)
+        }
+        return builder.build()
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // Manual fallback for API 29-30, where setAutoEnterEnabled doesn't exist yet.
+        // Only ever enter PiP for a live stream — never for the idle/setup screen.
+        val isStreaming = GlobalStreamState.snapshot.value.state == GlobalStreamState.State.STREAMING
+        if (isStreaming && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            runCatching { enterPictureInPictureMode(buildPipParams()) }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        PipModeState.update(isInPictureInPictureMode)
     }
 
     override fun onDestroy() {

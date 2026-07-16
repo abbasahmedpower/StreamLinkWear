@@ -16,6 +16,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.streamlink.app.core.PipModeState
+import com.streamlink.shared.GlobalStreamState
 import com.streamlink.app.ui.viewmodel.TelemetryViewModel
 import com.streamlink.app.ui.components.GlassCard
 import com.streamlink.app.ui.components.GridTwoColumns
@@ -37,6 +39,10 @@ fun HorusTelemetryScreen(
     val currentBitrate by viewModel.currentBitrate.collectAsStateWithLifecycle()
     val isOptimizerEnabled by viewModel.isOptimizerEnabled.collectAsStateWithLifecycle()
 
+    val isInPip by PipModeState.isInPip.collectAsStateWithLifecycle()
+    val streamState by GlobalStreamState.snapshot.collectAsStateWithLifecycle()
+    val isStreaming = streamState.state == GlobalStreamState.State.STREAMING
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -51,7 +57,12 @@ fun HorusTelemetryScreen(
                 )
             }
     ) {
-        Column(
+        if (isStreaming || isInPip) {
+            PhoneRenderSurface(modifier = Modifier.fillMaxSize())
+        }
+
+        if (!isInPip) {
+            Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(20.dp)
@@ -226,6 +237,7 @@ fun HorusTelemetryScreen(
                 )
             }
             Spacer(modifier = Modifier.height(16.dp))
+        }
         }
     }
 }

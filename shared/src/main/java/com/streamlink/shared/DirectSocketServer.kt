@@ -28,6 +28,9 @@ class DirectSocketServer {
     private var serverSocket: ServerSocket? = null
     private var clientSocket: Socket? = null
     private val running = AtomicBoolean(false)
+    
+    @Volatile var isTransportPaused = false
+    
     /** True once the server socket is bound and listening. Used by orchestrator startup sequencing. */
     val isRunning: Boolean get() = running.get()
 
@@ -229,6 +232,11 @@ class DirectSocketServer {
         var cachedDos: java.io.DataOutputStream? = null
         var cachedForSocket: Socket? = null
         while (running.get() && !Thread.currentThread().isInterrupted) {
+            // 1. إذا كان النقل متوقفاً مؤقتاً بسبب الـ Handover، انتظر قليلاً ولا تسحب من الـ Queue
+            if (isTransportPaused) {
+                LockSupport.parkNanos(50_000_000) // 50ms wait
+                continue
+            }
             try {
                 // ✅ رسايل التحكم (زي jitter-buffer target) بيتاخد لها أولوية —
                 // صغيرة وحساسة للتوقيت، ولازم تعدي من نفس الـ thread ده بالظبط.
@@ -396,5 +404,57 @@ class DirectSocketServer {
         try { serverSocket?.close() } catch (_: Exception) {}
         serverSocket = null
         Log.i(tag, "Server closed. totalSent=${bytesSent.get()} bytes")
+    }
+
+    /**
+     * إيقاف مؤقت للإرسال لمنع الـ Thread من محاولة الكتابة في سوكيت ميت
+     */
+    fun pauseTransport() {
+        isTransportPaused = true
+        Log.w(tag, "Transport pipeline PAUSED for dynamic migration.")
+    }
+
+    /**
+     * نقل السوكيت حياً إلى المسار الجديد (WiFi P2P أو WAN Cellular)
+     */
+    fun migrateTransportSocket(newHost: String, newPort: Int, isRelay: Boolean): Boolean {
+        return try {
+            // 1. إغلاق السوكيت القديم بأمان لمنع الـ Resource Leaks
+            clientSocket?.runCatching { close() }
+            
+            Log.d(tag, "Establishing new socket connection to $newHost:$newPort")
+            
+            // 2. إنشاء اتصال سوكيت جديد بالمسار الجديد
+            val newSocket = java.net.Socket()
+            newSocket.connect(java.net.InetSocketAddress(newHost, newPort), 5000) // 5 ثواني Timeout للاتصال
+            newSocket.tcpNoDelay = true
+            newSocket.setPerformancePreferences(0, 1, 2)
+            newSocket.soTimeout = 0
+            
+            this.clientSocket = newSocket
+            this.isClientConnected = true
+            
+            Thread({ runInputReceiver(newSocket) }, "SL-InputReceiver-Migrated").apply {
+                priority = Thread.MAX_PRIORITY - 2
+                isDaemon = true
+                start()
+            }
+            
+            // 3. فك تجميد حلقة الإرسال لتستأنف عملها فوراً
+            isTransportPaused = false
+            
+            // 4. تحديث الـ Bitrate ديناميكياً بناءً على نوع الشبكة
+            kotlinx.coroutines.runBlocking {
+                GlobalStreamState.update { 
+                    this.copy(bitrateKbps = if (isRelay) 800 else 2500)
+                }
+            }
+            
+            Log.i(tag, "Successfully migrated socket to ${if(isRelay) "WAN" else "Local WiFi"}")
+            true
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to migrate socket to $newHost", e)
+            false
+        }
     }
 }

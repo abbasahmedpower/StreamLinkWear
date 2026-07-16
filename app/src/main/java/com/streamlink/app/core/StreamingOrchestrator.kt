@@ -536,4 +536,12 @@ class StreamingOrchestrator @Inject constructor(
         Log.i(tag, "Keyframe requested")
         hardwareEncoder.forceKeyframe()
     }
+
+    fun pauseTransport() {
+        socketServer.pauseTransport()
+    }
+
+    fun migrateTransportSocket(newHost: String, newPort: Int, isRelay: Boolean): Boolean {
+        return socketServer.migrateTransportSocket(newHost, newPort, isRelay)
+    }
 }
