@@ -508,29 +508,41 @@ class StreamingOrchestrator @Inject constructor(
         intelEngine.stop()
         hardwareEncoder.pause()
         com.streamlink.shared.ai.TouchPerceptionHub.reset()
-        val serviceIntent = Intent(context, CaptureService::class.java).apply {
+        val stopIntent = Intent(context, CaptureService::class.java).apply {
             action = CaptureService.ACTION_STOP
         }
-        context.startService(serviceIntent)
+        try {
+            // Deliver STOP action to the service if it is running
+            context.startService(stopIntent)
+        } catch (e: Exception) {
+            Log.w(tag, "Failed to send stop intent to CaptureService", e)
+        }
+        try {
+            // Ensure the service is requested to stop
+            val svcIntent = Intent(context, CaptureService::class.java)
+            context.stopService(svcIntent)
+        } catch (e: Exception) {
+            Log.w(tag, "Failed to stop CaptureService via stopService()", e)
+        }
         mirrorDataPlane.stop()
         socketServer.close()
-        webRtcTransport?.close()
-        webRtcTransport = null
+        webRtcTransport?.let {
+            try {
+                it.close()
+            } catch (e: Exception) {
+                Log.e(tag, "Error closing WebRTC transport", e)
+            } finally {
+                webRtcTransport = null
+            }
+        }
         runningRealtime = false
         scope.launch {
             GlobalStreamState.transition(GlobalStreamState.State.STOPPED)
         }
     }
 
-    suspend fun stopStream() {
-        Log.i(tag, "Stopping stream (no context)")
-        intelEngine.stop()
-        hardwareEncoder.pause()
-        com.streamlink.shared.ai.TouchPerceptionHub.reset()
-        mirrorDataPlane.stop()
-        socketServer.close()
-        runningRealtime = false
-        GlobalStreamState.transition(GlobalStreamState.State.STOPPED)
+    fun stopStream() {
+        stopStream(context)
     }
 
     fun requestKeyframe() {

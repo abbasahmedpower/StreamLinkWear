@@ -22,12 +22,24 @@ class SignalingClient(
     private val deviceType: String // "PHONE" or "WATCH"
 ) {
     private val tag = "SignalingClient"
+    private val host: String = run {
+        try {
+            val uri = if (backendUrl.startsWith("http://") || backendUrl.startsWith("https://")) {
+                java.net.URI(backendUrl)
+            } else {
+                java.net.URI("https://$backendUrl")
+            }
+            uri.host ?: backendUrl.substringBefore(':').substringBefore('/')
+        } catch (e: Exception) {
+            backendUrl.substringAfter("://", backendUrl).substringBefore(':').substringBefore('/')
+        }
+    }
     private val client = OkHttpClient.Builder()
         .pingInterval(10, TimeUnit.SECONDS)
         .certificatePinner(
             CertificatePinner.Builder()
-                .add("*.streamlinkwear.com", "sha256/7HIpactkIAq2Y49orFOOQKurWxmmSFZhBCoQYcRhJ3Y=") // Primary
-                .add("*.streamlinkwear.com", "sha256/fwza0LRMXouZHRC8Ei+4PyuldPDcf3UKgO/04cDM1oE=") // Backup
+                .add(host, "sha256/7HIpactkIAq2Y49orFOOQKurWxmmSFZhBCoQYcRhJ3Y=") // Primary
+                .add(host, "sha256/fwza0LRMXouZHRC8Ei+4PyuldPDcf3UKgO/04cDM1oE=") // Backup
                 .build()
         )
         .build()
