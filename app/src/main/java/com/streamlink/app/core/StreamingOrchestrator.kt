@@ -51,6 +51,9 @@ class StreamingOrchestrator @Inject constructor(
     // متضفش أي property جديدة تحت init{} — ضيفها هنا فوق بس.
     // ============================================================
 
+    private var blackoutManager: com.streamlink.app.core.overlay.PrivacyBlackoutOverlayManager? = null
+    private val settingsStore = com.streamlink.shared.util.SystemSettingsStore(context)
+
     private var currentWidth = com.streamlink.shared.StreamProtocol.WEAR_W_FULL
     private var currentHeight = com.streamlink.shared.StreamProtocol.WEAR_H_FULL
     private var currentFps = com.streamlink.shared.StreamProtocol.WEAR_FPS_FULL
@@ -329,7 +332,14 @@ class StreamingOrchestrator @Inject constructor(
         isDrm: Boolean,
         networkQuality: Float
     ) {
-        Log.i(tag, "Starting stream → url=$url drm=$isDrm nq=$networkQuality")
+        Log.i(tag, "Starting stream ✨ url=$url drm=$isDrm nq=$networkQuality")
+        
+        if (settingsStore.isPrivacyBlackoutEnabled) {
+            blackoutManager = com.streamlink.app.core.overlay.PrivacyBlackoutOverlayManager(context).apply {
+                enable()
+            }
+        }
+
         scope.launch {
             GlobalStreamState.transition(GlobalStreamState.State.CONNECTING)
         }
@@ -505,6 +515,9 @@ class StreamingOrchestrator @Inject constructor(
 
     fun stopStream(context: Context) {
         Log.i(tag, "Stopping stream")
+        blackoutManager?.disable()
+        blackoutManager = null
+        
         intelEngine.stop()
         hardwareEncoder.pause()
         com.streamlink.shared.ai.TouchPerceptionHub.reset()

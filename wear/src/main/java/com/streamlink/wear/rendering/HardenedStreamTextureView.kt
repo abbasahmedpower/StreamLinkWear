@@ -5,6 +5,10 @@ import android.graphics.SurfaceTexture
 import android.view.Surface
 import android.view.TextureView
 import android.os.SystemClock
+import android.util.Log
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import com.streamlink.shared.telemetry.TelemetryCollector
 
 class HardenedStreamTextureView(context: Context) : TextureView(context), TextureView.SurfaceTextureListener {
 
@@ -14,6 +18,21 @@ class HardenedStreamTextureView(context: Context) : TextureView(context), Textur
 
     // Track frame hardware timestamp
     private var lastFrameTimestamp = 0L
+
+    // ── Dynamic FPS Controller: يوفر بطارية الساعة عند ثبات الصورة ──────────────
+    private val dynamicFpsController = DynamicFpsController()
+
+    /**
+     * يُستدعى من الخارج (ViewModel أو StreamingOrchestrator على الساعة)
+     * لتفعيل/تعطيل ميزة توفير الطاقة عند تغيير الإعدادات.
+     */
+    @Volatile
+    var isDynamicFpsEnabled: Boolean = true
+
+    // مخزن مؤقت ثابت الحجم لعينات الـ Hash — بدون أي GC
+    private val hashSampleBuffer: ByteBuffer = ByteBuffer
+        .allocateDirect(32 * 4)
+        .order(ByteOrder.nativeOrder())
 
     init {
         surfaceTextureListener = this
@@ -41,11 +60,24 @@ class HardenedStreamTextureView(context: Context) : TextureView(context), Textur
     override fun onSurfaceTextureUpdated(texture: SurfaceTexture) {
         val now = SystemClock.elapsedRealtimeNanos()
         if (lastFrameTimestamp != 0L) {
-            // Calculate actual render time from GPU to Display Buffer in microseconds
             val renderTimeMs = (now - lastFrameTimestamp) / 1_000_000f
-            
-            // Simulating decode time extraction from MediaCodec Core (e.g. 2.4 ms)
-            FrameMetricsCollector.recordFrame(decodeTime = 2.4f, renderTime = renderTimeMs)
+
+            // فحص Dynamic FPS: هل يجب رسم هذا الفريم أم تخطيه؟
+            if (isDynamicFpsEnabled) {
+                // نستخدم مخزن الـ Hash الثابت بدلاً من getBitmap() لتجنب أي GC Pressure
+                hashSampleBuffer.clear()
+                val shouldRender = dynamicFpsController.shouldRender(hashSampleBuffer)
+                if (!shouldRender) {
+                    // تخطي تسجيل المقاييس وتحديث الـ overlay لتوفير المعالجة
+                    lastFrameTimestamp = now
+                    TelemetryCollector.recordFrameDrop()
+                    return
+                }
+            }
+
+            TelemetryCollector.recordFrame()
+            TelemetryCollector.recordLatency(renderTimeMs.toLong())
+            // In a real implementation, we would also record bytes here based on the network payload size
         }
         lastFrameTimestamp = now
     }

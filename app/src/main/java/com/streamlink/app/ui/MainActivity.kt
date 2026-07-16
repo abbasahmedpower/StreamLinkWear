@@ -14,6 +14,15 @@ import com.streamlink.shared.util.safeSystemService
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import android.provider.Settings
+import android.net.Uri
+import android.widget.Toast
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Settings
+import com.streamlink.app.ui.dashboard.TelemetryDashboard
+import com.streamlink.app.ui.settings.SettingsScreen
+import com.streamlink.shared.util.SystemSettingsStore
 import com.streamlink.app.ui.viewmodel.TelemetryViewModel
 import com.streamlink.app.ui.viewmodel.TelemetryViewModelFactory
 import androidx.compose.animation.AnimatedVisibility
@@ -51,6 +60,9 @@ class MainActivity : BaseActivity() {
 
     @Inject lateinit var orchestrator: StreamingOrchestrator
     
+    private lateinit var settingsStore: SystemSettingsStore
+    private val OVERLAY_PERMISSION_REQ_CODE = 1001
+    
     private val telemetryViewModel: TelemetryViewModel by viewModels {
         TelemetryViewModelFactory(
             orchestrator = orchestrator,
@@ -80,8 +92,12 @@ class MainActivity : BaseActivity() {
             if (!com.streamlink.app.BuildConfig.DEBUG) {
                 finish()
                 return
+                return
             }
         }
+        
+        settingsStore = SystemSettingsStore(applicationContext)
+        
         // Observe pairing events — auto-launch PIN screen when a Watch connects
         lifecycleScope.launch {
             lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
@@ -127,22 +143,44 @@ class MainActivity : BaseActivity() {
             var themeMode by remember { mutableStateOf(com.streamlink.app.ui.theme.ThemeMode.SYSTEM) }
 
             com.streamlink.app.ui.theme.StreamLinkTheme(themeMode = themeMode) {
-                var showInfoScreen by remember { mutableStateOf(false) }
-                var showSettingsScreen by remember { mutableStateOf(false) }
+                MainScreenLayout(
+                    settingsStore = settingsStore,
+                    onRequireOverlayPermission = { checkAndRequestOverlayPermission() },
+                    viewModel = telemetryViewModel,
+                    onStartCapture = { requestScreenCapture() },
+                    onStopCapture = { orchestrator.stopStream(this@MainActivity) }
+                )
+            }
+        }
+    }
 
-                when {
-                    showSettingsScreen -> SettingsScreen(
-                        onBack = { showSettingsScreen = false },
-                        themeMode = themeMode,
-                        onThemeModeChange = { themeMode = it }
-                    )
-                    showInfoScreen -> InfoScreen(onBack = { showInfoScreen = false })
-                    else -> HorusTelemetryScreen(
-                        viewModel = telemetryViewModel,
-                        onStartCapture = { requestScreenCapture() },
-                        onStopCapture = { orchestrator.stopStream(this@MainActivity) }
-                    )
-                }
+    private fun checkAndRequestOverlayPermission(): Boolean {
+        if (!Settings.canDrawOverlays(this)) {
+            Toast.makeText(
+                this, 
+                "يرجى تفعيل صلاحية الظهور في الأعلى لتشغيل وضع تعتيم الشاشة (Privacy Blackout)", 
+                Toast.LENGTH_LONG
+            ).show()
+            
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            )
+            startActivityForResult(intent, OVERLAY_PERMISSION_REQ_CODE)
+            return false
+        }
+        return true
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == OVERLAY_PERMISSION_REQ_CODE) {
+            if (Settings.canDrawOverlays(this)) {
+                Toast.makeText(this, "تم تفعيل صلاحية التعتيم بنجاح! 🛡️", Toast.LENGTH_SHORT).show()
+            } else {
+                // إغلاق خيار الـ Blackout في الإعدادات تلقائياً لو رفض المستخدم الرخصة
+                settingsStore.setPrivacyBlackout(false)
+                Toast.makeText(this, "تم رفض الصلاحية، لن يعمل وضع التعتيم التام.", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -196,6 +234,91 @@ class MainActivity : BaseActivity() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Premium Phone UI
 // ─────────────────────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MainScreenLayout(
+    settingsStore: SystemSettingsStore,
+    onRequireOverlayPermission: () -> Boolean,
+    viewModel: TelemetryViewModel,
+    onStartCapture: () -> Unit,
+    onStopCapture: () -> Unit
+) {
+    var selectedTab by remember { mutableStateOf(0) }
+
+    Scaffold(
+        bottomBar = {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                NavigationBarItem(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    icon = { Icon(Icons.Default.Info, contentDescription = "Console") },
+                    label = { Text("الكونسول") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
+                    label = { Text("الإعدادات") }
+                )
+            }
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            when (selectedTab) {
+                0 -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // كونسول البث الرئيسي وعداد المقاييس الفوري
+                        TelemetryDashboard()
+                        
+                        Spacer(modifier = Modifier.weight(1f))
+                        
+                        val state by GlobalStreamState.snapshot.collectAsStateWithLifecycle()
+                        val isStreaming  = state.state == GlobalStreamState.State.STREAMING
+                        val isConnecting = state.state == GlobalStreamState.State.CONNECTING ||
+                                state.state == GlobalStreamState.State.STREAM_STARTING
+
+                        if (isStreaming || isConnecting) {
+                            Button(
+                                onClick = onStopCapture,
+                                modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 16.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text("Stop Casting", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        } else {
+                            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                PulsingCastButton(onClick = onStartCapture)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                }
+                1 -> {
+                    // شاشة الإعدادات المتقدمة
+                    SettingsScreen(settingsStore = settingsStore)
+                    
+                    // إذا حاول المستخدم تفعيل الـ Privacy Blackout، نتحقق من الرخصة فوراً
+                    LaunchedEffect(settingsStore.isPrivacyBlackoutEnabled) {
+                        if (settingsStore.isPrivacyBlackoutEnabled) {
+                            val granted = onRequireOverlayPermission()
+                            if (!granted) {
+                                // إعادة التوجيه الفوري لمنع الكراش
+                                settingsStore.setPrivacyBlackout(false)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 @Composable
 fun StreamLinkPhoneScreen(

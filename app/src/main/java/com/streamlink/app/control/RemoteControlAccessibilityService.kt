@@ -12,8 +12,10 @@ import android.view.InputDevice
 import android.view.InputEvent
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityEvent
+import com.streamlink.app.core.input.TouchInputController
 import com.streamlink.shared.TouchEvent
 import com.streamlink.shared.TouchPhase
+import com.streamlink.shared.ai.KinematicPredictionEngine
 import java.lang.reflect.Method
 
 class RemoteControlAccessibilityService : AccessibilityService() {
@@ -30,6 +32,10 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     // هيفضل false في 99% من التنصيبات العادية (بيحتاج INJECT_EVENTS وهو signature-permission)
     private var canUseInputManager = false
 
+    // ── محرك التنبؤ الحركي + المتحكم الجديد (يعملان على الهاتف فقط لحماية بطارية الساعة) ──
+    private val predictionEngine = KinematicPredictionEngine()
+    private var touchInputController: TouchInputController? = null
+
     companion object {
         var instance: RemoteControlAccessibilityService? = null
             private set
@@ -43,6 +49,19 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         screenWidth = dm.widthPixels
         screenHeight = dm.heightPixels
         trySetupInputManager()
+    }
+
+    /**
+     * يُستدعى بعد trySetupInputManager() لتهيئة المتحكم الجديد إذا كان المسار السريع متاحاً.
+     */
+    private fun initTouchInputController() {
+        val im = inputManager ?: return
+        touchInputController = TouchInputController(
+            inputManager = im,
+            displayMetrics = resources.displayMetrics,
+            predictionEngine = predictionEngine
+        )
+        Log.i(tag, "TouchInputController مُهيَّأ مع KinematicPredictionEngine")
     }
 
     /**
@@ -71,6 +90,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             )
             canUseInputManager = true
             Log.i(tag, "INJECT_EVENTS ممنوح → استخدام المسار السريع")
+            initTouchInputController()
         } catch (e: Exception) {
             canUseInputManager = false
             Log.w(tag, "InputManager reflection failed: ${e.message}")
@@ -115,7 +135,20 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         val px = ((watchX - offsetX) / scale).coerceIn(0f, (screenWidth - 1).toFloat())
         val py = ((watchY - offsetY) / scale).coerceIn(0f, (screenHeight - 1).toFloat())
 
-        if (canUseInputManager && injectViaInputManager(event.phase, px, py)) return
+        // المسار السريع: استخدم المتحكم الجديد المدمج مع التنبؤ الحركي
+        val controller = touchInputController
+        if (canUseInputManager && controller != null) {
+            val action = when (event.phase) {
+                TouchPhase.DOWN   -> MotionEvent.ACTION_DOWN
+                TouchPhase.MOVE   -> MotionEvent.ACTION_MOVE
+                TouchPhase.UP     -> MotionEvent.ACTION_UP
+                TouchPhase.CANCEL -> MotionEvent.ACTION_CANCEL
+            }
+            // نحوّل الإحداثيات المحسوبة (px,py) إلى نسبية لأن TouchInputController يتوقع nx,ny
+            val nx = px / screenWidth
+            val ny = py / screenHeight
+            if (controller.handleIncomingWatchTouch(action, nx, ny, event.pointerId)) return
+        }
 
         synchronized(lock) {
             when (event.phase) {
@@ -215,11 +248,38 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         }
     }
 
+    // ── مسار استقبال الإيماءات ──
+    fun handleIncomingGesture(gestureId: Int) {
+        when (gestureId) {
+            0 -> performScrollAction(scrollDown = true)
+            1 -> performScrollAction(scrollDown = false)
+            2 -> performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK) // زر الرجوع الفيزيائي
+        }
+    }
+
+    private fun performScrollAction(scrollDown: Boolean) {
+        // محاكاة سحب الشاشة لأعلى أو لأسفل عبر الـ Accessibility Path
+        val path = android.graphics.Path().apply {
+            val startY = if (scrollDown) 1500f else 500f
+            val endY = if (scrollDown) 500f else 1500f
+            moveTo(500f, startY)
+            lineTo(500f, endY)
+        }
+        
+        val gestureBuilder = android.accessibilityservice.GestureDescription.Builder()
+        val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 300)
+        gestureBuilder.addStroke(stroke)
+        
+        dispatchGesture(gestureBuilder.build(), null, null)
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
     override fun onInterrupt() {}
     override fun onUnbind(intent: Intent?): Boolean {
         if (instance == this) instance = null
         synchronized(lock) { sessions.clear() }
+        predictionEngine.reset()
+        touchInputController = null
         return super.onUnbind(intent)
     }
 }

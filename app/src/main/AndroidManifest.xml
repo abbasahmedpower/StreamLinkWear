@@ -11,6 +11,8 @@
     <!-- Background Services: Required for uninterrupted streaming while app is minimized -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    
     <!-- Data Safety Justification: Screen mirroring needs continuous screen capture -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <!-- Data Safety Justification: Maintains a persistent local link to the smartwatch -->
