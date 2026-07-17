@@ -134,10 +134,22 @@ class HardwareEncoder(
         Log.i(tag, "Reconfiguring encoder to ${profile.label} (${profile.width}x${profile.height}@${profile.fps})")
         
         // Stop current codec
-        try { mediaCodec?.stop() } catch (_: Exception) {}
-        try { mediaCodec?.release() } catch (_: Exception) {}
+        try {
+            mediaCodec?.stop()
+        } catch (e: Exception) {
+            Log.w(tag, "Error stopping codec during reconfigure: ${e.message}")
+        }
+        try {
+            mediaCodec?.release()
+        } catch (e: Exception) {
+            Log.w(tag, "Error releasing codec during reconfigure: ${e.message}")
+        }
         mediaCodec = null
-        try { inputSurface?.release() } catch (_: Exception) {}
+        try {
+            inputSurface?.release()
+        } catch (e: Exception) {
+            Log.w(tag, "Error releasing input surface during reconfigure: ${e.message}")
+        }
         inputSurface = null
         
         width = profile.width

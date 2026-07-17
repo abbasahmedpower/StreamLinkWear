@@ -43,7 +43,11 @@ class HardenedStreamTextureView(context: Context) : TextureView(context), Textur
         // Nano-careful Surface reuse
         managedSurface?.release()
         managedSurface = Surface(texture)
-        onSurfaceReady(managedSurface!!)
+        val surface = managedSurface ?: run {
+            Log.e("HardenedStreamTextureView", "Failed to create Surface from SurfaceTexture")
+            return
+        }
+        onSurfaceReady(surface)
     }
 
     override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) {

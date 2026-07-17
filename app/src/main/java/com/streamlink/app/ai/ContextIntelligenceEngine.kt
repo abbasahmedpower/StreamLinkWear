@@ -62,8 +62,18 @@ class ContextIntelligenceEngine(
                 Log.e(tag, "Failed to load TFLite model $assetName, trying fallback", e)
             } finally {
                 // Always close the streams — the MappedByteBuffer keeps the data alive independently
-                try { fileInputStream?.close() } catch (_: Exception) {}
-                try { assetFileDescriptor?.close() } catch (_: Exception) {}
+                try {
+                    fileInputStream?.close()
+                } catch (e: Exception) {
+                    /* intentional: stream cleanup in finally block; resource will be GC'd if close fails */
+                    Log.d(tag, "Error closing fileInputStream: ${e.message}")
+                }
+                try {
+                    assetFileDescriptor?.close()
+                } catch (e: Exception) {
+                    /* intentional: stream cleanup in finally block; resource will be GC'd if close fails */
+                    Log.d(tag, "Error closing assetFileDescriptor: ${e.message}")
+                }
             }
         }
 

@@ -214,7 +214,10 @@ class DirectSocketServer {
                         try {
                             newClient.outputStream.write(byteArrayOf(0x00))
                             newClient.outputStream.flush()
-                        } catch (_: Exception) {}
+                        } catch (e: Exception) {
+                            /* intentional: socket may be half-closed or in error state; best-effort rejection notification */
+                            Log.d(tag, "Could not send rejection byte: ${e.message}")
+                        }
                         newClient.close()
                         continue
                     }
@@ -239,7 +242,12 @@ class DirectSocketServer {
                     }
                 } catch (e: Exception) {
                     Log.w(tag, "Handshake failed, dropping this client only: ${e.message}")
-                    try { newClient.close() } catch (_: Exception) {}
+                    try {
+                        newClient.close()
+                    } catch (closeErr: Exception) {
+                        /* intentional: socket cleanup on error path; resource will be GC'd if close fails */
+                        Log.d(tag, "Could not close failed client: ${closeErr.message}")
+                    }
                 }
             }
 
@@ -430,7 +438,12 @@ class DirectSocketServer {
     }
 
     private fun closeClient() {
-        try { clientSocket?.close() } catch (_: Exception) {}
+        try {
+            clientSocket?.close()
+        } catch (e: Exception) {
+            /* intentional: resource cleanup path; best-effort close of socket */
+            Log.d(tag, "Error closing client socket: ${e.message}")
+        }
         clientSocket = null
         isClientConnected = false
         iFrameQueue.clear()
@@ -440,7 +453,12 @@ class DirectSocketServer {
     fun close() {
         running.set(false)
         closeClient()
-        try { serverSocket?.close() } catch (_: Exception) {}
+        try {
+            serverSocket?.close()
+        } catch (e: Exception) {
+            /* intentional: server socket cleanup on shutdown; resource will be released */
+            Log.d(tag, "Error closing server socket: ${e.message}")
+        }
         serverSocket = null
         Log.i(tag, "Server closed. totalSent=${bytesSent.get()} bytes")
     }

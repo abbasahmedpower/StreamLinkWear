@@ -23,7 +23,12 @@ class HandoffOrchestrator(
 
     // ✅ Cross-node routing via Redis Pub/Sub
     suspend fun route(userId: String, senderDevice: PeerRegistry.DeviceType, raw: String) {
-        val env = try { json.decodeFromString<SignalEnvelope>(raw) } catch (_: Exception) { return }
+        val env = try {
+            json.decodeFromString<SignalEnvelope>(raw)
+        } catch (e: Exception) {
+            kotlin.io.println("DEBUG: Failed to parse SignalEnvelope: ${e.message}")
+            return
+        }
 
         if (env.type == "METRICS") {
             try {
@@ -48,7 +53,12 @@ class HandoffOrchestrator(
         val pair = registry.getPair(userId)
         val targetPeer = if (targetDevice == PeerRegistry.DeviceType.PHONE) pair?.phone else pair?.watch
         if (targetPeer != null) {
-            try { targetPeer.wsSession.send(Frame.Text(raw)) } catch (_: Exception) {}
+            try {
+                targetPeer.wsSession.send(Frame.Text(raw))
+            } catch (e: Exception) {
+                /* intentional: WebSocket send may fail if peer disconnected; remote delivery via Redis fallback */
+                kotlin.io.println("DEBUG: WebSocket send failed: ${e.message}")
+            }
             return
         }
 
@@ -81,6 +91,11 @@ class HandoffOrchestrator(
     suspend fun broadcastToPeer(roomId: String, senderType: String, signal: String) {
         val target = if (senderType == "MOBILE") "WEAR" else "MOBILE"
         val session = legacyRooms[roomId]?.get(target)
-        try { session?.send(Frame.Text(signal)) } catch (_: Exception) {}
+        try {
+            session?.send(Frame.Text(signal))
+        } catch (e: Exception) {
+            /* intentional: legacy API broadcast; peer may have disconnected */
+            kotlin.io.println("DEBUG: Legacy broadcast failed: ${e.message}")
+        }
     }
 }

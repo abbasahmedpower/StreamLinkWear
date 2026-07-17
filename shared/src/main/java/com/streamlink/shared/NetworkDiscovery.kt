@@ -38,7 +38,12 @@ class NetworkDiscovery(private val context: Context) {
         }
         if (isPublishing) {
             Log.i(tag, "Already publishing — unregistering stale listener before re-publish")
-            try { manager.unregisterService(registrationListener) } catch (_: Exception) {}
+            try {
+                manager.unregisterService(registrationListener)
+            } catch (e: Exception) {
+                /* intentional: listener may not be registered; NSD manager handles gracefully */
+                Log.d(tag, "Could not unregister stale listener: ${e.message}")
+            }
         }
         val serviceInfo = NsdServiceInfo().apply {
             serviceName = SERVICE_NAME
@@ -56,7 +61,12 @@ class NetworkDiscovery(private val context: Context) {
 
     fun stopPublish() {
         if (!isPublishing) return
-        try { nsdManager?.unregisterService(registrationListener) } catch (_: Exception) {}
+        try {
+            nsdManager?.unregisterService(registrationListener)
+        } catch (e: Exception) {
+            /* intentional: listener cleanup; NSD manager may have already cleared */
+            Log.d(tag, "Error stopping publish: ${e.message}")
+        }
         isPublishing = false
     }
 
@@ -94,7 +104,12 @@ class NetworkDiscovery(private val context: Context) {
 
     fun stopDiscovery() {
         if (!isDiscovering) return
-        try { nsdManager?.stopServiceDiscovery(discoveryListener) } catch (_: Exception) {}
+        try {
+            nsdManager?.stopServiceDiscovery(discoveryListener)
+        } catch (e: Exception) {
+            /* intentional: discovery cleanup; NSD manager may have already stopped */
+            Log.d(tag, "Error stopping discovery: ${e.message}")
+        }
         isDiscovering = false
     }
 

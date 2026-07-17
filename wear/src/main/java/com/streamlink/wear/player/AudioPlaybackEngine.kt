@@ -88,8 +88,16 @@ class AudioPlaybackEngine @Inject constructor() {
         running.set(false)
         playbackThread?.join(300)
         playbackThread = null
-        try { audioTrack?.stop() } catch (_: Exception) {}
-        try { audioTrack?.release() } catch (_: Exception) {}
+        try {
+            audioTrack?.stop()
+        } catch (e: Exception) {
+            Log.w(tag, "Error stopping audio track: ${e.message}")
+        }
+        try {
+            audioTrack?.release()
+        } catch (e: Exception) {
+            Log.w(tag, "Error releasing audio track: ${e.message}")
+        }
         audioTrack = null
         ringBuffer.clear()
         Log.i(tag, "Audio playback stopped")

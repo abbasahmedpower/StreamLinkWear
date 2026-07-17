@@ -35,6 +35,7 @@ class TrustedDeviceStore private constructor(context: Context) {
         private const val KEY_PIN      = "d_pin"
         private const val KEY_DEVICE_NAME = "d_name"
         private const val KEY_LAST_SEEN = "d_ts"
+        private const val KEY_INSTALL_ID = "d_install_id"
 
         @Volatile private var instance: TrustedDeviceStore? = null
 
@@ -69,6 +70,22 @@ class TrustedDeviceStore private constructor(context: Context) {
     // يُجنّب قراءة الـ disk في كل استدعاء من الـ hot path.
     @Volatile private var cachedDeviceId: String? = prefs.getString(KEY_DEVICE_ID, null)
     @Volatile private var cachedPin: String? = prefs.getString(KEY_PIN, null)
+    
+    /**
+     * فريد ومستقر لكل تنصيب من التطبيق. يُستخدم كـ userId في الـ signaling backend
+     * لمنع hijacking بين مستخدمين مختلفين. يُولَّد مرة واحدة عند أول تشغيل
+     * ثم يُحفظ في SharedPreferences المشفّرة بـ Keystore.
+     *
+     * M1 FIX: بدل الـ hardcoded userId "streamlink_phone_1"، كل تنصيب له معرّف فريد.
+     */
+    val stableInstallId: String by lazy {
+        prefs.getString(KEY_INSTALL_ID, null) ?: run {
+            val newId = java.util.UUID.randomUUID().toString()
+            prefs.edit().putString(KEY_INSTALL_ID, newId).apply()
+            Log.i(tag, "Generated new stable install ID: ${newId.take(8)}... (first run)")
+            newId
+        }
+    }
 
     // ── Public API ─────────────────────────────────────────────────────────────
 

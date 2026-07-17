@@ -255,7 +255,8 @@ class DirectStreamPlayer @Inject constructor(
                 val freeIdx = synchronized(this) { freeInputBuffers.removeFirstOrNull() }
 
                 if (freeIdx != null && scheduled.nal != null) {
-                    submitNalToBuffer(codec, freeIdx, scheduled.nal!!)
+                    val nal = scheduled.nal ?: return@processQueue
+                    submitNalToBuffer(codec, freeIdx, nal)
                 }
 
                 synchronized(this) {

@@ -91,7 +91,10 @@ class NetworkPathMonitor(context: Context) {
             }
         }
 
-        connectivityManager.registerNetworkCallback(request, networkCallback!!)
+        connectivityManager.registerNetworkCallback(request, networkCallback ?: run {
+            Log.e("NetworkPathMonitor", "Failed to create network callback")
+            return@startMonitoring
+        })
     }
 
     fun stopMonitoring() {

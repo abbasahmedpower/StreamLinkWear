@@ -125,8 +125,16 @@ class AudioCaptureEngine @Inject constructor(
         running.set(false)
         captureThread?.join(500)
         captureThread = null
-        try { audioRecord?.stop() } catch (_: Exception) {}
-        try { audioRecord?.release() } catch (_: Exception) {}
+        try {
+            audioRecord?.stop()
+        } catch (e: Exception) {
+            Log.w(tag, "Error stopping audio record: ${e.message}")
+        }
+        try {
+            audioRecord?.release()
+        } catch (e: Exception) {
+            Log.w(tag, "Error releasing audio record: ${e.message}")
+        }
         audioRecord = null
         Log.i(tag, "Audio capture stopped")
     }
