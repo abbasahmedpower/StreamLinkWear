@@ -19,6 +19,7 @@ import kotlin.math.pow
 class SignalingClient(
     private val backendUrl: String,
     private val userId: String,
+    private val identityToken: String,
     private val deviceType: String // "PHONE" or "WATCH"
 ) {
     private val tag = "SignalingClient"
@@ -59,7 +60,7 @@ class SignalingClient(
         val url = "$backendUrl/signal/$userId/$deviceType"
         val request = Request.Builder()
             .url(url)
-            .addHeader("X-Horus-Authorization", BuildConfig.HORUS_SECRET_TOKEN)
+            .addHeader("X-Horus-Identity-Token", identityToken)
             .build()
         
         webSocket = client.newWebSocket(request, object : WebSocketListener() {

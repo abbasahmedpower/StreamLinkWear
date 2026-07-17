@@ -22,8 +22,8 @@ import com.streamlink.app.ui.viewmodel.TelemetryViewModel
 import com.streamlink.app.ui.components.GlassCard
 import com.streamlink.app.ui.components.GridTwoColumns
 import com.streamlink.app.ui.components.TelemetryItem
+import com.streamlink.app.ui.components.LiveWaveformChart
 
-// Mocking the Cyberpunk colors if they don't exist in the project yet
 val CyberBackground = Color(0xFF0F172A)
 val CyberPrimary = Color(0xFF00FFCC)
 val CyberOnPrimary = Color(0xFF003322)
@@ -34,9 +34,15 @@ fun HorusTelemetryScreen(
     onStartCapture: () -> Unit,
     onStopCapture: () -> Unit
 ) {
-    // Collect the live states from ViewModel
-    val metrics by viewModel.metricsState.collectAsStateWithLifecycle()
-    val currentBitrate by viewModel.currentBitrate.collectAsStateWithLifecycle()
+    // 1. Unthrottled State for Canvas Draw Phase (ZERO Recomposition)
+    val bitrateHistory = viewModel.bitrateHistory.collectAsStateWithLifecycle()
+
+    // 2. Throttled States for Texts (Minimal Recomposition)
+    val batteryText by viewModel.batteryText.collectAsStateWithLifecycle()
+    val queueProgress by viewModel.queueProgress.collectAsStateWithLifecycle()
+    val queueText by viewModel.queueText.collectAsStateWithLifecycle()
+    val currentBitrateText by viewModel.currentBitrateText.collectAsStateWithLifecycle()
+    
     val isOptimizerEnabled by viewModel.isOptimizerEnabled.collectAsStateWithLifecycle()
 
     val isInPip by PipModeState.isInPip.collectAsStateWithLifecycle()
@@ -63,20 +69,19 @@ fun HorusTelemetryScreen(
 
         if (!isInPip) {
             Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(20.dp)
-                .statusBarsPadding()
-        ) {
-            // --- [ 1. Header & Logo ] ---
-            Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxSize()
+                    .padding(20.dp)
+                    .statusBarsPadding()
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // --- [ 1. Header & Logo ] ---
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         text = "HORUS LINK",
                         color = CyberPrimary,
@@ -85,159 +90,165 @@ fun HorusTelemetryScreen(
                         letterSpacing = 2.sp
                     )
                 }
-            }
 
-            Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
-            Text(
-                text = "Telemetry Hub",
-                color = Color.White,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            // Update node status based on connection quality
-            Text(
-                text = if (metrics.network.queueCongestion > 0.8f) "SYSTEM NODES: CRITICAL STRESS" else "SYSTEM NODES: 01 ACTIVE (NOMINAL)",
-                color = if (metrics.network.queueCongestion > 0.8f) Color.Red else CyberPrimary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
-            )
+                Text(
+                    text = "Telemetry Hub",
+                    color = Color.White,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = if (queueProgress > 0.8f) "SYSTEM NODES: CRITICAL STRESS" else "SYSTEM NODES: 01 ACTIVE (NOMINAL)",
+                    color = if (queueProgress > 0.8f) Color.Red else CyberPrimary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
 
-            Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
-            // --- [ 2. Live Telemetry Cards ] ---
-            GlassCard {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "CONNECTED NODE: WEAR OS",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    GridTwoColumns {
-                        // Live Battery Card
-                        TelemetryItem(
-                            title = "CORE ENERGY",
-                            value = "${metrics.batteryLevel}%",
-                            progress = metrics.batteryLevel / 100f,
-                            icon = "battery"
-                        )
-                        // Live Network Delay Card
-                        TelemetryItem(
-                            title = "QUEUE CONGESTION",
-                            value = "${(metrics.network.queueCongestion * 100).toInt()}%",
-                            progress = metrics.network.queueCongestion,
-                            icon = "network"
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Live Active Encoder Bitrate 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
+                // --- [ 2. Live Telemetry Cards ] ---
+                GlassCard {
+                    Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "ACTIVE ENCODER BITRATE",
-                            color = Color(0xFFBAC9CC),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "$currentBitrate Kbps",
-                            color = CyberPrimary,
+                            text = "CONNECTED NODE: WEAR OS",
+                            color = Color.White,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        GridTwoColumns {
+                            // ✅ NANO-FIX: Passing State variables inside Lambdas prevents recomposing GridTwoColumns
+                            TelemetryItem(
+                                title = "CORE ENERGY",
+                                valueProvider = { batteryText },
+                                progressProvider = { batteryText.replace("%","").toFloatOrNull()?.div(100f) ?: 0f }
+                            )
+                            TelemetryItem(
+                                title = "QUEUE CONGESTION",
+                                valueProvider = { queueText },
+                                progressProvider = { queueProgress }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        // Live Active Encoder Bitrate 
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "ACTIVE ENCODER BITRATE",
+                                color = Color(0xFFBAC9CC),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = currentBitrateText,
+                                color = CyberPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // ✅ ZERO-RECOMPOSITION WAVEFORM CHART
+                        Box(modifier = Modifier.fillMaxWidth().height(60.dp)) {
+                            LiveWaveformChart(
+                                bitrateHistory = bitrateHistory,
+                                maxBitrateKbps = 2000f,
+                                height = 60.dp
+                            )
+                        }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // --- [ 3. AI Switch Controller ] ---
-            GlassCard {
-                Row(
+                // --- [ 3. AI Switch Controller ] ---
+                GlassCard {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "AI BITRATE OPTIMIZER",
+                                color = Color.White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (isOptimizerEnabled) "Fuzzy Closed-Loop Active" else "Manual override active",
+                                color = Color(0xFFBAC9CC),
+                                fontSize = 12.sp
+                            )
+                        }
+                        Switch(
+                            checked = isOptimizerEnabled,
+                            onCheckedChange = { viewModel.toggleOptimizer(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = CyberOnPrimary,
+                                checkedTrackColor = CyberPrimary
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // --- [ 4. Interactive Action Button ] ---
+                Button(
+                    onClick = onStartCapture,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .height(56.dp)
+                        .border(1.5.dp, CyberPrimary, RoundedCornerShape(8.dp)),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CyberPrimary,
+                        contentColor = CyberOnPrimary
+                    ),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
-                    Column {
-                        Text(
-                            text = "AI BITRATE OPTIMIZER",
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = if (isOptimizerEnabled) "Fuzzy Closed-Loop Active" else "Manual override active",
-                            color = Color(0xFFBAC9CC),
-                            fontSize = 12.sp
-                        )
-                    }
-                    Switch(
-                        checked = isOptimizerEnabled,
-                        onCheckedChange = { viewModel.toggleOptimizer(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = CyberOnPrimary,
-                            checkedTrackColor = CyberPrimary
-                        )
+                    Text(
+                        text = "START CASTING SCREEN",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 2.sp
                     )
                 }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Button(
+                    onClick = onStopCapture,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .border(1.5.dp, Color.Red, RoundedCornerShape(8.dp)),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.Transparent,
+                        contentColor = Color.Red
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = "STOP CASTING",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 2.sp
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
             }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            // --- [ 4. Interactive Action Button ] ---
-            Button(
-                onClick = onStartCapture,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .border(1.5.dp, CyberPrimary, RoundedCornerShape(8.dp)),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = CyberPrimary,
-                    contentColor = CyberOnPrimary
-                ),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text(
-                    text = "START CASTING SCREEN",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 2.sp
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Button(
-                onClick = onStopCapture,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .border(1.5.dp, Color.Red, RoundedCornerShape(8.dp)),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.Transparent,
-                    contentColor = Color.Red
-                ),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text(
-                    text = "STOP CASTING",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 2.sp
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-        }
         }
     }
 }

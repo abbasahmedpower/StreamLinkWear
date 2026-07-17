@@ -9,6 +9,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
+import io.ktor.server.request.*
 import io.lettuce.core.RedisClient
 import io.lettuce.core.api.StatefulRedisConnection
 import kotlinx.coroutines.*
@@ -165,8 +166,39 @@ fun Application.module(nodeId: String, redisUrl: String) {
             call.respondText("OK node=$nodeId redis=${redis?.isOpen == true}")
         }
 
+        // ── Device Registration (one-time, rate-limited by Global Token) ────────
+        post("/api/v1/register") {
+            val globalAuth = call.request.headers["X-Horus-Global-Token"] ?: ""
+            if (!java.security.MessageDigest.isEqual(
+                    globalAuth.toByteArray(Charsets.UTF_8),
+                    expectedToken.toByteArray(Charsets.UTF_8)
+                )) {
+                call.respond(io.ktor.http.HttpStatusCode.Unauthorized, "Unauthorized")
+                return@post
+            }
+
+            val params  = call.receiveParameters()
+            val userId  = params["userId"]?.trim() ?: ""
+
+            if (userId.isBlank() || userId.length > 64 ||
+                !userId.matches(Regex("^[a-zA-Z0-9_-]+$"))) {
+                call.respond(io.ktor.http.HttpStatusCode.BadRequest, "Invalid userId")
+                return@post
+            }
+
+            val token = ServerIdentityVerifier.generateClientToken(userId)
+            call.respond(mapOf("token" to token))
+        }
+
         // ── Real-time metrics for Dashboard ──────────────────────────────────
         webSocket("/metrics") {
+            // ✅ FIX High #4: Protect /metrics from unauthenticated reconnaissance.
+            val clientToken = call.request.headers["X-Horus-Identity-Token"] ?: ""
+            if (ServerIdentityVerifier.verifyClientToken(clientToken) == null) {
+                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Unauthorized"))
+                return@webSocket
+            }
+
             LiveMetrics.dashboardSessions.add(this)
             try {
                 // Accept optional metric updates from phone client
@@ -181,19 +213,22 @@ fun Application.module(nodeId: String, redisUrl: String) {
             }
         }
 
+
         // ── WebRTC signaling ─────────────────────────────────────────────────
         webSocket("/signal/{userId}/{deviceType}") {
-            val userId     = call.parameters["userId"]     ?: return@webSocket close()
-            val deviceType = call.parameters["deviceType"] ?: return@webSocket close()
-            
-            // X-Horus-Authorization Security Check
-            val authToken = call.request.headers["X-Horus-Authorization"] ?: ""
-            if (!java.security.MessageDigest.isEqual(authToken.toByteArray(Charsets.UTF_8), expectedToken.toByteArray(Charsets.UTF_8))) { 
-                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Unauthorized Access Attempt"))
+            val routeUserId = call.parameters["userId"]     ?: return@webSocket close()
+            val deviceType  = call.parameters["deviceType"] ?: return@webSocket close()
+
+            // ✅ FIX Critical #1 & #2: Stateless signed-identity verification
+            // Replaces the static shared HORUS_SECRET_TOKEN for per-device auth.
+            val clientToken  = call.request.headers["X-Horus-Identity-Token"] ?: ""
+            val verifiedUserId = ServerIdentityVerifier.verifyClientToken(clientToken)
+            if (verifiedUserId == null || verifiedUserId != routeUserId) {
+                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Invalid Identity Token"))
                 return@webSocket
             }
 
-            if (userId.length > 64 || !userId.matches(Regex("^[a-zA-Z0-9_-]+$"))) {
+            if (routeUserId.length > 64 || !routeUserId.matches(Regex("^[a-zA-Z0-9_-]+$"))) {
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Invalid userId format"))
                 return@webSocket
             }
@@ -209,35 +244,38 @@ fun Application.module(nodeId: String, redisUrl: String) {
 
             val session = PeerRegistry.PeerSession(
                 peerId = peerId,
-                userId = userId,
+                userId = verifiedUserId,
                 deviceType = deviceEnum,
                 wsSession = this
             )
 
             registry.register(session)
-            orchestrator.onDeviceConnected(userId, deviceEnum, peerId)
+            orchestrator.onDeviceConnected(verifiedUserId, deviceEnum, peerId)
 
             try {
                 incoming.consumeEach { frame ->
                     if (frame is Frame.Text) {
-                        orchestrator.route(userId, deviceEnum, frame.readText())
+                        orchestrator.route(verifiedUserId, deviceEnum, frame.readText())
                     }
                 }
             } finally {
                 registry.unregister(peerId)
-                orchestrator.onDeviceDisconnected(userId, deviceEnum, peerId)
+                orchestrator.onDeviceDisconnected(verifiedUserId, deviceEnum, peerId)
             }
         }
 
-        // ── Legacy handoff endpoint ──────────────────────────────────────────
+        // ── Legacy handoff endpoint (DEPRECATED — use /signal) ──────────────
         webSocket("/stream/handoff/{roomId}/{deviceType}") {
             val roomId     = call.parameters["roomId"]     ?: "default"
             val deviceType = call.parameters["deviceType"] ?: "UNKNOWN"
             
-            // X-Horus-Authorization Security Check
-            val authToken = call.request.headers["X-Horus-Authorization"]
-            if (authToken != expectedToken) { 
-                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Unauthorized Access Attempt"))
+            // ✅ FIX High #3: Constant-time comparison to prevent timing side-channel.
+            val authToken = call.request.headers["X-Horus-Authorization"] ?: ""
+            if (!java.security.MessageDigest.isEqual(
+                    authToken.toByteArray(Charsets.UTF_8),
+                    expectedToken.toByteArray(Charsets.UTF_8)
+                )) {
+                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Unauthorized"))
                 return@webSocket
             }
 

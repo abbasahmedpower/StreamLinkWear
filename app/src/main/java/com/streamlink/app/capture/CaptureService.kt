@@ -173,12 +173,36 @@ class CaptureService : Service() {
             .build()
     }
 
+    override fun onDestroy() {
+        // ✅ N2 FIX: Emergency safety net — OS killed the service (Low Memory / System trim).
+        // Guarantees MediaProjection, VirtualDisplay, and HardwareEncoder are always released.
+        if (mediaProjection != null || virtualDisplay != null) {
+            Log.w(tag, "onDestroy called while capture was active — performing emergency cleanup")
+            stopCapture()
+        }
+        super.onDestroy()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // ✅ N2 FIX: User swiped the app from Recents — force clean teardown
+        // so the foreground service and MediaProjection don't linger in the background.
+        Log.i(tag, "Task removed by user — forcing stopCapture and self-destruction")
+        try {
+            stopCapture()
+        } catch (e: Exception) {
+            Log.e(tag, "Error during stopCapture on task removal: ${e.message}")
+        } finally {
+            stopSelf()
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
         const val ACTION_START = "com.streamlink.START"
-        const val ACTION_STOP = "com.streamlink.STOP"
+        const val ACTION_STOP  = "com.streamlink.STOP"
         const val EXTRA_RESULT_CODE = "resultCode"
-        const val EXTRA_DATA = "data"
+        const val EXTRA_DATA        = "data"
     }
 }

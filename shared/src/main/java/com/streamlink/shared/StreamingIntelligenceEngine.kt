@@ -66,7 +66,7 @@ class StreamingIntelligenceEngine(
         TIER_SURVIVAL to QualityProfile(TIER_SURVIVAL, 300, 15, 0.50f, 1)
     )
 
-    private val _currentProfile = MutableStateFlow(profiles[TIER_ULTRA]!!)
+    private val _currentProfile = MutableStateFlow(checkNotNull(profiles[TIER_ULTRA]))
     val currentProfile: StateFlow<QualityProfile> = _currentProfile
 
     // Raw Metric Inputs (updated externally)

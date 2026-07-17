@@ -87,13 +87,14 @@ class MainActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (com.streamlink.shared.SecurityUtils.isRooted() || com.streamlink.shared.SecurityUtils.isEmulator()) {
-            android.widget.Toast.makeText(this, "Security Warning: Rooted device or emulator detected.", android.widget.Toast.LENGTH_LONG).show()
-            if (!com.streamlink.app.BuildConfig.DEBUG) {
-                finish()
-                return
-                return
-            }
+        if (!com.streamlink.app.BuildConfig.DEBUG && (com.streamlink.shared.SecurityUtils.isRooted() || com.streamlink.shared.SecurityUtils.isEmulator())) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("بيئة غير آمنة")
+                .setMessage("التطبيق ده مصمم للعمل على أجهزة أصلية غير معدّلة لحماية بيانات الشاشة اللي بتتشارك.")
+                .setCancelable(false)
+                .setPositiveButton("فهمت") { _, _ -> finish() }
+                .show()
+            return
         }
         
         settingsStore = SystemSettingsStore(applicationContext)

@@ -330,8 +330,9 @@ class DirectSocketClient(
                                 cachedDos = java.io.DataOutputStream(s.outputStream)
                                 cachedForSocket = s
                             }
-                            cachedDos!!.writeInt(encrypted.size)
-                            cachedDos!!.write(encrypted)
+                            val dos = cachedDos ?: throw java.io.IOException("DataOutputStream became null after initialization")
+                            dos.writeInt(encrypted.size)
+                            dos.write(encrypted)
                         } else {
                             s.outputStream.write(task.wire)
                         }

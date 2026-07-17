@@ -271,16 +271,17 @@ class DirectSocketServer {
                                 cachedDos = java.io.DataOutputStream(socket.outputStream)
                                 cachedForSocket = socket
                             }
+                            val dos = cachedDos ?: continue
                             val ec = encryptedChannel
                             if (ec != null) {
                                 val encWire = WireBufferPool.acquire()
                                 val outSize = ec.encrypt(ctrl.payload, 0, ctrl.payload.size, encWire, 0)
-                                cachedDos!!.writeInt(outSize)
-                                cachedDos!!.write(encWire, 0, outSize)
+                                dos.writeInt(outSize)
+                                dos.write(encWire, 0, outSize)
                                 WireBufferPool.release(encWire)
                             } else {
-                                cachedDos!!.writeInt(ctrl.payload.size)
-                                cachedDos!!.write(ctrl.payload)
+                                dos.writeInt(ctrl.payload.size)
+                                dos.write(ctrl.payload)
                             }
                         } catch (e: IOException) {
                             Log.w(tag, "Control send failed: ${e.message}")
@@ -299,7 +300,14 @@ class DirectSocketServer {
                     continue
                 }
 
-                val wire = task.wire!!
+                // ✅ NULL-SAFE: task.wire is guaranteed non-null here by the enqueue contract
+                // (enqueue always assigns wire before adding to queue), but we guard
+                // defensively to avoid NPE under memory pressure.
+                val wire = task.wire ?: run {
+                    freeTasks.offer(task)
+                    Log.e(tag, "Dequeued task with null wire — skipping (pool integrity issue)")
+                    continue
+                }
                 val size = task.size
 
                 val socket = clientSocket
@@ -321,8 +329,12 @@ class DirectSocketServer {
                             cachedDos = java.io.DataOutputStream(socket.outputStream)
                             cachedForSocket = socket
                         }
-                        cachedDos!!.writeInt(outSize)
-                        cachedDos!!.write(encWire, 0, outSize)
+                        val dos = cachedDos ?: run {
+                            WireBufferPool.release(encWire)
+                            throw java.io.IOException("DataOutputStream became null after initialization")
+                        }
+                        dos.writeInt(outSize)
+                        dos.write(encWire, 0, outSize)
                         bytesSent.addAndGet(outSize.toLong())
                         WireBufferPool.release(encWire)
                     } else {
@@ -330,8 +342,9 @@ class DirectSocketServer {
                             cachedDos = java.io.DataOutputStream(socket.outputStream)
                             cachedForSocket = socket
                         }
-                        cachedDos!!.writeInt(size)
-                        cachedDos!!.write(wire, 0, size)
+                        val dos = cachedDos ?: throw java.io.IOException("DataOutputStream became null after initialization")
+                        dos.writeInt(size)
+                        dos.write(wire, 0, size)
                         bytesSent.addAndGet(size.toLong())
                     }
                     onChunkDelivered?.invoke()
@@ -379,14 +392,18 @@ class DirectSocketServer {
             } else {
                 // Critical IDR frame: try to remove an old I-frame to make room
                 val old = iFrameQueue.poll()
-                if (old != null && old.wire != null) {
-                    WireBufferPool.release(old.wire!!)
-                    old.wire = null
+                if (old != null) {
+                    val oldWire = old.wire
+                    if (oldWire != null) {
+                        WireBufferPool.release(oldWire)
+                        old.wire = null
+                    }
                     freeTasks.offer(old)
                 }
                 if (!q.offer(task)) {
                     // لو لسه مليانة رغم الـ eviction (سباق نادر) — منعًا لتسريب wire buffer
-                    WireBufferPool.release(task.wire!!)
+                    val taskWire = task.wire
+                    if (taskWire != null) WireBufferPool.release(taskWire)
                     task.wire = null
                     freeTasks.offer(task)
                     droppedFrames++

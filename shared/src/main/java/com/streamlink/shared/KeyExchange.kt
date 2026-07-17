@@ -1,9 +1,9 @@
 package com.streamlink.shared
 
-import android.util.Base64
 import android.util.Log
 import java.security.*
 import java.security.spec.ECGenParameterSpec
+import java.util.Base64
 import javax.crypto.KeyAgreement
 import javax.crypto.Mac
 import javax.crypto.SecretKey
@@ -41,7 +41,7 @@ object KeyExchange {
         val kpg = KeyPairGenerator.getInstance(KEY_ALGO)
         kpg.initialize(ECGenParameterSpec(EC_CURVE), SecureRandom())
         val kp = kpg.generateKeyPair()
-        val publicB64 = Base64.encodeToString(kp.public.encoded, Base64.NO_WRAP)
+        val publicB64 = Base64.getEncoder().encodeToString(kp.public.encoded)
         Log.i(TAG, "Ephemeral keypair generated (${kp.public.encoded.size}B public key)")
         return EphemeralKeyPair(publicKeyBase64 = publicB64, privateKey = kp.private)
     }
@@ -57,7 +57,7 @@ object KeyExchange {
         theirPublicKeyBase64: String,
         pairingCode: String
     ): ByteArray {
-        val theirPublicBytes = Base64.decode(theirPublicKeyBase64, Base64.NO_WRAP)
+        val theirPublicBytes = Base64.getDecoder().decode(theirPublicKeyBase64)
         val kf = KeyFactory.getInstance(KEY_ALGO)
         val theirPublicKey = kf.generatePublic(
             java.security.spec.X509EncodedKeySpec(theirPublicBytes)
@@ -87,7 +87,7 @@ object KeyExchange {
      */
     fun validatePeerKey(peerPublicKeyBase64: String): Boolean {
         return try {
-            val bytes = Base64.decode(peerPublicKeyBase64, Base64.NO_WRAP)
+            val bytes = Base64.getDecoder().decode(peerPublicKeyBase64)
             if (bytes.size < 32 || bytes.size > 256) return false
             val kf = KeyFactory.getInstance(KEY_ALGO)
             kf.generatePublic(java.security.spec.X509EncodedKeySpec(bytes))

@@ -6,7 +6,12 @@ import java.util.concurrent.atomic.AtomicReferenceArray
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Lock-free SPSC wire buffer pool.
+ * Lock-free MPMC (Multi-Producer Multi-Consumer) wire buffer pool.
+ * ⚠️ CAS-based ring buffer — DO NOT assume single-writer/single-reader
+ * when optimizing. Verified safe for concurrent access from:
+ *   - HardwareEncoder thread (acquire on frame produce)
+ *   - DirectSocketServer.runSender thread (acquire on encrypt, release on send)
+ *   - Input receiver thread (release on control message ack)
  * Fixed: buffer size now includes updated 20-byte header.
  */
 object WireBufferPool {

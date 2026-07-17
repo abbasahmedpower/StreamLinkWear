@@ -352,16 +352,33 @@ class StreamingOrchestrator @Inject constructor(
         }
 
         // 1.5 Start WebRTC Fallback for global reach
-        // ✅ FIX: Read signaling URL from BuildConfig so it can be configured
-        // per environment (dev/staging/prod) without changing source code.
         val signalingUrl = try {
             com.streamlink.app.BuildConfig.SIGNALING_URL
         } catch (_: Exception) { "" }
 
-        if (signalingUrl.isNotBlank()) {
+        scope.launch {
+            if (signalingUrl.isBlank()) return@launch
+
+
+            // ✅ FIX Critical #1 & #2: Use dynamic UUID + server-signed identity token
+            // instead of hardcoded userId and static HORUS_SECRET_TOKEN.
+            val identityManager = com.streamlink.shared.security.SecureIdentityManager(context)
+            val storedToken = identityManager.getStoredToken()
+
+            // Extract userId from stored token (format: "UUID.Signature")
+            val dynamicUserId = storedToken?.substringBefore(".") ?: "streamlink_unregistered"
+            val identityToken = storedToken ?: ""
+
+            if (identityToken.isBlank()) {
+                Log.w(tag, "⚠️ Identity token not yet registered — WebRTC fallback skipped. Call getOrRegisterIdentity() on app start.")
+                return@launch
+            }
+
+
             val signalingClient = com.streamlink.shared.SignalingClient(
                 backendUrl = signalingUrl,
-                userId = "streamlink_phone_1",
+                userId = dynamicUserId,
+                identityToken = identityToken,
                 deviceType = "PHONE"
             )
             // تبادل مفتاح ECDH خاص بقناة HOTC عبر نفس اتصال الـsignaling (منفصل عن مفتاح TCP المحلي)
