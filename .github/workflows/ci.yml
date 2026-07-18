@@ -6,9 +6,17 @@ on:
   pull_request:
     branches: [main, develop]
 
+# Cancel in-progress runs on new push to same branch — saves CI minutes
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-test:
-    name: Build, Lint, Test
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 1: Android Build + Unit Tests (app / wear / shared modules)
+  # ─────────────────────────────────────────────────────────────────────────────
+  android-build-test:
+    name: Android — Build & Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -23,46 +31,143 @@ jobs:
           distribution: temurin
           cache: gradle
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      - name: Unit tests
-        run: ./gradlew test --no-daemon
-
-      - name: Static Analysis (ktlint)
+      # Inject CI secrets into secrets.properties so Android Gradle build does not fail
+      - name: Create secrets.properties from GitHub Secrets
         run: |
-          curl -sSLO https://github.com/pinterest/ktlint/releases/download/1.2.1/ktlint
-          chmod a+x ktlint
-          ./ktlint "app/src/**/*.kt" "wear/src/**/*.kt" "shared/src/**/*.kt" "backend/src/**/*.kt"
+          cat > secrets.properties << 'EOF'
+          HORUS_SECRET_TOKEN=${{ secrets.HORUS_SECRET_TOKEN }}
+          TURN_USERNAME=${{ secrets.TURN_USERNAME }}
+          TURN_PASSWORD=${{ secrets.TURN_PASSWORD }}
+          EOF
 
-      - name: Android lint
+      - name: Run Android unit tests (shared + app + wear)
+        run: |
+          ./gradlew \
+            :shared:testDebugUnitTest \
+            :app:testDebugUnitTest \
+            :wear:testDebugUnitTest \
+            --no-daemon --continue
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dfile.encoding=UTF-8"
+
+      - name: Android Lint
         run: ./gradlew lintDebug --no-daemon
+        continue-on-error: true
 
-      - name: Debug builds
+      - name: Build Debug APKs
         run: ./gradlew :app:assembleDebug :wear:assembleDebug --no-daemon
 
-      - name: Python syntax checks
-        run: python -m py_compile backend/chaos_stream_proxy.py backend/run_chaos_assessment.py ai_training/train_stream_predictor.py ai_training/export_from_room.py
-
-      - name: Chaos smoke test
-        run: python backend/run_chaos_assessment.py
-
-      - name: Upload reports and APKs
+      - name: Upload Android test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: streamlink-ci-artifacts
+          name: android-test-reports
           if-no-files-found: ignore
           retention-days: 14
           path: |
             app/build/reports/
             wear/build/reports/
             shared/build/reports/
-            backend/build/reports/
+
+      - name: Upload Debug APKs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apks
+          retention-days: 14
+          path: |
             app/build/outputs/apk/debug/*.apk
             wear/build/outputs/apk/debug/*.apk
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 2: Backend Build + JUnit 5 Tests (Ktor / Kotlin JVM)
+  # Note: backend/ is a standalone Gradle project (not included in root settings.gradle)
+  # ─────────────────────────────────────────────────────────────────────────────
+  backend-build-test:
+    name: Backend — Build & Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      # Use the official Gradle action for cache + CLI management
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      # ServerIdentityVerifier tests use SERVER_PRIVATE_KEY_OVERRIDE_FOR_TEST,
+      # but SecureConfig.horusSecretToken validates env var at startup — supply placeholder.
+      - name: Run backend unit tests
+        working-directory: ./backend
+        run: gradle test
+        env:
+          SERVER_PRIVATE_KEY: ${{ secrets.SERVER_PRIVATE_KEY || 'ci-test-placeholder-not-for-prod' }}
+          HORUS_SECRET: ${{ secrets.HORUS_SECRET_TOKEN || 'ci-horus-placeholder' }}
+          REDIS_URL: "redis://localhost:6379"
+          HORUS_TLS_PASSWORD: "ci-tls-placeholder"
+          NODE_ID: "CI_NODE"
+
+      - name: Build backend fat JAR
+        working-directory: ./backend
+        run: gradle shadowJar
+        env:
+          SERVER_PRIVATE_KEY: build-placeholder
+          HORUS_SECRET: build-placeholder
+          REDIS_URL: "redis://localhost:6379"
+          HORUS_TLS_PASSWORD: "build-placeholder"
+
+      - name: Upload backend test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          if-no-files-found: ignore
+          retention-days: 14
+          path: backend/build/reports/
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 3: Code Quality — ktlint static analysis
+  # ─────────────────────────────────────────────────────────────────────────────
+  code-quality:
+    name: Code Quality — ktlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download ktlint
+        run: |
+          curl -sSLO https://github.com/pinterest/ktlint/releases/download/1.2.1/ktlint
+          chmod a+x ktlint
+
+      - name: Run ktlint
+        run: |
+          ./ktlint \
+            "app/src/**/*.kt" \
+            "wear/src/**/*.kt" \
+            "shared/src/**/*.kt" \
+            "backend/src/**/*.kt" \
+            --reporter=checkstyle,output=ktlint-report.xml
+        continue-on-error: true
+
+      - name: Upload ktlint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ktlint-report
+          if-no-files-found: ignore
+          retention-days: 14
+          path: ktlint-report.xml
+

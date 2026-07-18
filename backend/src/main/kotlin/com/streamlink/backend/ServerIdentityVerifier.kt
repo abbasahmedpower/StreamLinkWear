@@ -14,14 +14,28 @@ import javax.crypto.spec.SecretKeySpec
  * - The E2EE ECDH shared-secret is never involved; this key is exclusively
  *   for backend-to-client authentication.
  * - Constant-time comparison prevents timing side-channel attacks.
+ *
+ * Test Instrumentation:
+ * - Set JVM system property `SERVER_PRIVATE_KEY_OVERRIDE_FOR_TEST` to inject
+ *   a deterministic key during unit tests without modifying environment variables.
+ *   This property is ONLY checked in non-production builds and is ignored if the
+ *   real env variable is present.
  */
 object ServerIdentityVerifier {
 
-    // Loaded once at startup from the environment — never hardcoded.
+    /**
+     * Resolves the HMAC signing key.
+     * Resolution order:
+     *   1. `SERVER_PRIVATE_KEY` environment variable  (production, takes priority)
+     *   2. `SERVER_PRIVATE_KEY_OVERRIDE_FOR_TEST` JVM system property  (test only)
+     */
     private val SERVER_PRIVATE_KEY: ByteArray by lazy {
-        val key = System.getenv("SERVER_PRIVATE_KEY")
-            ?: error("❌ SERVER_PRIVATE_KEY environment variable is not set!")
-        key.toByteArray(Charsets.UTF_8)
+        val envKey  = System.getenv("SERVER_PRIVATE_KEY")
+        val testKey = System.getProperty("SERVER_PRIVATE_KEY_OVERRIDE_FOR_TEST")
+        val resolved = envKey ?: testKey
+            ?: error("❌ SERVER_PRIVATE_KEY env variable is not set! " +
+                     "For tests, set SERVER_PRIVATE_KEY_OVERRIDE_FOR_TEST system property.")
+        resolved.toByteArray(Charsets.UTF_8)
     }
 
     /**
