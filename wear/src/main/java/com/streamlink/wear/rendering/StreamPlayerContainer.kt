@@ -44,27 +44,34 @@ fun StreamPlayerContainer(modifier: Modifier = Modifier) {
         }
     }
 
+    DisposableEffect(powerManager) {
+        var wakeLock: PowerManager.WakeLock? = null
+        try {
+            wakeLock = powerManager?.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "StreamLinkWear::StreamPlayerWakeLock"
+            )?.apply {
+                acquire(10 * 60 * 1000L /*10 minutes*/)
+            }
+        } catch (e: Exception) {
+            Log.e("StreamPlayer", "Failed to acquire wake lock", e)
+        }
+        onDispose {
+            if (wakeLock?.isHeld == true) {
+                wakeLock.release()
+            }
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
         
         // 1️⃣ Raw Video Layer (Zero-Allocation Render Pipeline)
         AndroidView(
             factory = { ctx ->
-                var wakeLock: PowerManager.WakeLock? = null
-                try {
-                    wakeLock = powerManager?.newWakeLock(
-                        PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
-                        "StreamLinkWear::StreamPlayerWakeLock"
-                    )?.apply {
-                        acquire(10 * 60 * 1000L /*10 minutes*/)
-                    }
-                } catch (e: Exception) {
-                    Log.e("StreamPlayer", "Failed to acquire wake lock", e)
-                }
                 HardenedStreamTextureView(ctx).apply {
                     onSurfaceReady = { surface ->
                         // Link hardware MediaCodec here
                     }
-                    onSurfaceDestroyed = { wakeLock?.release() }
                 }
             },
             modifier = Modifier.fillMaxSize()

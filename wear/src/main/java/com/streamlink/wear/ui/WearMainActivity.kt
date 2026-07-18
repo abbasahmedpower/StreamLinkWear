@@ -42,10 +42,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.content.Context
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -79,25 +75,6 @@ class WearMainActivity : ComponentActivity() {
     }
 
     private var isAmbient = false
-    private var sensorManager: SensorManager? = null
-    private var accelSensor: Sensor? = null
-    private var gyroSensor: Sensor? = null
-
-    private var lastRotationX = 0f
-    private var lastAccelZ = 0f
-
-    private val sensorListener = object : SensorEventListener {
-        override fun onSensorChanged(event: SensorEvent?) {
-            if (event == null) return
-            if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
-                lastAccelZ = event.values[2]
-            } else if (event.sensor.type == Sensor.TYPE_GYROSCOPE) {
-                lastRotationX = event.values[0]
-            }
-            uxEngine.processWristMetrics(lastRotationX, lastAccelZ)
-        }
-        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-    }
 
     /**
      * Ambient mode observer — activates when watch screen dims.
@@ -176,10 +153,6 @@ class WearMainActivity : ComponentActivity() {
 
         // Start background service immediately
         WearForegroundService.start(this)
-
-        sensorManager = safeSystemService(Context.SENSOR_SERVICE)
-        accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        gyroSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
         
         val vibrator: Vibrator? = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             safeSystemService<android.os.VibratorManager>(Context.VIBRATOR_MANAGER_SERVICE)?.defaultVibrator
@@ -363,15 +336,12 @@ class WearMainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        sensorManager?.registerListener(sensorListener, accelSensor, SensorManager.SENSOR_DELAY_GAME)
-        sensorManager?.registerListener(sensorListener, gyroSensor, SensorManager.SENSOR_DELAY_GAME)
         // Wrist raise restores from ambient — no action needed,
         // AmbientLifecycleObserver.onExitAmbient() handles it
     }
 
     override fun onPause() {
         super.onPause()
-        sensorManager?.unregisterListener(sensorListener)
     }
 
     override fun onStop() {

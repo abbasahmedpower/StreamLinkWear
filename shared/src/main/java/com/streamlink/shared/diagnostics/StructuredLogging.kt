@@ -13,7 +13,11 @@ import java.util.Locale
  */
 object StructuredLogger {
     
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+    private val dateFormat = object : ThreadLocal<SimpleDateFormat>() {
+        override fun initialValue(): SimpleDateFormat {
+            return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+        }
+    }
     private var sessionId: String = "unknown"
     private var appVersion: String = "1.0.0"
     private var buildCode: Int = 5
@@ -59,7 +63,7 @@ object StructuredLogger {
     private fun log(severity: String, component: String, message: String, extras: Map<String, Any>) {
         try {
             val json = JSONObject().apply {
-                put("timestamp", dateFormat.format(Date()))
+                put("timestamp", dateFormat.get()?.format(Date()) ?: "unknown")
                 put("session_id", sessionId)
                 put("thread", Thread.currentThread().name)
                 put("component", component)

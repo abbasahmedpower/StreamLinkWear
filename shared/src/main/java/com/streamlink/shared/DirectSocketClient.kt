@@ -103,7 +103,18 @@ class DirectSocketClient(
                 val dos = java.io.DataOutputStream(s.outputStream)
                 val dis = java.io.DataInputStream(s.inputStream)
                 
-                // 1. Send watch's public key
+                // 1. Handshake: Exchange Protocol Versions
+                dos.writeByte(StreamProtocol.PROTOCOL_VERSION.toInt())
+                dos.flush()
+                val serverVersion = dis.readByte()
+                if (serverVersion != StreamProtocol.PROTOCOL_VERSION) {
+                    Log.e(tag, "❌ Unsupported protocol version from phone: $serverVersion (Expected: ${StreamProtocol.PROTOCOL_VERSION})")
+                    s.close()
+                    delay(1000)
+                    continue
+                }
+
+                // 2. Send watch's public key
                 dos.writeInt(pubBytes.size)
                 dos.write(pubBytes)
 
@@ -139,7 +150,7 @@ class DirectSocketClient(
                 }
 
                 val sessionKey = KeyExchange.deriveSessionKey(kp.privateKey, theirPub, code)
-                encryptedChannel = EncryptedChannel(sessionKey, "tcp-stream", "phone-to-watch")
+                encryptedChannel = EncryptedChannel(sessionKey, "tcp-stream", "W2P", "P2W")
 
                 // 6. Send Encrypted Auth Block for Fail Closed PIN verification
                 //    Phone will verify this — if PIN is wrong, decryption produces garbage

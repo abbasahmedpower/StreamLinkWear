@@ -25,6 +25,17 @@ class TouchInputController(
     private val tag = "TouchInputController"
     private val injectionLock = Any()
 
+    private val injectMethod = try {
+        inputManager.javaClass.getMethod(
+            "injectInputEvent",
+            InputEvent::class.java,
+            Int::class.javaPrimitiveType
+        )
+    } catch (e: Exception) {
+        Log.e(tag, "Failed to get injectInputEvent method", e)
+        null
+    }
+
     // زمن آخر حدث MOVE لحساب deltaTime للـ Kinematic Prediction
     private var lastMoveTimeMs = 0L
     // downTime يجب أن يظل ثابتاً طوال دورة الضغط (DOWN → MOVE → UP)
@@ -105,12 +116,7 @@ class TouchInputController(
 
         return synchronized(injectionLock) {
             try {
-                val injectMethod = inputManager.javaClass.getMethod(
-                    "injectInputEvent",
-                    InputEvent::class.java,
-                    Int::class.javaPrimitiveType
-                )
-                (injectMethod.invoke(inputManager, motionEvent, 0) as? Boolean) ?: false
+                (injectMethod?.invoke(inputManager, motionEvent, 0) as? Boolean) ?: false
             } catch (e: Exception) {
                 Log.w(tag, "InputManager injection failed: ${e.message}")
                 false

@@ -40,7 +40,7 @@ class CircuitBreaker(
                     false
                 }
             }
-            State.HALF_OPEN -> halfOpenAttempts.getAndIncrement() == 0  // Only one probe
+            State.HALF_OPEN -> halfOpenAttempts.compareAndSet(0, 1) // ✅ FIX #13: CAS — فقط probe واحد يعدي في HALF_OPEN
             null -> true
         }
     }

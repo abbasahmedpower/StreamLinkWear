@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import okhttp3.*
@@ -131,7 +132,12 @@ class SignalingClient(
 
     fun close() {
         isClosedIntentionally.set(true)
-        webSocket?.close(1000, "Normal closure")
+        scope.cancel("SignalingClient closed") // ✅ FIX #16: إلغاء الكوروتينات في الـ scope لتجنب التسريب
+        try {
+            webSocket?.close(1000, "Normal closure")
+        } catch (e: Exception) {
+            Log.w(tag, "WebSocket close failed", e)
+        }
         webSocket = null
     }
 }

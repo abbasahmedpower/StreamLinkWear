@@ -16,6 +16,7 @@ import android.content.pm.ServiceInfo
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.streamlink.app.core.StreamingOrchestrator
+import com.streamlink.shared.util.ResourceRegistry
 import com.streamlink.shared.util.safeSystemService
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -31,6 +32,7 @@ class CaptureService : Service() {
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
+    private val resourceRegistry = ResourceRegistry()
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -124,23 +126,30 @@ class CaptureService : Service() {
             metrics.widthPixels, metrics.heightPixels, metrics.densityDpi,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             surface, null, null
-        )
+        )?.also { resourceRegistry.register(it) }
     }
 
+    private var isRestartingEncoder = false
     private fun autoRestartEncoder() {
+        if (isRestartingEncoder) return
+        isRestartingEncoder = true
         android.os.Handler(mainLooper).postDelayed({
-            Log.i(tag, "Self-Healing: Releasing faulty encoder...")
-            virtualDisplay?.release()
-            virtualDisplay = null
-            hardwareEncoder.release()
+            try {
+                Log.i(tag, "Self-Healing: Releasing faulty encoder...")
+                virtualDisplay?.release()
+                virtualDisplay = null
+                hardwareEncoder.release()
 
-            Log.i(tag, "Self-Healing: Re-initializing encoder...")
-            if (hardwareEncoder.initialize()) {
-                setupVirtualDisplay()
-                Log.i(tag, "Self-Healing: Encoder restored successfully.")
-            } else {
-                Log.e(tag, "Self-Healing: Encoder restore failed.")
-                stopSelf()
+                Log.i(tag, "Self-Healing: Re-initializing encoder...")
+                if (hardwareEncoder.initialize()) {
+                    setupVirtualDisplay()
+                    Log.i(tag, "Self-Healing: Encoder restored successfully.")
+                } else {
+                    Log.e(tag, "Self-Healing: Encoder restore failed.")
+                    stopSelf()
+                }
+            } finally {
+                isRestartingEncoder = false
             }
         }, 500)
     }
@@ -180,6 +189,7 @@ class CaptureService : Service() {
             Log.w(tag, "onDestroy called while capture was active — performing emergency cleanup")
             stopCapture()
         }
+        resourceRegistry.close()
         super.onDestroy()
     }
 

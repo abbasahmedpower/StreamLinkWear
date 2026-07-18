@@ -27,7 +27,7 @@ class HardenedStreamTextureView(context: Context) : TextureView(context), Textur
      * لتفعيل/تعطيل ميزة توفير الطاقة عند تغيير الإعدادات.
      */
     @Volatile
-    var isDynamicFpsEnabled: Boolean = true
+    var isDynamicFpsEnabled: Boolean = false // 🔥 BYPASSED temporarily (Fix #1)
 
     // مخزن مؤقت ثابت الحجم لعينات الـ Hash — بدون أي GC
     private val hashSampleBuffer: ByteBuffer = ByteBuffer

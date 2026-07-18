@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.streamlink.app.R
 import com.streamlink.app.core.LocaleManager
@@ -31,13 +32,15 @@ import com.streamlink.app.ui.theme.ForceLtr
 import com.streamlink.app.ui.theme.SemanticColors
 import com.streamlink.app.ui.theme.ThemeMode
 import com.streamlink.shared.GlobalStreamState
+import com.streamlink.shared.util.SystemSettingsStore
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    onBack: () -> Unit,
-    themeMode: ThemeMode,
-    onThemeModeChange: (ThemeMode) -> Unit,
+    settingsStore: SystemSettingsStore,
+    onBack: () -> Unit = {},
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    onThemeModeChange: (ThemeMode) -> Unit = {},
     watchIp: String? = null
 ) {
     val context = LocalContext.current
@@ -51,6 +54,10 @@ fun SettingsScreen(
     var showQualityMenu by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var instantSync by remember { mutableStateOf(true) } // TODO: شكلي حاليًا — راجع ملاحظة تحت
+
+    var isDynamicFpsEnabled by remember { mutableStateOf(settingsStore.isDynamicFpsEnabled) }
+    var isPrivacyBlackoutEnabled by remember { mutableStateOf(settingsStore.isPrivacyBlackoutEnabled) }
+    var isImuGesturesEnabled by remember { mutableStateOf(settingsStore.isImuGesturesEnabled) }
 
     Scaffold(
         topBar = {
@@ -200,6 +207,44 @@ fun SettingsScreen(
                 }
             }
             item { Spacer(Modifier.height(24.dp)) }
+
+            item {
+                SettingsSectionLabel("⚙️ إعدادات النظام المتقدمة")
+                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        SettingsToggleItem(
+                            title = "توفير طاقة الساعة الذكي (Dynamic FPS)",
+                            description = "يخفض تحديث الشاشة على الساعة لـ 1 FPS تلقائياً عند ثبات المحتوى لتوفير 50% من طاقة البطارية.",
+                            checked = isDynamicFpsEnabled,
+                            onCheckedChange = {
+                                isDynamicFpsEnabled = it
+                                settingsStore.setDynamicFps(it)
+                            }
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        SettingsToggleItem(
+                            title = "وضع تعتيم شاشة الهاتف (Privacy Blackout)",
+                            description = "يقوم بإطفاء شاشة الهاتف بالكامل أثناء البث لحماية خصوصيتك وتوفير طاقة بطارية الهاتف.",
+                            checked = isPrivacyBlackoutEnabled,
+                            onCheckedChange = {
+                                isPrivacyBlackoutEnabled = it
+                                settingsStore.setPrivacyBlackout(it)
+                            }
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        SettingsToggleItem(
+                            title = "إيماءات المعصم اللامسية (IMU Air Gestures)",
+                            description = "التحكم في سحب الشاشة والعودة عبر حركة اليد فقط دون لمس شاشة الساعة. (مثالية للمهندسين والرياضيين).",
+                            checked = isImuGesturesEnabled,
+                            onCheckedChange = {
+                                isImuGesturesEnabled = it
+                                settingsStore.setImuGestures(it)
+                            }
+                        )
+                    }
+                }
+            }
+            item { Spacer(Modifier.height(24.dp)) }
         }
     }
 
@@ -218,13 +263,10 @@ fun SettingsScreen(
                                     val sharedPrefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
                                     sharedPrefs.edit().putString("selected_language", lang.tag).apply()
                                     LocaleManager.setLocale(lang.tag)
+                                    androidx.appcompat.app.AppCompatDelegate.setApplicationLocales(
+                                        androidx.core.os.LocaleListCompat.forLanguageTags(lang.tag)
+                                    )
                                     showLanguageDialog = false
-                                    
-                                    val intent = android.content.Intent(context, MainActivity::class.java).apply {
-                                        flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK or android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-                                    }
-                                    context.startActivity(intent)
-                                    activity?.finish()
                                 }
                                 .padding(vertical = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -267,4 +309,32 @@ private fun SettingsRow(title: String, value: String, onClick: () -> Unit, noPad
 @Composable
 private fun ThemeChip(label: String, selected: Boolean, onClick: () -> Unit) {
     FilterChip(selected = selected, onClick = onClick, label = { Text(label) })
+}
+
+@Composable
+fun SettingsToggleItem(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 16.sp
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
+    }
 }

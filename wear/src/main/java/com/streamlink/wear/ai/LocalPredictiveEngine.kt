@@ -11,7 +11,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.tensorflow.lite.Interpreter
+import java.io.Closeable
 import java.nio.channels.FileChannel
+import android.content.res.AssetFileDescriptor
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
@@ -29,32 +31,37 @@ class LocalPredictiveEngine @Inject constructor(
     private val sensor: WristMotionSensor,
     private val logger: AIEventLogger,
     private val socketClient: com.streamlink.shared.DirectSocketClient
-) {
+) : Closeable {
     private val tag = "PredictiveEngine"
 
     private var job: Job? = null
     private var tflite: Interpreter? = null
     private var modelOutputClasses: Int = 0
     private var currentBitrate = 0f
+    private var afd: AssetFileDescriptor? = null
+    private var channel: FileChannel? = null
 
     init {
         for (assetName in MODEL_ASSET_NAMES) {
             try {
-                val afd = context.assets.openFd(assetName)
-                if (afd.declaredLength < 100) {
-                    Log.w(tag, "Model $assetName is too small (${afd.declaredLength} bytes), ignoring it")
+                val currentAfd = context.assets.openFd(assetName)
+                if (currentAfd.declaredLength < 100) {
+                    Log.w(tag, "Model $assetName is too small (${currentAfd.declaredLength} bytes), ignoring it")
                     continue
                 }
 
-                val channel = java.io.FileInputStream(afd.fileDescriptor).channel
-                val buffer = channel.map(
+                val currentChannel = java.io.FileInputStream(currentAfd.fileDescriptor).channel
+                val buffer = currentChannel.map(
                     FileChannel.MapMode.READ_ONLY,
-                    afd.startOffset,
-                    afd.declaredLength
+                    currentAfd.startOffset,
+                    currentAfd.declaredLength
                 )
                 tflite = Interpreter(buffer)
                 modelOutputClasses = tflite?.getOutputTensor(0)?.shape()?.lastOrNull() ?: 0
                 Log.i(tag, "TFLite model loaded successfully: $assetName outputs=$modelOutputClasses")
+                
+                afd = currentAfd
+                channel = currentChannel
                 break
             } catch (_: java.io.FileNotFoundException) {
                 // Try next supported filename.
@@ -105,6 +112,20 @@ class LocalPredictiveEngine @Inject constructor(
     fun stop() {
         job?.cancel()
         job = null
+    }
+
+    override fun close() {
+        stop()
+        try {
+            tflite?.close()
+            tflite = null
+            channel?.close()
+            channel = null
+            afd?.close()
+            afd = null
+        } catch (e: Exception) {
+            Log.e(tag, "Error closing resources: ${e.message}")
+        }
     }
 
     private fun inferBitrate(motion: Float, rttMs: Long): Float {

@@ -21,7 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
 import com.streamlink.app.ui.dashboard.TelemetryDashboard
-import com.streamlink.app.ui.settings.SettingsScreen
+// SettingsScreen is now in the same package (com.streamlink.app.ui.SettingsScreen)
 import com.streamlink.shared.util.SystemSettingsStore
 import com.streamlink.app.ui.viewmodel.TelemetryViewModel
 import com.streamlink.app.ui.viewmodel.TelemetryViewModelFactory

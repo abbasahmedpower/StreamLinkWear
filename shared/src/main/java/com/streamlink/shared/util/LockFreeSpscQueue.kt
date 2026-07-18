@@ -28,8 +28,8 @@ class LockFreeSpscQueue<T : Any>(capacity: Int) {
             return false // Full
         }
         val idx = (t and mask).toInt()
-        buffer.lazySet(idx, item) // lazySet avoids memory barrier overhead
-        tail.lazySet(t + 1)
+        buffer.set(idx, item) // set guarantees memory barrier
+        tail.set(t + 1)
         return true
     }
 
@@ -45,7 +45,7 @@ class LockFreeSpscQueue<T : Any>(capacity: Int) {
             
             // CAS بدل lazySet — لو thread تاني سبقك ياخد نفس الـ slot، حاول تاني
             if (head.compareAndSet(h, h + 1)) {
-                buffer.lazySet(idx, null)
+                buffer.set(idx, null)
                 return item
             }
             // فشل الـ CAS = thread تاني ياخد نفس العنصر بالظبط قبلك، جرب مرة تانية

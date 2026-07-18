@@ -14,6 +14,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -115,7 +116,7 @@ class MobileQrScannerActivity : BaseActivity() {
                 deviceName = trustedDeviceStore.trustedDeviceName ?: "الجهاز الموثوق"
             )
         }
-        kotlinx.coroutines.MainScope().launch {
+        lifecycleScope.launch {
             val connected = withTimeoutOrNull(CONNECTION_TIMEOUT_MS) {
                 var elapsed = 0L
                 while (elapsed < CONNECTION_TIMEOUT_MS) {
@@ -172,7 +173,7 @@ class MobileQrScannerActivity : BaseActivity() {
         socketServer.pairingCode = payload.pairingCode
 
         // Show "Connecting…" feedback immediately then verify within timeout
-        kotlinx.coroutines.MainScope().launch {
+        lifecycleScope.launch {
             val connected = withTimeoutOrNull(CONNECTION_TIMEOUT_MS) {
                 // Poll the server's connection state for up to 5s
                 var elapsed = 0L

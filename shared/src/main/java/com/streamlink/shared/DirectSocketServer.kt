@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.LockSupport
 import com.streamlink.shared.util.LockFreeMpmcQueue
+import com.streamlink.shared.security.PairingAttemptThrottle
 
 /**
  * Non-blocking TCP server for H.264 chunk delivery.
@@ -85,6 +86,8 @@ class DirectSocketServer {
     // ممكن تخلي الفيديو يتبعت من غير تشفير بصمت في أسوأ سيناريو).
     @Volatile private var encryptedChannel: EncryptedChannel? = null
 
+    private val pairingThrottle = PairingAttemptThrottle()
+
     private fun runInputReceiver(socket: java.net.Socket) {
         val dis = java.io.DataInputStream(socket.inputStream)
         try {
@@ -153,12 +156,30 @@ class DirectSocketServer {
                     newClient.setPerformancePreferences(0, 1, 2)
                     newClient.soTimeout = 8_000
 
-                    Log.i(tag, "Watch connected: ${newClient.inetAddress.hostAddress}")
+                    val remote = newClient.inetAddress.hostAddress ?: "unknown"
+                    Log.i(tag, "Watch connected: $remote")
+
+                    val waitMs = pairingThrottle.msUntilAllowed(remote)
+                    if (waitMs != null) {
+                        Log.w(tag, "⛔ Pairing throttled for $remote — retry after ${waitMs}ms")
+                        newClient.close()
+                        continue
+                    }
+
                     closeClient()
                     clientSocket = newClient
 
                     val dis = java.io.DataInputStream(newClient.inputStream)
                     val dos = java.io.DataOutputStream(newClient.outputStream)
+
+                    val clientVersion = dis.readByte()
+                    if (clientVersion != StreamProtocol.PROTOCOL_VERSION) {
+                        Log.e(tag, "❌ Unsupported protocol version from watch: $clientVersion (Expected: ${StreamProtocol.PROTOCOL_VERSION})")
+                        newClient.close()
+                        continue
+                    }
+                    dos.writeByte(StreamProtocol.PROTOCOL_VERSION.toInt())
+                    dos.flush()
 
                     val clientLen = dis.readInt()
                     if (clientLen <= 0 || clientLen > 8192) throw java.io.IOException("Invalid key length: $clientLen")
@@ -196,7 +217,7 @@ class DirectSocketServer {
                     dos.flush()
 
                     val sessionKey = KeyExchange.deriveSessionKey(kp.privateKey, clientPub, code)
-                    encryptedChannel = EncryptedChannel(sessionKey, "tcp-stream", "phone-to-watch")
+                    encryptedChannel = EncryptedChannel(sessionKey, "tcp-stream", "P2W", "W2P")
 
                     val authBlockLen = dis.readInt()
                     if (authBlockLen <= 0 || authBlockLen > 256) {
@@ -209,6 +230,7 @@ class DirectSocketServer {
 
                     val verified = KeyExchange.verifyAuthBlock(authBlock, sessionKey)
                     if (!verified) {
+                        pairingThrottle.recordFailure(remote)
                         Log.e(tag, "❌ PIN MISMATCH or MITM detected")
                         PairingManager.notifyPinRejected()
                         try {
@@ -224,6 +246,7 @@ class DirectSocketServer {
 
                     dos.writeByte(0x01)
                     dos.flush()
+                    pairingThrottle.recordSuccess(remote)
                     PairingManager.notifyPaired()
                     Log.i(tag, "✅ PIN verified. Handshake complete with Watch")
 
@@ -331,7 +354,7 @@ class DirectSocketServer {
                     val ec = encryptedChannel
                     if (ec != null) {
                         val encWire = WireBufferPool.acquire()
-                        val outSize = ec.encrypt(wire, 0, size, encWire, 0)
+                        val outSize = ec.encryptSelective(wire, 0, size, encWire, 0, task.isKeyframe)
 
                         if (cachedDos == null || cachedForSocket !== socket) {
                             cachedDos = java.io.DataOutputStream(socket.outputStream)

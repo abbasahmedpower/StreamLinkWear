@@ -19,7 +19,7 @@ class HandoverCoordinator(
 
     private val pathMonitor = NetworkPathMonitor(context)
     private val scope = CoroutineScope(Dispatchers.Default)
-    private var isHandoverInProcess = false
+    private val isHandoverInProcess = java.util.concurrent.atomic.AtomicBoolean(false)
 
     fun start() {
         pathMonitor.setListener(this)
@@ -38,7 +38,7 @@ class HandoverCoordinator(
 
     override fun onCriticalSignalDegradation() {
         // Proactive handover: Switch to Cellular before WiFi disconnects completely
-        if (!isHandoverInProcess && pathMonitor.currentPath.value == NetworkPathMonitor.NetworkPath.WIFI) {
+        if (!isHandoverInProcess.get() && pathMonitor.currentPath.value == NetworkPathMonitor.NetworkPath.WIFI) {
             Log.w("HandoverCoordinator", "Initiating proactive handover due to poor WiFi RSSI.")
             scope.launch {
                 executeHandoverToCellular()
@@ -68,8 +68,7 @@ class HandoverCoordinator(
     }
 
     private suspend fun executeHandoverToCellular() {
-        if (isHandoverInProcess) return
-        isHandoverInProcess = true
+        if (!isHandoverInProcess.compareAndSet(false, true)) return
         
         try {
             Log.d("HandoverCoordinator", "[HANDOVER] Step 1: Pausing active socket transport...")
@@ -93,13 +92,12 @@ class HandoverCoordinator(
         } catch (e: Exception) {
             Log.e("HandoverCoordinator", "Error during handover execution", e)
         } finally {
-            isHandoverInProcess = false
+            isHandoverInProcess.set(false)
         }
     }
 
     private suspend fun executeHandoverToLocalWifi() {
-        if (isHandoverInProcess) return
-        isHandoverInProcess = true
+        if (!isHandoverInProcess.compareAndSet(false, true)) return
         
         try {
             orchestrator.pauseTransport()
@@ -117,7 +115,7 @@ class HandoverCoordinator(
                 }
             }
         } finally {
-            isHandoverInProcess = false
+            isHandoverInProcess.set(false)
         }
     }
 

@@ -51,7 +51,9 @@ fun main() {
     }
 
     val keystore = KeyStore.getInstance(KeyStore.getDefaultType())
-    keystore.load(keystoreFile.inputStream(), tlsPassword.toCharArray())
+    keystoreFile.inputStream().use {
+        keystore.load(it, tlsPassword.toCharArray())
+    }
 
     val env = applicationEngineEnvironment {
         log = LoggerFactory.getLogger("ktor.application")
@@ -114,8 +116,8 @@ fun Application.module(nodeId: String, redisUrl: String) {
     install(WebSockets) {
         pingPeriod = Duration.ofSeconds(15)
         timeout    = Duration.ofSeconds(60)
-        maxFrameSize = Long.MAX_VALUE
-        masking = false
+        maxFrameSize = 4L * 1024 * 1024 // ✅ FIX #17: Prevent massive frame DoS
+        masking = true                  // ✅ FIX #17: Enforce masking to prevent proxy cache poisoning
     }
     install(ContentNegotiation) { json() }
 
@@ -139,6 +141,13 @@ fun Application.module(nodeId: String, redisUrl: String) {
     monitorScope.launch {
         while (isActive) {
             delay(500)
+            
+            val evicted = registry.evictStale()
+            if (evicted.isNotEmpty()) {
+                // Log eviction.
+                // Note: The peers map is cleaned up. Ktor handles timeout and actual WS close.
+            }
+            
             val stats = registry.stats()
             val snapshot = StreamMetricsSnapshot(
                 nodeId            = nodeId,
@@ -254,6 +263,7 @@ fun Application.module(nodeId: String, redisUrl: String) {
 
             try {
                 incoming.consumeEach { frame ->
+                    registry.updatePing(peerId)
                     if (frame is Frame.Text) {
                         orchestrator.route(verifiedUserId, deviceEnum, frame.readText())
                     }

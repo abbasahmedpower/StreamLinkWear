@@ -1,13 +1,16 @@
 package com.streamlink.wear.player
 
+import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Process
 import android.util.Log
 import com.streamlink.shared.StreamProtocol
 import com.streamlink.shared.audio.LockFreeAudioRingBuffer
 import java.util.concurrent.atomic.AtomicBoolean
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -17,8 +20,11 @@ import javax.inject.Singleton
  * كـjitter buffer (بيستنى 60ms قبل أول تشغيل عشان يمتص تذبذب الشبكة).
  */
 @Singleton
-class AudioPlaybackEngine @Inject constructor() {
+class AudioPlaybackEngine @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
     private val tag = "AudioPlaybackEngine"
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     // 960 bytes for AUDIO_FRAME_BYTES
     private val ringBuffer = LockFreeAudioRingBuffer(
@@ -30,6 +36,15 @@ class AudioPlaybackEngine @Inject constructor() {
     private var playbackThread: Thread? = null
     private val prebufferFrames = 3 // 60ms
 
+    private var audioFocusRequest: android.media.AudioFocusRequest? = null
+    private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_LOSS -> stop()
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> audioTrack?.pause()
+            AudioManager.AUDIOFOCUS_GAIN -> audioTrack?.play()
+        }
+    }
+
     fun start() {
         if (running.get()) return
         val minBuf = AudioTrack.getMinBufferSize(
@@ -37,13 +52,25 @@ class AudioPlaybackEngine @Inject constructor() {
             AudioFormat.CHANNEL_OUT_MONO,
             AudioFormat.ENCODING_PCM_16BIT
         )
+        val attributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .build()
+
+        val focusRequest = android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(attributes)
+            .setAcceptsDelayedFocusGain(false)
+            .setOnAudioFocusChangeListener(audioFocusListener)
+            .build()
+        
+        audioFocusRequest = focusRequest
+        if (audioManager.requestAudioFocus(focusRequest) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+            Log.w(tag, "Audio focus denied, cannot start playback")
+            return
+        }
+
         audioTrack = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-            )
+            .setAudioAttributes(attributes)
             .setAudioFormat(
                 AudioFormat.Builder()
                     .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
@@ -100,6 +127,10 @@ class AudioPlaybackEngine @Inject constructor() {
         }
         audioTrack = null
         ringBuffer.clear()
+        
+        audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+        audioFocusRequest = null
+        
         Log.i(tag, "Audio playback stopped")
     }
 }

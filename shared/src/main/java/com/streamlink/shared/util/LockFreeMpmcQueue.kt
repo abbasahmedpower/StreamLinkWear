@@ -1,24 +1,13 @@
-﻿package com.streamlink.shared.util
+package com.streamlink.shared.util
 
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReferenceArray
+import java.util.concurrent.atomic.AtomicLongArray
 
 /**
  * Lock-free Multi-Producer Multi-Consumer (MPMC) bounded queue.
- *
- * ✅ FIX #1 (nano): بديل LockFreeSpscQueue. السبب: iFrameQueue/pFrameQueue/
- * freeTasks في DirectSocketServer بيتكتب عليهم فعليًا من أكتر من Producer
- * (AudioCaptureEngine.captureThread + MirrorDataPlane dispatcher thread)،
- * وكمان iFrameQueue بيتقرا منها من Consumer تاني غير runSender() (مسار
- * الـ eviction جوه sendPooledWire نفسها). الـ SPSC القديمة كانت بتفترض
- * منتج واحد ومستهلك واحد بس وكانت بتستخدم lazySet بدون full memory
- * barrier — تحت الحمل ده بيسبب فقد/تلخبط فريمات صامت.
- *
- * الفرق عن SPSC: offer() بتستخدم compareAndSet على tail (مش lazySet)،
- * وفيه فحص إن الـ slot فاضي قبل ما تُكتب فيه. التكلفة: full memory
- * barrier بدل lazy — أرخص بكتير من فريم بيتلخبط.
- *
- * Capacity لازم تكون power of 2.
+ * Implemented using Dmitry Vyukov's sequence-based algorithm for exact
+ * correctness and freedom from the ABA/null-check race condition.
  */
 class LockFreeMpmcQueue<T : Any>(capacity: Int) {
     init {
@@ -27,47 +16,66 @@ class LockFreeMpmcQueue<T : Any>(capacity: Int) {
         }
     }
 
-    private val mask = (capacity - 1).toLong()
+    private val mask = capacity - 1
     private val buffer = AtomicReferenceArray<T>(capacity)
+    private val seqs = AtomicLongArray(capacity)
+    
+    init {
+        for (i in 0 until capacity) {
+            seqs.set(i, i.toLong())
+        }
+    }
+
     private val head = AtomicLong(0)
     private val tail = AtomicLong(0)
 
-    /** Thread-safe من أي عدد Producers. */
     fun offer(item: T): Boolean {
+        var cellSeq: Long
+        var pos = tail.get()
         while (true) {
-            val t = tail.get()
-            val h = head.get()
-            if (t - h > mask) return false // الكيو ممتلئة
-
-            val idx = (t and mask).toInt()
-            // الـ slot لازم يكون فاضي قبل ما نكتب فيه
-            if (buffer.get(idx) != null) return false
-
-            if (tail.compareAndSet(t, t + 1)) {
-                buffer.set(idx, item) // set كامل — memory barrier حقيقي
-                return true
+            pos = tail.get()
+            val idx = pos.toInt() and mask
+            cellSeq = seqs.get(idx)
+            val dif = cellSeq - pos
+            if (dif == 0L) {
+                if (tail.compareAndSet(pos, pos + 1)) {
+                    buffer.set(idx, item)
+                    seqs.set(idx, pos + 1)
+                    return true
+                }
+            } else if (dif < 0L) {
+                return false // Queue is full
+            } else {
+                pos = tail.get()
             }
         }
     }
 
-    /** Thread-safe من أي عدد Consumers. */
     fun poll(): T? {
+        var cellSeq: Long
+        var pos = head.get()
         while (true) {
-            val h = head.get()
-            if (h == tail.get()) return null // فاضية
-
-            val idx = (h and mask).toInt()
-            val item = buffer.get(idx) ?: return null
-
-            if (head.compareAndSet(h, h + 1)) {
-                buffer.set(idx, null)
-                return item
+            pos = head.get()
+            val idx = pos.toInt() and mask
+            cellSeq = seqs.get(idx)
+            val dif = cellSeq - (pos + 1)
+            if (dif == 0L) {
+                if (head.compareAndSet(pos, pos + 1)) {
+                    val item = buffer.get(idx)
+                    buffer.set(idx, null)
+                    seqs.set(idx, pos + mask + 1L)
+                    return item
+                }
+            } else if (dif < 0L) {
+                return null // Queue is empty
+            } else {
+                pos = head.get()
             }
         }
     }
 
     fun clear() {
-        while (poll() != null) { /* استمر لحد ما تفضى */ }
+        while (poll() != null) { /* discard */ }
     }
 
     val size: Int get() = (tail.get() - head.get()).toInt().coerceAtLeast(0)

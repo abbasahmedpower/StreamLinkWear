@@ -8,9 +8,8 @@ import java.nio.ByteBuffer
  * Ensures I-frames always carry codec parameter sets.
  */
 object HardenedFrameProcessor {
-    @Volatile private var cachedSps: ByteArray? = null
-    @Volatile private var cachedPps: ByteArray? = null
-
+    private data class SpsPpsPair(val sps: ByteArray, val pps: ByteArray)
+    private val cachedParams = java.util.concurrent.atomic.AtomicReference<SpsPpsPair>()
     fun processAndObtain(buf: ByteBuffer, info: MediaCodec.BufferInfo): HardenedFrame? {
         if (info.size <= 0) return null
 
@@ -24,15 +23,16 @@ object HardenedFrameProcessor {
         }
 
         // For keyframes, prepend cached SPS+PPS if available
-        return if (isKeyframe && cachedSps != null && cachedPps != null) {
-            val (combined, releaseCallback) = buildKeyframeWithParams(buf, info)
+        val params = cachedParams.get()
+        return if (isKeyframe && params != null) {
+            val (combined, releaseCallback) = buildKeyframeWithParams(buf, info, params)
             HardenedFrame(
                 buffer = combined,
                 size = combined.limit(),
                 timestampUs = info.presentationTimeUs,
                 isKeyframe = true,
-                sps = cachedSps,
-                pps = cachedPps,
+                sps = params.sps,
+                pps = params.pps,
                 releaseCallback = releaseCallback
             )
         } else {
@@ -58,25 +58,30 @@ object HardenedFrameProcessor {
 
         // Parse SPS (NAL type 7) and PPS (NAL type 8)
         var i = 0
+        var newSps: ByteArray? = null
+        var newPps: ByteArray? = null
         while (i < data.size - 4) {
             if (readInt(data, i) == 0x00000001) {
                 val nalType = data[i + 4].toInt() and 0x1F
                 val nextStart = findNextStart(data, i + 4)
                 val end = if (nextStart == -1) data.size else nextStart
                 when (nalType) {
-                    7 -> cachedSps = data.copyOfRange(i, end)
-                    8 -> cachedPps = data.copyOfRange(i, end)
+                    7 -> newSps = data.copyOfRange(i, end)
+                    8 -> newPps = data.copyOfRange(i, end)
                 }
                 i = if (nextStart == -1) data.size else nextStart
             } else {
                 i++
             }
         }
+        if (newSps != null && newPps != null) {
+            cachedParams.set(SpsPpsPair(newSps, newPps))
+        }
     }
 
-    private fun buildKeyframeWithParams(buf: ByteBuffer, info: MediaCodec.BufferInfo): Pair<ByteBuffer, () -> Unit> {
-        val sps = cachedSps ?: return Pair(buf.duplicate()) {}
-        val pps = cachedPps ?: return Pair(buf.duplicate()) {}
+    private fun buildKeyframeWithParams(buf: ByteBuffer, info: MediaCodec.BufferInfo, params: SpsPpsPair): Pair<ByteBuffer, () -> Unit> {
+        val sps = params.sps
+        val pps = params.pps
         val totalSize = sps.size + pps.size + info.size
         
         val combined = ByteBufferPool.acquire(totalSize)

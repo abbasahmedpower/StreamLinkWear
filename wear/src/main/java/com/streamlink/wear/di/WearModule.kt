@@ -56,11 +56,20 @@ object WearModule {
 
     @Provides
     @Singleton
-    fun provideSmartWatchUXEngine(): com.streamlink.wear.ai.SmartWatchUXEngine {
+    fun provideSmartWatchUXEngine(@ApplicationContext context: Context): com.streamlink.wear.ai.SmartWatchUXEngine {
         return com.streamlink.wear.ai.SmartWatchUXEngine { bitrate, fps ->
-            // In a real app we would send this over the socket back to the phone.
-            // For now, log it.
             android.util.Log.i("SmartWatchUXEngine", "Dynamic params: ${bitrate}bps, ${fps}fps")
+            try {
+                val dataClient = com.google.android.gms.wearable.Wearable.getDataClient(context)
+                val request = com.google.android.gms.wearable.PutDataMapRequest.create("/dynamic_params").apply {
+                    dataMap.putInt("bitrate", bitrate)
+                    dataMap.putInt("fps", fps)
+                    dataMap.putLong("timestamp", System.currentTimeMillis())
+                }.asPutDataRequest()
+                dataClient.putDataItem(request)
+            } catch (e: Exception) {
+                android.util.Log.e("SmartWatchUXEngine", "Failed to send dynamic params", e)
+            }
         }
     }
 

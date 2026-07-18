@@ -75,13 +75,18 @@ class PeerRegistry {
     }
 
     /** Evict sessions that haven't sent a ping in > 60s */
-    fun evictStale(maxAgeMs: Long = 60_000): List<String> {
+    suspend fun evictStale(maxAgeMs: Long = 60_000): List<String> = mutex.withLock {
         val now = System.currentTimeMillis()
         val stale = peers.entries
             .filter { now - it.value.lastPingMs > maxAgeMs }
             .map { it.key }
-        stale.forEach { peers.remove(it) }
-        return stale
+        stale.forEach { peerId ->
+            val session = peers.remove(peerId)
+            if (session != null) {
+                pairs.remove(session.userId)
+            }
+        }
+        return@withLock stale
     }
 
     fun stats(): Map<String, Any> = mapOf(

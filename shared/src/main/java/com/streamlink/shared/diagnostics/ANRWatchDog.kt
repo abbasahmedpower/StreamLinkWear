@@ -21,7 +21,7 @@ class ANRWatchDog(
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ticker = Runnable {
-        tick = (tick + 1) % Long.MAX_VALUE
+        tick = (tick + 1) and Long.MAX_VALUE
         reported = false
     }
 

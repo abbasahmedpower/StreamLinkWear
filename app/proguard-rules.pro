@@ -51,11 +51,9 @@
 -dontwarn androidx.camera.**
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Shared Module — كل الـ data classes والـ enums والـ protocol
-# محتاجين يكونوا محمييين عشان بيتعملوا serialize/deserialize بالاسم
+# Shared Module — تم إزالة القاعدة الشاملة للسماح للـ R8 بضغط وحذف الكود الميت
+# (يتم حماية الـ protocol classes بالأعلى في قسم kotlinx.serialization)
 # ─────────────────────────────────────────────────────────────────────────────
--keep class com.streamlink.shared.** { *; }
--keepnames class com.streamlink.shared.** { *; }
 
 # =============================================================================
 # HORUS LINK — Closed-Loop Control & Telemetry Layer
