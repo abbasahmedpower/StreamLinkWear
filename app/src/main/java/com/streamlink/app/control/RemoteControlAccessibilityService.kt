@@ -16,6 +16,7 @@ import com.streamlink.app.core.input.TouchInputController
 import com.streamlink.shared.TouchEvent
 import com.streamlink.shared.TouchPhase
 import com.streamlink.shared.ai.KinematicPredictionEngine
+import com.streamlink.shared.engagement.pickupAvoidanceTracker
 import java.lang.reflect.Method
 
 class RemoteControlAccessibilityService : AccessibilityService() {
@@ -163,6 +164,27 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         val path = Path().apply { moveTo(x, y) }
         sessions[id] = StrokeSession(null, x, y, path, hasPending = true, isDispatchInFlight = false, isDown = true)
         dispatchNextSegment(id)
+
+        // Engagement metric: one remote-control interaction from the watch == one
+        // fewer reason to pull the phone out. Counted once per interaction (touch-down),
+        // not once per gesture segment, so it stays an honest number.
+        applicationContext.pickupAvoidanceTracker.recordPickupAvoided()
+        syncPickupCountToWatch()
+    }
+
+    private fun syncPickupCountToWatch() {
+        try {
+            val count = applicationContext.pickupAvoidanceTracker.todayCount.value
+            val dataClient = com.google.android.gms.wearable.Wearable.getDataClient(applicationContext)
+            val request = com.google.android.gms.wearable.PutDataMapRequest.create("/pickup_avoided_count").apply {
+                dataMap.putInt("count", count)
+                dataMap.putLong("timestamp", System.currentTimeMillis())
+            }.asPutDataRequest().setUrgent()
+            dataClient.putDataItem(request)
+        } catch (e: Exception) {
+            // Non-critical — the watch will just show a stale count until the next sync.
+            Log.w(tag, "Failed to sync pickup-avoided count to watch: ${e.message}")
+        }
     }
 
     private fun onMove(id: Int, x: Float, y: Float) {

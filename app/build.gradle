@@ -23,6 +23,14 @@ android {
         buildConfigField "String", "SIGNALING_URL", "\"${project.findProperty('SIGNALING_URL') ?: 'wss://signaling.streamlink.com'}\""
         buildConfigField "String", "HORUS_SECRET_TOKEN", "\"${project.findProperty('HORUS_SECRET_TOKEN') ?: ''}\""
 
+        // ✅ NANO-FIX: WAN/cellular handover relay — OFF by default. Flip to true only
+        // once a real TURN/relay backend is deployed and its host/port are supplied
+        // via -PWAN_RELAY_HOST / -PWAN_RELAY_PORT (CI) or local.properties. Prevents
+        // HandoverCoordinator from silently trying to reach a non-existent server.
+        buildConfigField "boolean", "WAN_RELAY_ENABLED", "${project.findProperty('WAN_RELAY_ENABLED') ?: 'false'}"
+        buildConfigField "String", "WAN_RELAY_HOST", "\"${project.findProperty('WAN_RELAY_HOST') ?: ''}\""
+        buildConfigField "int", "WAN_RELAY_PORT", "${project.findProperty('WAN_RELAY_PORT') ?: '3478'}"
+
         ndk {
             abiFilters 'arm64-v8a', 'armeabi-v7a'
         }

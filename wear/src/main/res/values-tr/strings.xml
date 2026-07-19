@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">StreamLink Wear</string>
+    <string name="streaming">Yayınlanıyor</string>
+    <string name="connecting">Bağlanıyor…</string>
+    <string name="reconnecting">Yeniden bağlanıyor…</string>
+    <string name="idle">Boşta</string>
+    <string name="eco_mode">Eko Mod</string>
+    <string name="bitrate_kbps">%d Kbps</string>
+    <string name="latency_ms">%d ms</string>
+    <string name="stop">Durdur</string>
+    <string name="start">Başlat</string>
+    <string name="recovery_attempt">Deneme %d</string>
+    <string name="network_quality">Ağ: %s</string>
+    <string name="thermal_warning">Termal Kısıtlama</string>
+</resources>
+

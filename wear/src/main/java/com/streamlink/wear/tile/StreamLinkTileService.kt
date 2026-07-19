@@ -14,6 +14,7 @@ import androidx.wear.tiles.TileService
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.streamlink.shared.GlobalStreamState
+import com.streamlink.wear.engagement.PickupCountListenerService
 import com.streamlink.wear.ui.WearMainActivity
 
 class StreamLinkTileService : TileService() {
@@ -22,6 +23,7 @@ class StreamLinkTileService : TileService() {
         requestParams: RequestBuilders.TileRequest
     ): ListenableFuture<TileBuilders.Tile> {
         val isStreaming = GlobalStreamState.snapshot.value.state == GlobalStreamState.State.STREAMING
+        val pickupsAvoided = PickupCountListenerService.readCachedCount(applicationContext)
 
         val tile = TileBuilders.Tile.Builder()
             .setResourcesVersion("1")
@@ -29,7 +31,7 @@ class StreamLinkTileService : TileService() {
                 TimelineBuilders.Timeline.Builder()
                     .addTimelineEntry(
                         TimelineBuilders.TimelineEntry.Builder()
-                            .setLayout(buildLayout(isStreaming))
+                            .setLayout(buildLayout(isStreaming, pickupsAvoided))
                             .build()
                     )
                     .build()
@@ -49,7 +51,10 @@ class StreamLinkTileService : TileService() {
         )
     }
 
-    private fun buildLayout(isStreaming: Boolean): androidx.wear.protolayout.LayoutElementBuilders.Layout {
+    private fun buildLayout(
+        isStreaming: Boolean,
+        pickupsAvoided: Int
+    ): androidx.wear.protolayout.LayoutElementBuilders.Layout {
         val statusText  = if (isStreaming) "Streaming" else "Tap to Stream"
         val buttonColor = if (isStreaming) 0xFFE53935.toInt() else 0xFF4CAF50.toInt()
 
@@ -115,6 +120,21 @@ class StreamLinkTileService : TileService() {
                         FontStyle.Builder()
                             .setSize(sp(12f))
                             .setColor(argb(0xFFBDBDBD.toInt()))
+                            .build()
+                    )
+                    .build()
+            )
+            .addContent(
+                Text.Builder()
+                    .setText(
+                        androidx.wear.protolayout.TypeBuilders.StringProp.Builder(
+                            if (pickupsAvoided > 0) "🖐 $pickupsAvoided today" else " "
+                        ).build()
+                    )
+                    .setFontStyle(
+                        FontStyle.Builder()
+                            .setSize(sp(10f))
+                            .setColor(argb(0xFF81C784.toInt()))
                             .build()
                     )
                     .build()

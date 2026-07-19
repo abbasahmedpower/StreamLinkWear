@@ -154,6 +154,21 @@ class StreamingOrchestrator @Inject constructor(
     suspend fun migrateTransportSocket(newHost: String, newPort: Int, isRelay: Boolean): Boolean =
         networkController.migrateTransportSocket(newHost, newPort, isRelay)
 
+    /**
+     * NANO-FIX (HandoverCoordinator hardcoded-IP bug): exposes the last host actually
+     * discovered via mDNS/NSD, so callers stop guessing a fake LAN address.
+     * Returns null if no watch has been discovered yet on this network.
+     */
+    fun lastKnownLocalHost(): String? = discovery.discoveredHost.value
+
+    /** Surfaces a user-facing, non-crashing reason on the stream UI + event log. */
+    fun reportTransportIssue(code: String, message: String) {
+        events.error(code, message, recoverable = true)
+        scope.launch {
+            GlobalStreamState.update { copy(errorMessage = message) }
+        }
+    }
+
     /** Convenience for callers that still reference publishTouch directly. */
     fun publishTouch(phase: Byte, pointerId: Int, nx: Float, ny: Float, timestampUs: Long) =
         touchPipeline.publishTouch(phase, pointerId, nx, ny, timestampUs)

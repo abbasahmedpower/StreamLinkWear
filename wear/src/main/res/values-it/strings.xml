@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">StreamLink Wear</string>
+    <string name="streaming">Streaming</string>
+    <string name="connecting">Connessione…</string>
+    <string name="reconnecting">Riconnessione…</string>
+    <string name="idle">Inattivo</string>
+    <string name="eco_mode">Modalità Eco</string>
+    <string name="bitrate_kbps">%d Kbps</string>
+    <string name="latency_ms">%d ms</string>
+    <string name="stop">Ferma</string>
+    <string name="start">Avvia</string>
+    <string name="recovery_attempt">Tentativo %d</string>
+    <string name="network_quality">Rete: %s</string>
+    <string name="thermal_warning">Limitazione termica</string>
+</resources>
+

@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">StreamLink Wear</string>
+    <string name="streaming">스트리밍 중</string>
+    <string name="connecting">연결 중…</string>
+    <string name="reconnecting">재연결 중…</string>
+    <string name="idle">대기 중</string>
+    <string name="eco_mode">절전 모드</string>
+    <string name="bitrate_kbps">%d Kbps</string>
+    <string name="latency_ms">%d ms</string>
+    <string name="stop">중지</string>
+    <string name="start">시작</string>
+    <string name="recovery_attempt">시도 %d</string>
+    <string name="network_quality">네트워크: %s</string>
+    <string name="thermal_warning">발열 제한</string>
+</resources>
+

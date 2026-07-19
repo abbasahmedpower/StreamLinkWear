@@ -2,8 +2,10 @@ package com.streamlink.app.network
 
 import android.content.Context
 import android.util.Log
+import com.streamlink.app.BuildConfig
 import com.streamlink.app.core.StreamingOrchestrator
 import com.streamlink.shared.GlobalStreamState
+import com.streamlink.shared.StreamProtocol
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -37,7 +39,11 @@ class HandoverCoordinator(
     }
 
     override fun onCriticalSignalDegradation() {
-        // Proactive handover: Switch to Cellular before WiFi disconnects completely
+        // Proactive handover: Switch to Cellular before WiFi disconnects completely.
+        // NANO-FIX: this was a second, unguarded entry point into executeHandoverToCellular()
+        // — gated it behind the same BuildConfig.WAN_RELAY_ENABLED flag as handlePathChange()
+        // so it can't hit the not-yet-deployed relay either.
+        if (!BuildConfig.WAN_RELAY_ENABLED) return
         if (!isHandoverInProcess.get() && pathMonitor.currentPath.value == NetworkPathMonitor.NetworkPath.WIFI) {
             Log.w("HandoverCoordinator", "Initiating proactive handover due to poor WiFi RSSI.")
             scope.launch {
@@ -53,6 +59,20 @@ class HandoverCoordinator(
 
         when (path) {
             NetworkPathMonitor.NetworkPath.CELLULAR -> {
+                if (!BuildConfig.WAN_RELAY_ENABLED) {
+                    // NANO-FIX: the TURN/relay backend for cross-network handover is not
+                    // deployed yet (see README "Phase 2"). Previously this branch was
+                    // unconditional and would silently try to reach a relay host that
+                    // doesn't exist, freezing the stream with no explanation. Until the
+                    // relay ships, pause cleanly and tell the user exactly what happened.
+                    Log.w("HandoverCoordinator", "WiFi lost — WAN relay not enabled yet, pausing stream safely.")
+                    orchestrator.pauseTransport()
+                    orchestrator.reportTransportIssue(
+                        code = "WAN_RELAY_UNAVAILABLE",
+                        message = "خرجت من نطاق الواي فاي — البث اتوقف مؤقتاً لحد ما ترجع للشبكة"
+                    )
+                    return
+                }
                 Log.i("HandoverCoordinator", "WiFi Lost. Executing hard handover to Cellular WAN.")
                 executeHandoverToCellular()
             }
@@ -63,6 +83,10 @@ class HandoverCoordinator(
             NetworkPathMonitor.NetworkPath.DISCONNECTED -> {
                 Log.e("HandoverCoordinator", "All networks disconnected. Pausing stream.")
                 orchestrator.pauseTransport() // Custom method on orchestrator to hold encoding pipeline
+                orchestrator.reportTransportIssue(
+                    code = "NETWORK_LOST",
+                    message = "مفيش اتصال شبكة — البث اتوقف مؤقتاً"
+                )
             }
         }
     }
@@ -123,14 +147,26 @@ class HandoverCoordinator(
     private data class RelayEndpoint(val ip: String, val port: Int)
 
     private suspend fun resolveWanRelayEndpoint(): RelayEndpoint {
-        // Here, we'd query your STUN/TURN server or a signaling API (like an AWS/Node.js endpoint)
-        // to find the public relay IP mapped for this Watch's unique ID.
-        // Returning a placeholder that simulates a relay address:
-        return RelayEndpoint("relay.horuslink.com", 3478) 
+        // This path is only reachable when BuildConfig.WAN_RELAY_ENABLED is true —
+        // i.e. once a real TURN/relay backend is deployed and its address is wired
+        // through BuildConfig (same pattern as SIGNALING_URL), NOT hardcoded here.
+        require(BuildConfig.WAN_RELAY_ENABLED) {
+            "resolveWanRelayEndpoint() called while WAN relay is disabled — this is a bug in the caller."
+        }
+        return RelayEndpoint(BuildConfig.WAN_RELAY_HOST, BuildConfig.WAN_RELAY_PORT)
     }
 
     private fun resolveLocalWifiEndpoint(): RelayEndpoint? {
-        // Return cached P2P details from mDNS
-        return RelayEndpoint("192.168.1.50", 8080)
+        // NANO-FIX: previously hardcoded to "192.168.1.50:8080" — a fake address that
+        // doesn't correspond to any real device, on the wrong port too (direct socket
+        // port is 8999, see StreamProtocol.DIRECT_SOCKET_PORT). Read the actual
+        // mDNS/NSD-discovered host that StreamingOrchestrator's NetworkDiscovery
+        // instance already maintains.
+        val host = orchestrator.lastKnownLocalHost()
+        if (host == null) {
+            Log.w("HandoverCoordinator", "No mDNS-discovered watch host cached yet — cannot hand back to local WiFi.")
+            return null
+        }
+        return RelayEndpoint(host, StreamProtocol.DIRECT_SOCKET_PORT)
     }
 }

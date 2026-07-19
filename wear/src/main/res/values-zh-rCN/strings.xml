@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">StreamLink Wear</string>
+    <string name="streaming">正在串流</string>
+    <string name="connecting">连接中…</string>
+    <string name="reconnecting">重新连接中…</string>
+    <string name="idle">空闲</string>
+    <string name="eco_mode">省电模式</string>
+    <string name="bitrate_kbps">%d Kbps</string>
+    <string name="latency_ms">%d 毫秒</string>
+    <string name="stop">停止</string>
+    <string name="start">开始</string>
+    <string name="recovery_attempt">第 %d 次尝试</string>
+    <string name="network_quality">网络：%s</string>
+    <string name="thermal_warning">温控降频</string>
+</resources>
+

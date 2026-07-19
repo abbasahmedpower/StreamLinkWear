@@ -1,8 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  NANO-FIX: this service ONLY calls dispatchGesture() (RemoteControlAccessibilityService.kt)
+  and its onAccessibilityEvent() override is empty — it never reads window content or
+  listens to events. The previous config requested typeAllMask events,
+  canRetrieveWindowContent=true, and 3 unused flags, which needlessly widens the
+  Restricted Permissions review surface on Google Play with zero functional benefit.
+  Scope trimmed to exactly what RemoteControlAccessibilityService actually uses.
+-->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeAllMask"
+    android:accessibilityEventTypes="typeViewClicked"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews|flagRequestTouchExplorationMode|flagRequestFilterKeyEvents"
+    android:accessibilityFlags="flagDefault"
     android:canPerformGestures="true"
-    android:canRetrieveWindowContent="true"
+    android:canRetrieveWindowContent="false"
     android:description="@string/accessibility_service_description" />

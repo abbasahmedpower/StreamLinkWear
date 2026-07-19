@@ -139,6 +139,13 @@ class WearMainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+            }
+        })
+        
         try {
             if (com.streamlink.shared.SecurityUtils.isRooted() || com.streamlink.shared.SecurityUtils.isEmulator()) {
             android.widget.Toast.makeText(this, "Security Warning: Rooted device or emulator detected.", android.widget.Toast.LENGTH_LONG).show()
@@ -146,8 +153,23 @@ class WearMainActivity : ComponentActivity() {
 
         // Keep screen ON will be managed dynamically based on stream state to save battery
         
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                socketClient.sendControl(
+                    com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION,
+                    android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
+                )
+            }
+        })
+
         // Register ambient lifecycle
         lifecycle.addObserver(ambientObserver)
+
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+            }
+        })
 
         streamPlayer.acquire()
 
@@ -362,7 +384,6 @@ class WearMainActivity : ComponentActivity() {
 
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
         val action = when (keyCode) {
-            android.view.KeyEvent.KEYCODE_BACK -> android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
             android.view.KeyEvent.KEYCODE_STEM_1,
             android.view.KeyEvent.KEYCODE_STEM_PRIMARY -> android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME
             else -> return super.onKeyDown(keyCode, event)
