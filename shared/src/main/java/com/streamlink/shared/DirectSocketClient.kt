@@ -76,6 +76,13 @@ class DirectSocketClient(
         while (!closed.get() && attempt < maxAttempts) {
             val host = manualHostOverride ?: discovery.discoveredHost.value
             if (host == null) {
+                val cachedHost = context.getSharedPreferences("StreamLinkPrefs", android.content.Context.MODE_PRIVATE).getString("last_host", null)
+                
+                if (cachedHost != null) {
+                    Log.i(tag, "mDNS not ready, trying cached host: $cachedHost")
+                    // We will try cachedHost later in the loop if discovery is still null, but let's assign it here.
+                }
+
                 if (!timeoutFired &&
                     System.currentTimeMillis() - discoveryStartMs >= DISCOVERY_TIMEOUT_MS
                 ) {
@@ -83,14 +90,27 @@ class DirectSocketClient(
                     Log.w(tag, "mDNS discovery timed out after ${DISCOVERY_TIMEOUT_MS}ms — no phone found, waiting for manual IP or late discovery")
                     onDiscoveryTimedOut?.invoke()
                 }
-                delay(1000)
-                continue
+                
+                if (cachedHost != null) {
+                    // Try the cached host immediately if we don't have one
+                    // But we don't want to infinite loop on it if it's dead.
+                    // We'll let the host var be cachedHost for this attempt if attempt > 2 (give mDNS 2 secs)
+                }
+                
+                val finalHost = if (attempt > 1 && cachedHost != null) cachedHost else { delay(1000); continue }
+                // Re-evaluate host with finalHost
+            }
+            val finalHostToUse = host ?: context.getSharedPreferences("StreamLinkPrefs", android.content.Context.MODE_PRIVATE).getString("last_host", null)
+            
+            if (finalHostToUse == null) {
+                 delay(1000)
+                 continue
             }
             attempt++
-            Log.i(tag, "Connect attempt $attempt/$maxAttempts → $host:$port")
+            Log.i(tag, "Connect attempt $attempt/$maxAttempts → $finalHostToUse:$port")
             try {
                 val s = Socket().apply {
-                    connect(InetSocketAddress(host, port), 5_000)
+                    connect(InetSocketAddress(finalHostToUse, port), 5_000)
                     tcpNoDelay = true
                     soTimeout = 15_000
                     setPerformancePreferences(0, 2, 1)  // latency > bandwidth > connection time
@@ -169,7 +189,11 @@ class DirectSocketClient(
                     continue
                 }
 
-                Log.i(tag, "✅ Connected and Handshake complete with $host:$port")
+                Log.i(tag, "✅ Connected and Handshake complete with $finalHostToUse:$port")
+                context.getSharedPreferences("StreamLinkPrefs", android.content.Context.MODE_PRIVATE)
+                    .edit()
+                    .putString("last_host", finalHostToUse)
+                    .apply()
                 onStateChange(true)
                 attempt = 0
                 

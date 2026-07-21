@@ -72,6 +72,9 @@ class DirectSocketServer {
      */
     var onWatchDimensions: ((widthPx: Int, heightPx: Int) -> Unit)? = null
 
+    /** Called when the watch successfully authenticates and connects. */
+    var onClientConnected: ((name: String, ip: String) -> Unit)? = null
+
     /**
      * Pairing code injected by the Phone UI. يجب ضبطه قبل أي اتصال.
      * ✅ FIX #5 (أمني): مفيش قيمة افتراضية ("000000") بعد كده — لو
@@ -248,6 +251,7 @@ class DirectSocketServer {
                     dos.flush()
                     pairingThrottle.recordSuccess(remote)
                     PairingManager.notifyPaired()
+                    onClientConnected?.invoke("Watch ($remote)", remote)
                     Log.i(tag, "✅ PIN verified. Handshake complete with Watch")
 
                     newClient.soTimeout = 0

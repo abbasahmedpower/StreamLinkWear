@@ -97,11 +97,26 @@ class StreamingOrchestrator @Inject constructor(
                     com.streamlink.app.control.RemoteControlAccessibilityService.instance
                         ?.performGlobalAction(msg.value)
                 }
+                StreamProtocol.CMD_REQUEST_KEYFRAME -> {
+                    Log.i(tag, "Watch requested IDR frame (Surface recovery/Ambient exit)")
+                    requestKeyframe()
+                }
             }
         }
         socketServer.onWatchDimensions = { w, h ->
             com.streamlink.app.control.RemoteControlAccessibilityService.instance
                 ?.updateWatchDimensions(w, h)
+        }
+        
+        socketServer.onClientConnected = { name, ip ->
+            com.streamlink.shared.util.SystemSettingsStore(context).setConnectedWatch(name, ip)
+        }
+        
+        // BUG-05 FIX: إرسال تحديثات Jitter Buffer فوراً
+        com.streamlink.app.core.SettingsPrefs.get(context).onJitterBufferSendRequested = { ms ->
+            if (com.streamlink.shared.util.SystemSettingsStore(context).isInstantSyncEnabled) {
+                socketServer.sendControlToWatch(StreamProtocol.CMD_SET_BUFFER_JITTER_MS, ms)
+            }
         }
 
         // Socket metrics → QualityController (runs every 1s in quality wiring)

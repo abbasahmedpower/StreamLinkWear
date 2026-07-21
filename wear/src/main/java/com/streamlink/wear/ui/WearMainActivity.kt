@@ -92,7 +92,8 @@ class WearMainActivity : ComponentActivity() {
 
             override fun onExitAmbient() {
                 isAmbient = false
-                Log.i("WearMain", "Exiting ambient mode — restoring full quality")
+                Log.i("WearMain", "Exiting ambient mode — restoring full quality and requesting IDR")
+                socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_REQUEST_KEYFRAME, 1)
                 // Renderer will auto-recover; request IDR for clean frame
                 // The stream is already running (never stopped)
             }
@@ -152,24 +153,9 @@ class WearMainActivity : ComponentActivity() {
         }
 
         // Keep screen ON will be managed dynamically based on stream state to save battery
-        
-        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                socketClient.sendControl(
-                    com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION,
-                    android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
-                )
-            }
-        })
 
         // Register ambient lifecycle
         lifecycle.addObserver(ambientObserver)
-
-        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
-            }
-        })
 
         streamPlayer.acquire()
 
@@ -240,7 +226,8 @@ class WearMainActivity : ComponentActivity() {
                                     streamPlayer.setSurface(holder.surface)
                                     streamPlayer.start(lifecycleScope)
                                     surfaceReady = true
-                                    Log.i("WearMain", "Surface ready — streaming started")
+                                    Log.i("WearMain", "Surface ready — streaming started, requesting IDR")
+                                    socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_REQUEST_KEYFRAME, 1)
                                 }
                                 override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, w: Int, h: Int) {
                                     Log.d("WearMain", "Surface changed ${w}x${h}")

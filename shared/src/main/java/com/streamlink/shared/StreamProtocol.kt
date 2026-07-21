@@ -116,6 +116,7 @@ object StreamProtocol {
     const val CMD_GLOBAL_ACTION = 2
     const val CMD_SET_BUFFER_JITTER_MS = 3   // phone → watch: jitter-buffer target (0-800ms)
     const val CMD_SET_QUALITY_MODE = 4       // watch → phone: 0=BATTERY_SAVER, 1=BALANCED, 2=HIGH_QUALITY
+    const val CMD_REQUEST_KEYFRAME = 5       // watch → phone: request IDR frame
 
     val ALLOWED_DOMAINS: Set<String> = setOf(
         "streamlink.local",

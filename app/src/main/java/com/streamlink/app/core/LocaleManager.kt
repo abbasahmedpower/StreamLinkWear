@@ -26,5 +26,5 @@ object LocaleManager {
     }
 
     fun currentTag(): String =
-        AppCompatDelegate.getApplicationLocales().takeIf { !it.isEmpty }?.get(0)?.language ?: "en"
+        AppCompatDelegate.getApplicationLocales().takeIf { !it.isEmpty }?.get(0)?.toLanguageTag() ?: "en"
 }

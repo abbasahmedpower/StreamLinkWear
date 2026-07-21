@@ -141,11 +141,25 @@ class MainActivity : BaseActivity() {
 
         setContent {
             val settingsPrefs = remember { com.streamlink.app.core.SettingsPrefs.get(this@MainActivity) }
-            var themeMode by remember { mutableStateOf(com.streamlink.app.ui.theme.ThemeMode.SYSTEM) }
+            val sharedPrefs = remember { getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
+            
+            var themeMode by remember { 
+                mutableStateOf(
+                    com.streamlink.app.ui.theme.ThemeMode.valueOf(
+                        sharedPrefs.getString("theme_mode", com.streamlink.app.ui.theme.ThemeMode.SYSTEM.name) 
+                        ?: com.streamlink.app.ui.theme.ThemeMode.SYSTEM.name
+                    )
+                ) 
+            }
 
             com.streamlink.app.ui.theme.StreamLinkTheme(themeMode = themeMode) {
                 MainScreenLayout(
                     settingsStore = settingsStore,
+                    themeMode = themeMode,
+                    onThemeModeChange = { newMode ->
+                        themeMode = newMode
+                        sharedPrefs.edit().putString("theme_mode", newMode.name).apply()
+                    },
                     onRequireOverlayPermission = { checkAndRequestOverlayPermission() },
                     viewModel = telemetryViewModel,
                     onStartCapture = { requestScreenCapture() },
@@ -240,6 +254,8 @@ class MainActivity : BaseActivity() {
 @Composable
 fun MainScreenLayout(
     settingsStore: SystemSettingsStore,
+    themeMode: com.streamlink.app.ui.theme.ThemeMode,
+    onThemeModeChange: (com.streamlink.app.ui.theme.ThemeMode) -> Unit,
     onRequireOverlayPermission: () -> Boolean,
     viewModel: TelemetryViewModel,
     onStartCapture: () -> Unit,
@@ -302,7 +318,11 @@ fun MainScreenLayout(
                 }
                 1 -> {
                     // شاشة الإعدادات المتقدمة
-                    SettingsScreen(settingsStore = settingsStore)
+                    SettingsScreen(
+                        settingsStore = settingsStore,
+                        themeMode = themeMode,
+                        onThemeModeChange = onThemeModeChange
+                    )
                     
                     // إذا حاول المستخدم تفعيل الـ Privacy Blackout، نتحقق من الرخصة فوراً
                     LaunchedEffect(settingsStore.isPrivacyBlackoutEnabled) {

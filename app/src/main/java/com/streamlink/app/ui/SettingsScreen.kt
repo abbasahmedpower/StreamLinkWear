@@ -53,7 +53,7 @@ fun SettingsScreen(
 
     var showQualityMenu by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
-    var instantSync by remember { mutableStateOf(true) } // TODO: شكلي حاليًا — راجع ملاحظة تحت
+    var instantSync by remember { mutableStateOf(settingsStore.isInstantSyncEnabled) }
 
     var isDynamicFpsEnabled by remember { mutableStateOf(settingsStore.isDynamicFpsEnabled) }
     var isPrivacyBlackoutEnabled by remember { mutableStateOf(settingsStore.isPrivacyBlackoutEnabled) }
@@ -181,7 +181,10 @@ fun SettingsScreen(
                                 Text(stringResource(R.string.settings_instant_sync), style = MaterialTheme.typography.bodyLarge)
                                 Text(stringResource(R.string.settings_instant_sync_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            Switch(checked = instantSync, onCheckedChange = { instantSync = it })
+                            Switch(checked = instantSync, onCheckedChange = { 
+                                instantSync = it
+                                settingsStore.setInstantSync(it) 
+                            })
                         }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         Row(
@@ -197,9 +200,9 @@ fun SettingsScreen(
                                     color = if (isStreaming) SemanticColors.Excellent else MaterialTheme.colorScheme.onSurfaceVariant,
                                     style = MaterialTheme.typography.bodySmall
                                 )
-                                if (watchIp != null) {
+                                if (settingsStore.connectedWatchName.isNotEmpty()) {
                                     Spacer(Modifier.width(8.dp))
-                                    ForceLtr { Text(watchIp, style = MaterialTheme.typography.bodySmall) }
+                                    ForceLtr { Text("${settingsStore.connectedWatchName} (${settingsStore.connectedWatchIp})", style = MaterialTheme.typography.bodySmall) }
                                 }
                             }
                         }
@@ -209,12 +212,12 @@ fun SettingsScreen(
             item { Spacer(Modifier.height(24.dp)) }
 
             item {
-                SettingsSectionLabel("⚙️ إعدادات النظام المتقدمة")
+                SettingsSectionLabel(stringResource(R.string.settings_advanced_title))
                 Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
                     Column {
                         SettingsToggleItem(
-                            title = "توفير طاقة الساعة الذكي (Dynamic FPS)",
-                            description = "يخفض تحديث الشاشة على الساعة لـ 1 FPS تلقائياً عند ثبات المحتوى لتوفير 50% من طاقة البطارية.",
+                            title = stringResource(R.string.settings_dynamic_fps_title),
+                            description = stringResource(R.string.settings_dynamic_fps_desc),
                             checked = isDynamicFpsEnabled,
                             onCheckedChange = {
                                 isDynamicFpsEnabled = it
@@ -223,8 +226,8 @@ fun SettingsScreen(
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         SettingsToggleItem(
-                            title = "وضع تعتيم شاشة الهاتف (Privacy Blackout)",
-                            description = "يقوم بإطفاء شاشة الهاتف بالكامل أثناء البث لحماية خصوصيتك وتوفير طاقة بطارية الهاتف.",
+                            title = stringResource(R.string.settings_privacy_blackout_title),
+                            description = stringResource(R.string.settings_privacy_blackout_desc),
                             checked = isPrivacyBlackoutEnabled,
                             onCheckedChange = {
                                 isPrivacyBlackoutEnabled = it
@@ -233,8 +236,8 @@ fun SettingsScreen(
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         SettingsToggleItem(
-                            title = "إيماءات المعصم اللامسية (IMU Air Gestures)",
-                            description = "التحكم في سحب الشاشة والعودة عبر حركة اليد فقط دون لمس شاشة الساعة. (مثالية للمهندسين والرياضيين).",
+                            title = stringResource(R.string.settings_imu_gestures_title),
+                            description = stringResource(R.string.settings_imu_gestures_desc),
                             checked = isImuGesturesEnabled,
                             onCheckedChange = {
                                 isImuGesturesEnabled = it
@@ -273,7 +276,7 @@ fun SettingsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(lang.nativeName)
-                            if (lang.tag == LocaleManager.currentTag()) Icon(Icons.Default.Check, contentDescription = null)
+                            if (lang.tag.startsWith(LocaleManager.currentTag())) Icon(Icons.Default.Check, contentDescription = null)
                         }
                     }
                 }
