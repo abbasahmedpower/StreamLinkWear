@@ -49,7 +49,7 @@ class DirectSocketServer {
     private val freeTasks = LockFreeMpmcQueue<SendTask>(512).apply {
         repeat(512) { offer(SendTask()) }
     }
-    private val bytesSent = AtomicLong(0L)
+    val bytesSent = AtomicLong(0L)
 
     private data class ControlTask(val payload: ByteArray)
     private val controlQueue = LockFreeMpmcQueue<ControlTask>(16)

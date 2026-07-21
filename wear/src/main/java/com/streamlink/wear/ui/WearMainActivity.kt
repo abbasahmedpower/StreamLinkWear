@@ -49,6 +49,10 @@ import android.os.PowerManager
 import com.streamlink.shared.util.safeSystemService
 import com.streamlink.shared.GlobalStreamState
 import androidx.lifecycle.repeatOnLifecycle
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 
 @AndroidEntryPoint
 class WearMainActivity : ComponentActivity() {
@@ -75,6 +79,9 @@ class WearMainActivity : ComponentActivity() {
     }
 
     private var isAmbient = false
+
+    private var connectivityManager: ConnectivityManager? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     /**
      * Ambient mode observer — activates when watch screen dims.
@@ -161,6 +168,9 @@ class WearMainActivity : ComponentActivity() {
 
         // Start background service immediately
         WearForegroundService.start(this)
+        
+        // Force high-bandwidth network (Wi-Fi/Cellular) over Bluetooth proxy
+        forceHighBandwidthNetwork()
         
         val vibrator: Vibrator? = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             safeSystemService<android.os.VibratorManager>(Context.VIBRATOR_MANAGER_SERVICE)?.defaultVibrator
@@ -367,6 +377,8 @@ class WearMainActivity : ComponentActivity() {
             WearForegroundService.stop(this)
         }
         streamPlayer.release()
+        
+        releaseHighBandwidthNetwork()
     }
 
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
@@ -377,6 +389,61 @@ class WearMainActivity : ComponentActivity() {
         }
         socketClient.sendControl(com.streamlink.shared.StreamProtocol.CMD_GLOBAL_ACTION, action)
         return true
+    }
+
+    private fun forceHighBandwidthNetwork() {
+        try {
+            connectivityManager = safeSystemService(Context.CONNECTIVITY_SERVICE)
+            val request = NetworkRequest.Builder()
+                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+
+            networkCallback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    Log.i("WearMain", "High-bandwidth network available: $network")
+                    // On API 23+, we can try to bind the process to this network
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                        connectivityManager?.bindProcessToNetwork(network)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        ConnectivityManager.setProcessDefaultNetwork(network)
+                    }
+                }
+
+                override fun onLost(network: Network) {
+                    Log.w("WearMain", "High-bandwidth network lost: $network")
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                        connectivityManager?.bindProcessToNetwork(null)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        ConnectivityManager.setProcessDefaultNetwork(null)
+                    }
+                }
+            }
+            networkCallback?.let {
+                connectivityManager?.requestNetwork(request, it)
+                Log.i("WearMain", "Requested high-bandwidth network to bypass BT proxy")
+            }
+        } catch (e: Exception) {
+            Log.e("WearMain", "Failed to request high-bandwidth network", e)
+        }
+    }
+
+    private fun releaseHighBandwidthNetwork() {
+        try {
+            networkCallback?.let { connectivityManager?.unregisterNetworkCallback(it) }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                connectivityManager?.bindProcessToNetwork(null)
+            } else {
+                @Suppress("DEPRECATION")
+                ConnectivityManager.setProcessDefaultNetwork(null)
+            }
+            networkCallback = null
+        } catch (e: Exception) {
+            Log.w("WearMain", "Error releasing high-bandwidth network request", e)
+        }
     }
 }
 

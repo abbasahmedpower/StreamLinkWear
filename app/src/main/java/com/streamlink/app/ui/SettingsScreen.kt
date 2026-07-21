@@ -53,11 +53,13 @@ fun SettingsScreen(
 
     var showQualityMenu by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
-    var instantSync by remember { mutableStateOf(settingsStore.isInstantSyncEnabled) }
+    val instantSync by settingsStore.isInstantSyncEnabled.collectAsStateWithLifecycle()
 
-    var isDynamicFpsEnabled by remember { mutableStateOf(settingsStore.isDynamicFpsEnabled) }
-    var isPrivacyBlackoutEnabled by remember { mutableStateOf(settingsStore.isPrivacyBlackoutEnabled) }
-    var isImuGesturesEnabled by remember { mutableStateOf(settingsStore.isImuGesturesEnabled) }
+    val isDynamicFpsEnabled by settingsStore.isDynamicFpsEnabled.collectAsStateWithLifecycle()
+    val isPrivacyBlackoutEnabled by settingsStore.isPrivacyBlackoutEnabled.collectAsStateWithLifecycle()
+    val isImuGesturesEnabled by settingsStore.isImuGesturesEnabled.collectAsStateWithLifecycle()
+    val connectedWatchName by settingsStore.connectedWatchName.collectAsStateWithLifecycle()
+    val connectedWatchIp by settingsStore.connectedWatchIp.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -182,7 +184,6 @@ fun SettingsScreen(
                                 Text(stringResource(R.string.settings_instant_sync_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Switch(checked = instantSync, onCheckedChange = { 
-                                instantSync = it
                                 settingsStore.setInstantSync(it) 
                             })
                         }
@@ -200,9 +201,9 @@ fun SettingsScreen(
                                     color = if (isStreaming) SemanticColors.Excellent else MaterialTheme.colorScheme.onSurfaceVariant,
                                     style = MaterialTheme.typography.bodySmall
                                 )
-                                if (settingsStore.connectedWatchName.isNotEmpty()) {
+                                if (connectedWatchName.isNotEmpty()) {
                                     Spacer(Modifier.width(8.dp))
-                                    ForceLtr { Text("${settingsStore.connectedWatchName} (${settingsStore.connectedWatchIp})", style = MaterialTheme.typography.bodySmall) }
+                                    ForceLtr { Text("${connectedWatchName} (${connectedWatchIp})", style = MaterialTheme.typography.bodySmall) }
                                 }
                             }
                         }
@@ -220,7 +221,6 @@ fun SettingsScreen(
                             description = stringResource(R.string.settings_dynamic_fps_desc),
                             checked = isDynamicFpsEnabled,
                             onCheckedChange = {
-                                isDynamicFpsEnabled = it
                                 settingsStore.setDynamicFps(it)
                             }
                         )
@@ -230,7 +230,6 @@ fun SettingsScreen(
                             description = stringResource(R.string.settings_privacy_blackout_desc),
                             checked = isPrivacyBlackoutEnabled,
                             onCheckedChange = {
-                                isPrivacyBlackoutEnabled = it
                                 settingsStore.setPrivacyBlackout(it)
                             }
                         )
@@ -240,7 +239,6 @@ fun SettingsScreen(
                             description = stringResource(R.string.settings_imu_gestures_desc),
                             checked = isImuGesturesEnabled,
                             onCheckedChange = {
-                                isImuGesturesEnabled = it
                                 settingsStore.setImuGestures(it)
                             }
                         )

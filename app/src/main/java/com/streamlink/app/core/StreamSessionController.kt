@@ -91,7 +91,7 @@ class StreamSessionController @Inject constructor(
     ) {
         Log.i(tag, "Starting stream ✨ url=$url drm=$isDrm nq=$networkQuality")
         
-        if (settingsStore.isPrivacyBlackoutEnabled) {
+        if (settingsStore.isPrivacyBlackoutEnabled.value) {
             blackoutManager = com.streamlink.app.core.overlay.PrivacyBlackoutOverlayManager(context).apply {
                 enable()
             }

@@ -114,7 +114,7 @@ class StreamingOrchestrator @Inject constructor(
         
         // BUG-05 FIX: إرسال تحديثات Jitter Buffer فوراً
         com.streamlink.app.core.SettingsPrefs.get(context).onJitterBufferSendRequested = { ms ->
-            if (com.streamlink.shared.util.SystemSettingsStore(context).isInstantSyncEnabled) {
+            if (com.streamlink.shared.util.SystemSettingsStore(context).isInstantSyncEnabled.value) {
                 socketServer.sendControlToWatch(StreamProtocol.CMD_SET_BUFFER_JITTER_MS, ms)
             }
         }

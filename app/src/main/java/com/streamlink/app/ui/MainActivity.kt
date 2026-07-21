@@ -141,15 +141,14 @@ class MainActivity : BaseActivity() {
 
         setContent {
             val settingsPrefs = remember { com.streamlink.app.core.SettingsPrefs.get(this@MainActivity) }
-            val sharedPrefs = remember { getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
             
-            var themeMode by remember { 
-                mutableStateOf(
-                    com.streamlink.app.ui.theme.ThemeMode.valueOf(
-                        sharedPrefs.getString("theme_mode", com.streamlink.app.ui.theme.ThemeMode.SYSTEM.name) 
-                        ?: com.streamlink.app.ui.theme.ThemeMode.SYSTEM.name
-                    )
-                ) 
+            val themeModeString by settingsStore.themeMode.collectAsStateWithLifecycle()
+            val themeMode = remember(themeModeString) {
+                try {
+                    com.streamlink.app.ui.theme.ThemeMode.valueOf(themeModeString)
+                } catch (e: IllegalArgumentException) {
+                    com.streamlink.app.ui.theme.ThemeMode.SYSTEM
+                }
             }
 
             com.streamlink.app.ui.theme.StreamLinkTheme(themeMode = themeMode) {
@@ -157,8 +156,7 @@ class MainActivity : BaseActivity() {
                     settingsStore = settingsStore,
                     themeMode = themeMode,
                     onThemeModeChange = { newMode ->
-                        themeMode = newMode
-                        sharedPrefs.edit().putString("theme_mode", newMode.name).apply()
+                        settingsStore.setThemeMode(newMode.name)
                     },
                     onRequireOverlayPermission = { checkAndRequestOverlayPermission() },
                     viewModel = telemetryViewModel,
@@ -325,8 +323,9 @@ fun MainScreenLayout(
                     )
                     
                     // إذا حاول المستخدم تفعيل الـ Privacy Blackout، نتحقق من الرخصة فوراً
-                    LaunchedEffect(settingsStore.isPrivacyBlackoutEnabled) {
-                        if (settingsStore.isPrivacyBlackoutEnabled) {
+                    val isPrivacyBlackoutEnabled by settingsStore.isPrivacyBlackoutEnabled.collectAsStateWithLifecycle()
+                    LaunchedEffect(isPrivacyBlackoutEnabled) {
+                        if (isPrivacyBlackoutEnabled) {
                             val granted = onRequireOverlayPermission()
                             if (!granted) {
                                 // إعادة التوجيه الفوري لمنع الكراش

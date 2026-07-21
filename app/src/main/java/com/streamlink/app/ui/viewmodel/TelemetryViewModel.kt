@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.streamlink.app.core.StreamingOrchestrator
 import com.streamlink.app.core.WearTelemetrySender
 import com.streamlink.shared.telemetry.SystemMetricsState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicLong
 
 class TelemetryViewModel(
     private val orchestrator: StreamingOrchestrator,
@@ -20,33 +22,20 @@ class TelemetryViewModel(
 ) : ViewModel() {
 
     // ─── RAW flows (updated at hardware rate, up to 60Hz) ──────────────────────
-    // Used only by Canvas/Draw-Phase components that can read State without
-    // triggering Compose Recomposition.
     val metricsState: StateFlow<SystemMetricsState> = orchestrator.metricsCollector.metricsFlow
 
     // ─── THROTTLED flows for Text/Switch UI elements ───────────────────────────
-    // Human eyes cannot process numbers updating faster than ~4Hz (250ms).
-    // Throttling here prevents cascading Recompositions through the entire tree.
 
-    /**
-     * Bitrate text shown in the UI.
-     * Sampled at 250 ms (4 Hz) so the Text composable is only recomposed
-     * 4 times per second instead of 60.
-     */
-    val currentBitrateText: StateFlow<String> = orchestrator.fuzzyDecisionEngine
-        .controlActionsFlow
-        .sample(250L)                             // ✅ 4 Hz throttle
-        .map { action -> "${action.targetBitrateKbps} Kbps" }
+    private val _currentBitrateRaw = MutableStateFlow(0)
+    val currentBitrateRaw: StateFlow<Int> = _currentBitrateRaw.asStateFlow()
+
+    val currentBitrateText: StateFlow<String> = _currentBitrateRaw
+        .sample(250L) // 4 Hz throttle
+        .map { kbps -> "$kbps Kbps" }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "— Kbps")
 
     /**
-     * Raw Int for Canvas-based chart updates (unthrottled, full rate).
-     */
-    private val _currentBitrateRaw = MutableStateFlow(1500)
-    val currentBitrateRaw: StateFlow<Int> = _currentBitrateRaw.asStateFlow()
-
-    /**
-     * Battery % label (sampled at 1 Hz — changes at most once per second anyway).
+     * Battery % label (sampled at 1 Hz).
      */
     val batteryText: StateFlow<String> = metricsState
         .sample(1_000L)
@@ -80,9 +69,19 @@ class TelemetryViewModel(
     val bitrateHistory: StateFlow<FloatArray> = _bitrateHistory.asStateFlow()
 
     init {
+        // Coroutine to calculate actual network throughput (bytes sent)
         viewModelScope.launch {
-            orchestrator.fuzzyDecisionEngine.controlActionsFlow.collect { action ->
-                val kbps = action.targetBitrateKbps
+            var lastBytesSent = orchestrator.socketServer.bytesSent.get()
+            while (true) {
+                delay(250) // sample every 250ms
+                
+                val currentBytes = orchestrator.socketServer.bytesSent.get()
+                val deltaBytes = currentBytes - lastBytesSent
+                lastBytesSent = currentBytes
+                
+                // kbps = (bytes * 8 bits/byte) / 1000 bits/kbit * (4 samples/sec)
+                val kbps = ((deltaBytes * 8 * 4) / 1000).toInt()
+                
                 _currentBitrateRaw.value = kbps
 
                 // Update ring-buffer waveform history
