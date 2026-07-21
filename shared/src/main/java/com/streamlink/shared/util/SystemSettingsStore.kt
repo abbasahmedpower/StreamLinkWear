@@ -7,12 +7,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * نظام تخزين إعدادات فائق الأداء يعتمد على الـ Memory Caching لمنع الـ Frame Drops.
+ * ✅ NANO-FIX: كانت الكلاس دي بتتعمل instantiate من 4 أماكن مختلفة، كل واحدة
+ * نسخة منفصلة عن التانية. الكتابة في نسخة والقراءة من نسخة تانية = القيمة
+ * الجديدة عمرها ما توصل للـ UI. الحل: Singleton حقيقي + StateFlow بدل plain var
+ * عشان Compose يعمل recomposition تلقائي لما القيمة تتغير.
  */
-class SystemSettingsStore(context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("streamlink_settings", Context.MODE_PRIVATE)
+class SystemSettingsStore private constructor(context: Context) {
+    private val prefs: SharedPreferences =
+        context.applicationContext.getSharedPreferences("streamlink_settings", Context.MODE_PRIVATE)
 
-    // كاش محلي سريع جداً في الذاكرة مع StateFlow للـ UI
     private val _isDynamicFpsEnabled = MutableStateFlow(prefs.getBoolean("dynamic_fps", true))
     val isDynamicFpsEnabled: StateFlow<Boolean> = _isDynamicFpsEnabled.asStateFlow()
 
@@ -78,5 +81,13 @@ class SystemSettingsStore(context: Context) {
     fun setThemeMode(mode: String) {
         _themeMode.value = mode
         prefs.edit().putString("theme_mode", mode).apply()
+    }
+
+    companion object {
+        @Volatile private var instance: SystemSettingsStore? = null
+        fun get(context: Context): SystemSettingsStore =
+            instance ?: synchronized(this) {
+                instance ?: SystemSettingsStore(context.applicationContext).also { instance = it }
+            }
     }
 }

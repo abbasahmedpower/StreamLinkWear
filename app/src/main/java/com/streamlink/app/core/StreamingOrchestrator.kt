@@ -109,13 +109,19 @@ class StreamingOrchestrator @Inject constructor(
         }
         
         socketServer.onClientConnected = { name, ip ->
-            com.streamlink.shared.util.SystemSettingsStore(context).setConnectedWatch(name, ip)
+            com.streamlink.shared.util.SystemSettingsStore.get(context).setConnectedWatch(name, ip)
         }
         
-        // BUG-05 FIX: إرسال تحديثات Jitter Buffer فوراً
+        // ✅ NANO-FIX: المسار الوحيد الصحيح لإرسال Jitter Buffer للساعة.
+        // شرطان مطلوبان:
+        //   1. isInstantSyncEnabled = true (المستخدم فعّله)
+        //   2. البث نشط فعلاً (مفيش رسائل control في الـ idle)
         com.streamlink.app.core.SettingsPrefs.get(context).onJitterBufferSendRequested = { ms ->
-            if (com.streamlink.shared.util.SystemSettingsStore(context).isInstantSyncEnabled.value) {
+            val isStreaming = com.streamlink.shared.GlobalStreamState.snapshot.value.state ==
+                com.streamlink.shared.GlobalStreamState.State.STREAMING
+            if (isStreaming && com.streamlink.shared.util.SystemSettingsStore.get(context).isInstantSyncEnabled.value) {
                 socketServer.sendControlToWatch(StreamProtocol.CMD_SET_BUFFER_JITTER_MS, ms)
+                Log.i(tag, "✅ Jitter Buffer → Watch: ${ms}ms (InstantSync active)")
             }
         }
 

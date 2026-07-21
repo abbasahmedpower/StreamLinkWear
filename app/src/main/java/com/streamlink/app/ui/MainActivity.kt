@@ -97,7 +97,7 @@ class MainActivity : BaseActivity() {
             return
         }
         
-        settingsStore = SystemSettingsStore(applicationContext)
+        settingsStore = SystemSettingsStore.get(applicationContext)
         
         // Observe pairing events — auto-launch PIN screen when a Watch connects
         lifecycleScope.launch {

@@ -31,7 +31,7 @@ class StreamSessionController @Inject constructor(
     private val tag = "StreamSessionController"
 
     private var blackoutManager: com.streamlink.app.core.overlay.PrivacyBlackoutOverlayManager? = null
-    private val settingsStore = com.streamlink.shared.util.SystemSettingsStore(context)
+    private val settingsStore = com.streamlink.shared.util.SystemSettingsStore.get(context)
     private var batteryReceiver: android.content.BroadcastReceiver? = null
 
     fun initialize() {

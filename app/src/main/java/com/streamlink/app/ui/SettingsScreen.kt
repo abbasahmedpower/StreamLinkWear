@@ -261,12 +261,10 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    val sharedPrefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
-                                    sharedPrefs.edit().putString("selected_language", lang.tag).apply()
+                                    // ✅ NANO-FIX: سطر واحد بس — LocaleManager.setLocale()
+                                    // بتستدعي AppCompatDelegate.setApplicationLocales() داخلياً
+                                    // وبتعمل recreate تلقائي. مفيش تكرار، مفيش SharedPrefs قديمة.
                                     LocaleManager.setLocale(lang.tag)
-                                    androidx.appcompat.app.AppCompatDelegate.setApplicationLocales(
-                                        androidx.core.os.LocaleListCompat.forLanguageTags(lang.tag)
-                                    )
                                     showLanguageDialog = false
                                 }
                                 .padding(vertical = 12.dp),

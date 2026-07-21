@@ -106,14 +106,13 @@ class QualityController @Inject constructor(
             }
         }
 
-        // Buffer jitter sync to Watch
-        scope.launch {
-            SettingsPrefs.get(context).bufferJitterMs.collect { ms ->
-                networkController.sendControlToWatch(StreamProtocol.CMD_SET_BUFFER_JITTER_MS, ms)
-            }
-        }
+        // ✅ NANO-FIX: حُذف الـ collect المباشر على bufferJitterMs من هنا.
+        // المسار الصحيح الوحيد الآن:
+        //   setBufferJitterMs() → onJitterBufferSendRequested → StreamingOrchestrator → socketServer
+        // وده بيحترم isInstantSyncEnabled تلقائياً.
+        // نسيب بس إعادة الإرسال عند إعادة الاتصال (Paired) عشان الساعة تاخد الإعداد الحالي.
 
-        // Resend jitter setting on new pairing
+        // Resend jitter setting on new pairing — ensures watch always has current value after reconnect
         scope.launch {
             com.streamlink.shared.PairingManager.state.collect { state ->
                 if (state is com.streamlink.shared.PairingManager.PairingState.Paired) {
