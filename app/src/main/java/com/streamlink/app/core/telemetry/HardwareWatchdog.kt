@@ -12,7 +12,10 @@ import kotlinx.coroutines.launch
  * HardwareWatchdog ensures the hardware (MediaCodec / Socket) hasn't hung.
  * If a heartbeat isn't received within the timeout limit, it forces a Codec reset.
  */
-class HardwareWatchdog(private val scope: CoroutineScope) {
+class HardwareWatchdog(
+    private val scope: CoroutineScope,
+    private val hardwareEncoder: com.streamlink.app.capture.HardwareEncoder
+) {
     
     private val tag = "HardwareWatchdog"
     
@@ -48,8 +51,8 @@ class HardwareWatchdog(private val scope: CoroutineScope) {
                     isRecovering = true
                     GlobalStreamState.transition(GlobalStreamState.State.RECOVERING)
                     
-                    // TODO: Trigger actual hardware encoder flush/restart here
-                    // e.g., hardwareEncoder.flushAndRestart()
+                    // Trigger actual hardware encoder flush/restart here
+                    hardwareEncoder.flushAndRestart()
                     
                     GlobalStreamState.transition(GlobalStreamState.State.REPAIRING)
                     lastHeartbeatMs = System.currentTimeMillis() // Reset for recovery grace period

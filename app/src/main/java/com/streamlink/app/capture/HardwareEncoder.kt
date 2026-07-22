@@ -339,6 +339,22 @@ class HardwareEncoder(
         forceKeyframe()
     }
 
+    /**
+     * Stage 5: Codec Recovery. Flushes all internal buffers and requests an immediate keyframe.
+     */
+    fun flushAndRestart() {
+        if (released.get()) return
+        try {
+            Log.w(tag, "Hardware Watchdog triggered flushAndRestart()")
+            mediaCodec?.flush()
+            forceKeyframe()
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to flush media codec: ${e.message}", e)
+            // If flush fails, signal a hard crash so the orchestrator rebuilds it.
+            onEncoderError?.invoke()
+        }
+    }
+
     fun setThermalThrottled(throttled: Boolean) {
         val priority = if (throttled) Process.THREAD_PRIORITY_DISPLAY else Process.THREAD_PRIORITY_URGENT_DISPLAY
         try {

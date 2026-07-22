@@ -73,6 +73,9 @@ class StreamingOrchestrator @Inject constructor(
         baseBitrateBps = StreamProtocol.WEAR_BPS_FULL * 1000,
         decisionFlow = decisionEngine.decisionFlow
     )
+    
+    // Stage 5: Self-Healing
+    private val recoveryManager = com.streamlink.app.core.StreamRecoveryManager(scope, this)
 
     // --- Session / Crypto (Phase D) ---
     private val cryptoManager = com.streamlink.app.core.crypto.FastCryptoResumptionManager(
@@ -134,6 +137,9 @@ class StreamingOrchestrator @Inject constructor(
         // Start Telemetry & Adaptive components
         telemetryAggregator.start(scope)
         adaptiveEngine.startListening(scope)
+        
+        // Start Self-Healing Worker
+        recoveryManager.startListening()
 
         // Wire Aggregator to Decision Engine
         scope.launch {
