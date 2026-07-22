@@ -8,7 +8,7 @@ import kotlinx.coroutines.sync.withLock
 object GlobalStreamState {
     enum class State {
         IDLE, PRELOADING, CONNECTING, STREAM_STARTING,
-        STREAMING, DEGRADED, RECOVERING, STOPPED, FAILED
+        STREAMING, DEGRADED, RECOVERING, REPAIRING, STOPPED, FAILED
     }
 
 
@@ -78,7 +78,8 @@ object GlobalStreamState {
             State.STREAM_STARTING -> to in setOf(State.STREAMING, State.FAILED)
             State.STREAMING -> to in setOf(State.DEGRADED, State.RECOVERING, State.STOPPED)
             State.DEGRADED -> to in setOf(State.STREAMING, State.RECOVERING, State.STOPPED)
-            State.RECOVERING -> to in setOf(State.STREAMING, State.FAILED, State.STOPPED)
+            State.RECOVERING -> to in setOf(State.STREAMING, State.REPAIRING, State.FAILED, State.STOPPED)
+            State.REPAIRING -> to in setOf(State.STREAMING, State.FAILED, State.STOPPED)
             State.STOPPED -> to == State.IDLE
             State.FAILED -> to == State.IDLE
         }
