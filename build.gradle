@@ -10,6 +10,7 @@ plugins {
     id 'org.jetbrains.kotlin.plugin.compose' version '2.0.0' apply false
     id 'io.gitlab.arturbosch.detekt' version '1.23.6' apply false
     id 'org.cyclonedx.bom' version '1.8.2' apply false
+    id 'com.google.android.gms.oss-licenses-plugin' version '0.10.6' apply false
 }
 
 tasks.register('clean', Delete) {
