@@ -22,6 +22,13 @@ class FastCryptoResumptionManager(
     @Volatile
     private lateinit var currentTransportSecret: ByteArray
 
+    // Rotation Limits
+    private val ROTATION_LIMIT_BYTES = 500 * 1024 * 1024L // 500 MB
+    private val ROTATION_LIMIT_MS = 10 * 60 * 1000L // 10 Minutes
+    
+    private var bytesEncryptedInEpoch = 0L
+    private var epochStartTimeMs = 0L
+
     init {
         deriveNewTransportSecret()
     }
@@ -31,8 +38,27 @@ class FastCryptoResumptionManager(
      * @param newTransportType e.g. "HOTSPOT", "BT", "WIFI"
      */
     fun onNetworkHandover(newTransportType: String): Int {
-        val epoch = currentEpoch.incrementAndGet()
         currentTransportType = newTransportType
+        return triggerRotation()
+    }
+
+    /**
+     * Call this when a chunk of data is encrypted.
+     * It checks limits and returns true if a rotation just happened.
+     */
+    fun checkAndRotate(bytesProcessed: Long): Boolean {
+        bytesEncryptedInEpoch += bytesProcessed
+        val timeElapsed = System.currentTimeMillis() - epochStartTimeMs
+        
+        if (bytesEncryptedInEpoch >= ROTATION_LIMIT_BYTES || timeElapsed >= ROTATION_LIMIT_MS) {
+            triggerRotation()
+            return true
+        }
+        return false
+    }
+
+    private fun triggerRotation(): Int {
+        val epoch = currentEpoch.incrementAndGet()
         deriveNewTransportSecret()
         return epoch
     }
@@ -46,6 +72,10 @@ class FastCryptoResumptionManager(
         
         // Expand the PRK into a 32-byte Transport Secret
         currentTransportSecret = HKDF.expand(sessionPrk, epochInfo, 32)
+        
+        // Reset limits
+        bytesEncryptedInEpoch = 0L
+        epochStartTimeMs = System.currentTimeMillis()
     }
 
     /**
