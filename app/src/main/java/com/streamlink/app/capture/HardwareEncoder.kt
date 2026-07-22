@@ -51,6 +51,23 @@ class HardwareEncoder(
         }
     )
 
+    /**
+     * Forces the encoder to generate an Instant KeyFrame (I-Frame).
+     * Useful for recovering from packet loss or providing immediate video on fresh connections.
+     */
+    fun forceInstantKeyFrame() {
+        try {
+            if (released.get()) return
+            val bundle = android.os.Bundle().apply {
+                putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
+            }
+            codec?.setParameters(bundle)
+            Log.i(tag, "Requested Instant KeyFrame")
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to request Instant KeyFrame: ${e.message}")
+        }
+    }
+
     private var mediaCodec: MediaCodec? = null
     private var inputSurface: Surface? = null
     var onSurfaceChanged: ((Surface) -> Unit)? = null
@@ -85,6 +102,7 @@ class HardwareEncoder(
                 MediaFormat.MIMETYPE_VIDEO_AVC, width, height
             ).apply {
                 setInteger(MediaFormat.KEY_BIT_RATE, currentBitrateKbps * 1000)
+                setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
                 setInteger(MediaFormat.KEY_FRAME_RATE, targetFps)
                 setInteger(
                     MediaFormat.KEY_COLOR_FORMAT,

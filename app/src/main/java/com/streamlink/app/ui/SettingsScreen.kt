@@ -53,6 +53,7 @@ fun SettingsScreen(
 
     var showQualityMenu by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showAboutScreen by remember { mutableStateOf(false) }
     val instantSync by settingsStore.isInstantSyncEnabled.collectAsStateWithLifecycle()
 
     val isDynamicFpsEnabled by settingsStore.isDynamicFpsEnabled.collectAsStateWithLifecycle()
@@ -246,6 +247,27 @@ fun SettingsScreen(
                 }
             }
             item { Spacer(Modifier.height(24.dp)) }
+
+            item {
+                SettingsSectionLabel(stringResource(R.string.info_about_title))
+                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                    SettingsRow(
+                        title = "StreamLinkWear & Developer",
+                        value = "Version, Socials & Developer Info",
+                        onClick = { showAboutScreen = true }
+                    )
+                }
+            }
+            item { Spacer(Modifier.height(24.dp)) }
+        }
+    }
+
+    if (showAboutScreen) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showAboutScreen = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            InfoScreen(onBack = { showAboutScreen = false })
         }
     }
 

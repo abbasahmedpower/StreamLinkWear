@@ -10,6 +10,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -26,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamlink.app.R
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InfoScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -33,179 +36,163 @@ fun InfoScreen(onBack: () -> Unit) {
 
     val gradientBrush = Brush.verticalGradient(
         colors = listOf(
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
             MaterialTheme.colorScheme.background
         )
     )
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(gradientBrush)
-    ) {
-        Column(
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("About Developer", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            )
+        },
+        containerColor = Color.Transparent
+    ) { padding ->
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .background(gradientBrush)
         ) {
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Horus Al-Ferdous Logo
-            Surface(
+            Column(
                 modifier = Modifier
-                    .size(140.dp)
-                    .clip(CircleShape),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                tonalElevation = 12.dp,
-                shadowElevation = 16.dp
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Image(
-                    painter = painterResource(id = R.drawable.horus_logo),
-                    contentDescription = "Horus Al-Ferdous Logo",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            }
+                Spacer(modifier = Modifier.height(16.dp))
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // App Name & Version
-            Text(
-                text = androidx.compose.ui.res.stringResource(R.string.app_title),
-                fontSize = 32.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.Center
-            )
-            Text(
-                text = "${androidx.compose.ui.res.stringResource(R.string.info_version_label)} 4.0-ultra",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = FontWeight.Medium
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Developer Info Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                shape = RoundedCornerShape(24.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Column(
+                // Horus Al-Ferdous Logo
+                Surface(
                     modifier = Modifier
-                        .padding(24.dp)
-                        .fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .size(120.dp)
+                        .clip(CircleShape),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    tonalElevation = 12.dp,
+                    shadowElevation = 16.dp
                 ) {
-                    Text(
-                        text = androidx.compose.ui.res.stringResource(R.string.info_developer_label),
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Eng. Abbas AboAlatta",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Building the future of WearOS connectivity.",
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    Image(
+                        painter = painterResource(id = R.drawable.horus_logo),
+                        contentDescription = "Horus Al-Ferdous Logo",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
                     )
                 }
-            }
 
-            Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
-            // Social & Contact Links
-            Text(
-                text = "Connect With Us",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.align(Alignment.Start).padding(start = 8.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+                // App Name & Version
+                Text(
+                    text = androidx.compose.ui.res.stringResource(R.string.app_title),
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = "Version 4.0-ultra (Phase 1.5)",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium
+                )
 
-            // Grid-like buttons for Social
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SocialButton(
-                    modifier = Modifier.weight(1f),
-                    title = "Website",
-                    icon = "🌐",
-                    containerColor = Color(0xFF2563EB),
-                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://horus-alferdous.com"))) }
-                )
-                SocialButton(
-                    modifier = Modifier.weight(1f),
-                    title = "Telegram",
-                    icon = "✈️",
-                    containerColor = Color(0xFF0088CC),
-                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/abbas_abo_alatta"))) }
-                )
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SocialButton(
-                    modifier = Modifier.weight(1f),
-                    title = "GitHub",
-                    icon = "💻",
-                    containerColor = Color(0xFF333333),
-                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/abbasahmedpower"))) }
-                )
-                SocialButton(
-                    modifier = Modifier.weight(1f),
-                    title = "Email",
-                    icon = "✉️",
-                    containerColor = Color(0xFFEA4335),
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_SENDTO).apply {
-                            data = Uri.parse("mailto:support@horus-alferdous.com")
-                            putExtra(Intent.EXTRA_SUBJECT, "StreamLinkWear Support")
-                        }
-                        context.startActivity(Intent.createChooser(intent, "Send Email"))
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // Developer Info Card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = RoundedCornerShape(24.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .padding(24.dp)
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "DEVELOPED BY",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            letterSpacing = 2.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Abbas Ahmed",
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Building the future of WearOS connectivity.",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                        )
                     }
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                Text(
+                    text = "Socials & Communities",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.align(Alignment.Start)
                 )
-            }
+                Spacer(modifier = Modifier.height(16.dp))
 
-            Spacer(modifier = Modifier.height(48.dp))
+                // Grid of Social Links
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SocialButton(Modifier.weight(1f), "Channel", "📢", Color(0xFF0088CC)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/HoruselfardosTech"))) }
+                        SocialButton(Modifier.weight(1f), "Group", "👥", Color(0xFF0088CC)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/+YqkCX65xYhQxNDQ0"))) }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SocialButton(Modifier.weight(1f), "Facebook", "📘", Color(0xFF1877F2)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://facebook.com/AbbasAhmedpower"))) }
+                        SocialButton(Modifier.weight(1f), "Twitter (X)", "𝕏", Color(0xFF000000)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://x.com/abbasahmedhero"))) }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SocialButton(Modifier.weight(1f), "Instagram", "📸", Color(0xFFE1306C)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.instagram.com/abbasahmedpower/"))) }
+                        SocialButton(Modifier.weight(1f), "Snapchat", "👻", Color(0xFFFFFC00), textColor = Color.Black) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.snapchat.com/add/abbasahmedpower"))) }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SocialButton(Modifier.weight(1f), "TikTok", "🎵", Color(0xFF010101)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.tiktok.com/@abbasahmedpower"))) }
+                        SocialButton(Modifier.weight(1f), "Twitch", "👾", Color(0xFF9146FF)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.twitch.tv/abbasahmedpower"))) }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SocialButton(Modifier.weight(1f), "Discord", "💬", Color(0xFF5865F2)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://discord.gg/9AUKAVY4Y"))) }
+                        SocialButton(Modifier.weight(1f), "GitHub", "💻", Color(0xFF333333)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/abbasahmedpower/StreamLinkWear"))) }
+                    }
+                }
 
-            // Back Button
-            Button(
-                onClick = onBack,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(60.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Text(androidx.compose.ui.res.stringResource(R.string.info_back_home), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
+                Spacer(modifier = Modifier.height(48.dp))
             }
-            
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
 
 @Composable
-fun SocialButton(modifier: Modifier = Modifier, title: String, icon: String, containerColor: Color, onClick: () -> Unit) {
+fun SocialButton(modifier: Modifier = Modifier, title: String, icon: String, containerColor: Color, textColor: Color = Color.White, onClick: () -> Unit) {
     Surface(
         modifier = modifier
             .height(64.dp)
             .clickable { onClick() },
         color = containerColor,
         shape = RoundedCornerShape(16.dp),
-        shadowElevation = 2.dp
+        shadowElevation = 4.dp
     ) {
         Row(
             modifier = Modifier.fillMaxSize(),
@@ -216,11 +203,10 @@ fun SocialButton(modifier: Modifier = Modifier, title: String, icon: String, con
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = title,
-                color = Color.White,
+                color = textColor,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 15.sp
             )
         }
     }
 }
-

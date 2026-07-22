@@ -29,8 +29,10 @@ class DirectSocketServer {
     private var serverSocket: ServerSocket? = null
     private var clientSocket: Socket? = null
     private val running = AtomicBoolean(false)
+    private val isClientConnectedField = AtomicBoolean(false)
     
     @Volatile var isTransportPaused = false
+    private val pacer = com.streamlink.shared.pacer.TokenBucketPacer(targetBytesPerSecond = 2_000_000) // 16 Mbps pacing
     
     /** True once the server socket is bound and listening. Used by orchestrator startup sequencing. */
     val isRunning: Boolean get() = running.get()
@@ -260,6 +262,23 @@ class DirectSocketServer {
                     onClientConnected?.invoke("Watch ($remote)", remote)
                     Log.i(tag, "✅ PIN verified. Handshake complete with Watch")
 
+                    // 8. Multi-Ping NTP-style Time Synchronization Handshake
+                    // Answer the 5 PINGs sent by the Watch.
+                    for (i in 0 until com.streamlink.shared.transport.SyncProtocol.HANDSHAKE_PINGS) {
+                        val pingLen = dis.readInt()
+                        val pingBytes = ByteArray(pingLen)
+                        dis.readFully(pingBytes)
+                        val t2 = System.nanoTime()
+                        
+                        val t1 = com.streamlink.shared.transport.SyncProtocol.parsePingPacket(pingBytes)
+                        val t3 = System.nanoTime()
+                        
+                        val pongBytes = com.streamlink.shared.transport.SyncProtocol.createPongPacket(t1, t2, t3)
+                        dos.writeInt(pongBytes.size)
+                        dos.write(pongBytes)
+                        dos.flush()
+                    }
+
                     newClient.soTimeout = 0
                     isClientConnected = true
 
@@ -350,6 +369,11 @@ class DirectSocketServer {
                     continue
                 }
                 val size = task.size
+
+                val waitTimeNs = pacer.acquirePermission(size)
+                if (waitTimeNs > 0) {
+                    LockSupport.parkNanos(waitTimeNs)
+                }
 
                 val socket = clientSocket
                 if (socket == null || socket.isClosed) {

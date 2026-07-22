@@ -202,6 +202,9 @@ class StreamingOrchestrator @Inject constructor(
             val currentJitter = settingsPrefs.bufferJitterMs.value
             socketServer.sendControlToWatch(StreamProtocol.CMD_SET_BUFFER_JITTER_MS, currentJitter)
             Log.i(tag, "Watch connected: $name ($ip) — pushed jitter=${currentJitter}ms")
+            
+            // Force an instant KeyFrame to immediately start rendering on the watch (Zero-delay startup)
+            hardwareEncoder.forceInstantKeyFrame()
         }
 
         // Instant Sync: يرسل فوراً التحديثات اللحظية *أثناء* الاتصال فقط

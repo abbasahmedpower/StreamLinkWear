@@ -26,7 +26,8 @@ object HardenedFrameProcessor {
         val params = cachedParams.get()
         return if (isKeyframe && params != null) {
             val (combined, releaseCallback) = buildKeyframeWithParams(buf, info, params)
-            val deadlineUs = info.presentationTimeUs + 42000L
+            // Adaptive Deadline Buffer: extend frame deadline to 120ms to absorb network jitter
+            val deadlineUs = info.presentationTimeUs + 120_000L
             HardenedFrame(
                 buffer = combined,
                 size = combined.limit(),
@@ -42,7 +43,8 @@ object HardenedFrameProcessor {
                 position(info.offset)
                 limit(info.offset + info.size)
             }
-            val deadlineUs = info.presentationTimeUs + 42000L
+            // Adaptive Deadline Buffer: extend frame deadline to 120ms to absorb network jitter
+            val deadlineUs = info.presentationTimeUs + 120_000L
             HardenedFrame(
                 buffer = view,
                 size = info.size,
@@ -88,7 +90,7 @@ object HardenedFrameProcessor {
         val pps = params.pps
         val totalSize = sps.size + pps.size + info.size
         
-        val combined = ByteBufferPool.acquire(totalSize)
+        val combined = com.streamlink.shared.pool.DynamicByteBufferPool.acquire(totalSize)
         combined.put(sps)
         combined.put(pps)
         val view = buf.duplicate()
@@ -98,7 +100,7 @@ object HardenedFrameProcessor {
         combined.flip()
         
         val releaseCallback = {
-            ByteBufferPool.release(combined)
+            com.streamlink.shared.pool.DynamicByteBufferPool.release(combined)
         }
         
         return Pair(combined, releaseCallback)

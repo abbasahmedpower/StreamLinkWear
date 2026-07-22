@@ -31,7 +31,7 @@ class DirectSocketClient(
     private var socket: Socket? = null
     private val closed = AtomicBoolean(false)
     private var encryptedChannel: EncryptedChannel? = null
-    private val clockSyncEngine = com.streamlink.shared.transport.ClockSyncEngine()
+    private val clockSyncEngine = com.streamlink.shared.transport.TimeSynchronizer()
 
     // Pairing code — set by the Wear UI before attempting to connect.
     // ✅ FIX #5 (أمني): مفيش قيمة افتراضية ("000000") — لو فضل null وقت
@@ -196,9 +196,23 @@ class DirectSocketClient(
                     continue
                 }
 
-                val phoneTimeNanos = dis.readLong()
-                val localTimeNanos = System.nanoTime()
-                clockSyncEngine.updateOffset(localTimeNanos, localTimeNanos, phoneTimeNanos)
+                // 8. Multi-Ping NTP-style Time Synchronization Handshake
+                // Send 5 PINGs, receive 5 PONGs to find minimum RTT for offset calculation
+                for (i in 0 until com.streamlink.shared.transport.SyncProtocol.HANDSHAKE_PINGS) {
+                    val t1 = System.nanoTime()
+                    val pingBytes = com.streamlink.shared.transport.SyncProtocol.createPingPacket(t1)
+                    dos.writeInt(pingBytes.size)
+                    dos.write(pingBytes)
+                    dos.flush()
+
+                    val pongLen = dis.readInt()
+                    val pongBytes = ByteArray(pongLen)
+                    dis.readFully(pongBytes)
+                    val pong = com.streamlink.shared.transport.SyncProtocol.parsePongPacket(pongBytes)
+                    val t4 = System.nanoTime()
+
+                    clockSyncEngine.updateOffset(pong.t1, pong.t2, pong.t3, t4)
+                }
 
                 Log.i(tag, "✅ Connected and Handshake complete with $finalHostToUse:$port")
                 context.getSharedPreferences("StreamLinkPrefs", android.content.Context.MODE_PRIVATE)
@@ -303,7 +317,7 @@ class DirectSocketClient(
                 val payloadSize = buffer.getShort().toInt() and 0xFFFF
                 val timestampUs = buffer.getLong()
                 val deadlineUs  = buffer.getLong()
-                val localDeadlineUs = clockSyncEngine.remoteToLocalNanos(deadlineUs * 1000) / 1000
+                val localDeadlineUs = clockSyncEngine.toLocalNanoTime(deadlineUs * 1000) / 1000
 
                 // 3. Validate before reading
                 if (payloadSize <= 0 || (StreamProtocol.WIRE_HEADER_SIZE + payloadSize > decryptedSize)) {

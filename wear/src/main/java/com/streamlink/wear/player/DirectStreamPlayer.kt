@@ -217,6 +217,13 @@ class DirectStreamPlayer @Inject constructor(
                 scheduled.nal = nal
                 scheduled.targetSystemTimeUs = targetSystemTimeUs
 
+                if (pendingNals.size > 2) {
+                    val stale = pendingNals.removeFirst()
+                    Log.w(tag, "Skipping stale frame to reduce latency. Queue size > 2.")
+                    stale.reset()
+                    scheduledPool.addLast(stale)
+                }
+
                 if (pendingNals.size < 32) {
                     pendingNals.addLast(scheduled)
                 } else {
