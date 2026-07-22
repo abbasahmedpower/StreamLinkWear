@@ -63,6 +63,21 @@ object CrashReporter {
         val memoryFootprint = "${memAlloc}MB / ${memMax}MB"
         val battery = com.streamlink.shared.telemetry.DeviceMonitor.batteryPercent
         val thermals = com.streamlink.shared.telemetry.DeviceMonitor.thermalStatus
+        
+        // Stage 2: Rich Crash Snapshots to Firebase Crashlytics
+        try {
+            val crashlytics = com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance()
+            crashlytics.setCustomKey("session_id", java.util.UUID.randomUUID().toString())
+            crashlytics.setCustomKey("device_model", android.os.Build.MODEL)
+            crashlytics.setCustomKey("os_version", android.os.Build.VERSION.SDK_INT.toString())
+            crashlytics.setCustomKey("thermal_status", thermals)
+            crashlytics.setCustomKey("memory_usage_mb", memAlloc.toString())
+            crashlytics.setCustomKey("last_step", StartupDiagnostics.lastStep)
+            // Add custom log
+            crashlytics.log("Crash Report Generated: $memoryFootprint")
+        } catch (e: Exception) {
+            // Ignored if Firebase is not yet initialized via google-services.json
+        }
 
         return buildString {
             appendLine("═══ StreamLink Crash Report ═══")

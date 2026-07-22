@@ -297,6 +297,12 @@ fun MainScreenLayout(
                     icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
                     label = { Text("الإعدادات") }
                 )
+                NavigationBarItem(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    icon = { Icon(Icons.Default.Info, contentDescription = "Diagnostics") },
+                    label = { Text("الفحص") }
+                )
             }
         }
     ) { innerPadding ->
@@ -354,6 +360,11 @@ fun MainScreenLayout(
                             }
                         }
                     }
+                }
+                2 -> {
+                    // شاشة الفحص والتنبؤ بالبطارية
+                    val predictor = remember { com.streamlink.app.core.telemetry.BatteryPredictor(androidx.compose.ui.platform.LocalContext.current).apply { startTracking() } }
+                    com.streamlink.app.ui.dashboard.DiagnosticsScreen(batteryPredictor = predictor)
                 }
             }
         }
