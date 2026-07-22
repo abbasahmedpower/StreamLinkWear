@@ -19,3 +19,5 @@ rootProject.name = "StreamLinkWear_Phase1"
 include ':app'
 include ':wear'
 include ':shared'
+include ':benchmark'
+include ':baselineprofile'

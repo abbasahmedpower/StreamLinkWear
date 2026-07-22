@@ -148,6 +148,9 @@ class StreamingOrchestrator @Inject constructor(
                     decoderDroppedFrames = stats.drops
                 )
                 decisionEngine.evaluate(snapshot)
+                
+                // Enforce Memory Budgets during streaming
+                com.streamlink.app.core.telemetry.MemoryBudgetMonitor.checkBudgets()
             }
         }
 

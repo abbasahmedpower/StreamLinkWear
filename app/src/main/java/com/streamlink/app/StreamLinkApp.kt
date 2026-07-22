@@ -16,6 +16,7 @@ class StreamLinkApp : Application(), ComponentCallbacks2 {
     private val appScope = CoroutineScope(SupervisorJob())
 
     override fun onCreate() {
+        com.streamlink.app.core.telemetry.StartupProfiler.onAppProcessStarted()
         StartupDiagnostics.step("App.onCreate")
         super.onCreate()
 

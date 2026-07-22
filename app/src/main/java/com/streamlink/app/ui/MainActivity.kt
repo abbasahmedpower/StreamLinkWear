@@ -139,7 +139,17 @@ class MainActivity : BaseActivity() {
             }
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            window.addOnFrameMetricsAvailableListener({ _, frameMetrics, _ ->
+                val renderTimeMs = frameMetrics.getMetric(android.view.FrameMetrics.TOTAL_DURATION) / 1_000_000f
+                com.streamlink.app.core.telemetry.GPUBudgetMonitor.reportFrameRendered(renderTimeMs)
+            }, android.os.Handler(android.os.Looper.getMainLooper()))
+        }
+
         setContent {
+            LaunchedEffect(Unit) {
+                com.streamlink.app.core.telemetry.StartupProfiler.onFirstFrameRendered()
+            }
             val settingsPrefs = remember { com.streamlink.app.core.SettingsPrefs.get(this@MainActivity) }
             
             val themeModeString by settingsStore.themeMode.collectAsStateWithLifecycle()
