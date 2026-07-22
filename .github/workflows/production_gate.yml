@@ -1,0 +1,81 @@
+name: StreamLinkWear Production Gate
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - release/*
+  pull_request:
+    branches:
+      - main
+      - develop
+      - release/*
+
+jobs:
+  lint-and-test:
+    name: Code Quality & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run Detekt
+        run: ./gradlew detekt --continue
+
+      - name: Run Android Lint
+        run: ./gradlew lintRelease --continue
+
+      - name: Run Unit Tests
+        run: ./gradlew testReleaseUnitTest --continue
+
+  build-and-bundle:
+    name: Build & Generate SBOM
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Generate Local Properties
+        run: |
+          echo "HORUS_SECRET_TOKEN=dummy_ci_token" >> local.properties
+          echo "WAN_RELAY_ENABLED=false" >> local.properties
+
+      - name: Build Debug & Release APKs
+        run: ./gradlew assembleDebug assembleRelease
+
+      - name: Build Android App Bundle
+        run: ./gradlew bundleRelease
+
+      - name: Generate SBOM (CycloneDX)
+        run: ./gradlew cyclonedxBom
+
+      - name: Upload AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreamLinkWear-Release-AAB
+          path: app/build/outputs/bundle/release/*.aab
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreamLinkWear-SBOM
+          path: build/reports/bom.json
