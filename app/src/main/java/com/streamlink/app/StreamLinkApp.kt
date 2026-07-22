@@ -23,6 +23,10 @@ class StreamLinkApp : Application(), ComponentCallbacks2 {
         // ✅ Install CrashReporter FIRST — before any other initialization
         CrashReporter.install(this)
         StartupDiagnostics.ok("CrashReporter installed")
+        
+        // ✅ Initialize Production Analytics
+        com.streamlink.app.core.telemetry.ProductionAnalytics.initialize(this)
+        StartupDiagnostics.ok("ProductionAnalytics initialized")
 
         // ✅ Start ANR Watchdog
         com.streamlink.shared.diagnostics.ANRWatchDog().start()

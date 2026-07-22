@@ -30,8 +30,14 @@ object MemoryBudgetMonitor {
         val nativeHeap = Debug.getNativeHeapSize() / (1024 * 1024)
         val nativeAllocated = Debug.getNativeHeapAllocatedSize() / (1024 * 1024)
 
-        if (usedMemory > CRITICAL_GLOBAL_HEAP_MB) {
-            Log.e(TAG, "🚨 CRITICAL: Global JVM Heap exceeded ${CRITICAL_GLOBAL_HEAP_MB}MB! (Used: ${usedMemory}MB)")
+        if (nativeAllocated > NATIVE_LIMIT_MB) {
+            android.util.Log.e("MemoryBudget", "CRITICAL: Native Heap exceeded budget! $nativeAllocated MB > $NATIVE_LIMIT_MB MB")
+            com.streamlink.app.core.telemetry.ProductionAnalytics.logBudgetViolation("NativeHeap", nativeAllocated, NATIVE_LIMIT_MB)
+        }
+
+        if (usedMemory > JVM_LIMIT_MB) {
+            android.util.Log.e("MemoryBudget", "WARNING: JVM Heap exceeded budget! $usedMemory MB > $JVM_LIMIT_MB MB")
+            com.streamlink.app.core.telemetry.ProductionAnalytics.logBudgetViolation("JVMHeap", usedMemory, JVM_LIMIT_MB)
         }
 
         // We estimate buffer usage via native heap as MediaCodec buffers heavily impact Native Heap

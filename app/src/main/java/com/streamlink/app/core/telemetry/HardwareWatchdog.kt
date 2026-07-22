@@ -53,6 +53,7 @@ class HardwareWatchdog(
                     
                     // Trigger actual hardware encoder flush/restart here
                     hardwareEncoder.flushAndRestart()
+                    com.streamlink.app.core.telemetry.ProductionAnalytics.logCodecRecovery()
                     
                     GlobalStreamState.transition(GlobalStreamState.State.REPAIRING)
                     lastHeartbeatMs = System.currentTimeMillis() // Reset for recovery grace period

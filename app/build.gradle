@@ -139,6 +139,9 @@ dependencies {
     // OSS Licenses
     implementation 'com.google.android.gms:play-services-oss-licenses:17.1.0'
     
+    // Analytics
+    implementation 'com.google.firebase:firebase-analytics'
+
     implementation "androidx.compose.ui:ui"
     implementation "androidx.compose.foundation:foundation"
     implementation "androidx.compose.material3:material3"
