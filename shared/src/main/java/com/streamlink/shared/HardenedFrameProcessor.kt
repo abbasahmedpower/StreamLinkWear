@@ -26,10 +26,12 @@ object HardenedFrameProcessor {
         val params = cachedParams.get()
         return if (isKeyframe && params != null) {
             val (combined, releaseCallback) = buildKeyframeWithParams(buf, info, params)
+            val deadlineUs = info.presentationTimeUs + 42000L
             HardenedFrame(
                 buffer = combined,
                 size = combined.limit(),
                 timestampUs = info.presentationTimeUs,
+                deadlineUs = deadlineUs,
                 isKeyframe = true,
                 sps = params.sps,
                 pps = params.pps,
@@ -40,10 +42,12 @@ object HardenedFrameProcessor {
                 position(info.offset)
                 limit(info.offset + info.size)
             }
+            val deadlineUs = info.presentationTimeUs + 42000L
             HardenedFrame(
                 buffer = view,
                 size = info.size,
                 timestampUs = info.presentationTimeUs,
+                deadlineUs = deadlineUs,
                 isKeyframe = isKeyframe,
                 releaseCallback = null
             )

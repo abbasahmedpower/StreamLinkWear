@@ -50,7 +50,7 @@
     <string name="settings_app_language">App Language</string>
     <string name="settings_wear_sync">WearOS Sync</string>
     <string name="settings_instant_sync">Instant Sync</string>
-    <string name="settings_instant_sync_desc">Update the watch in real-time</string>
+    <string name="settings_instant_sync_desc">Changes made while connected are sent to the watch immediately. When off, settings sync only on the next connection.</string>
     <string name="settings_watch_connection">Watch Connection</string>
     <string name="settings_status_label">Status</string>
     <string name="settings_connected">Connected</string>

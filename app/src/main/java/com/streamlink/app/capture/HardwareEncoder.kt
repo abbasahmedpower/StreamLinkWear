@@ -58,6 +58,9 @@ class HardwareEncoder(
     val encoderSurface: Surface? get() = inputSurface
     val codec: MediaCodec? get() = mediaCodec
 
+    var telemetryRingBuffer: com.streamlink.app.core.telemetry.TelemetryRingBuffer? = null
+
+
     // ✅ High-priority encoder thread — matches display frame delivery priority
     private val encoderThread = HandlerThread(
         "SL-Encoder-${width}x${height}",
@@ -99,7 +102,10 @@ class HardwareEncoder(
                     MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR
                 )
                 // ✅ KEY_LATENCY=0 forces zero-delay mode — critical for real-time
-                setInteger(MediaFormat.KEY_LATENCY, 0)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    runCatching { setInteger(MediaFormat.KEY_LATENCY, 0) }
+                        .onFailure { Log.w(tag, "KEY_LATENCY unsupported on this HAL") }
+                }
                 setInteger(MediaFormat.KEY_PRIORITY, 0)
             }
 
@@ -205,6 +211,15 @@ class HardwareEncoder(
                 codec.releaseOutputBuffer(index, false)
             }
 
+            telemetryRingBuffer?.let { rb ->
+                val metrics = rb.acquireNextForWrite(packet.timestampUs.toInt())
+                // For surface encoding, we don't have explicit encoderInTimestamp. Use lastFrameNs approximation.
+                metrics.encoderInTimestamp = last
+                metrics.encoderOutTimestamp = now
+                metrics.payloadSize = info.size
+                metrics.isKeyframe = isKeyframe
+            }
+
             val sent = outputChannel.trySend(packet)
             if (!sent.isSuccess) {
                 // Channel full — FramePacket will be released by onUndeliveredElement
@@ -248,15 +263,20 @@ class HardwareEncoder(
         )
     }
 
+    // Nano-level: Pre-allocate Bundles to prevent GC during the Hot Path
+    private val bitrateBundle = Bundle()
+    private val syncFrameBundle = Bundle().apply {
+        putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
+    }
+
     fun setBitrate(kbps: Int) {
         if (released.get()) return
         val clamped = kbps.coerceIn(200, 4000)
         if (clamped == currentBitrateKbps) return
         currentBitrateKbps = clamped
         try {
-            mediaCodec?.setParameters(Bundle().apply {
-                putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, clamped * 1000)
-            })
+            bitrateBundle.putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, clamped * 1000)
+            mediaCodec?.setParameters(bitrateBundle)
             Log.d(tag, "Bitrate → ${clamped}Kbps")
         } catch (e: Exception) {
             Log.w(tag, "setBitrate failed: ${e.message}")
@@ -266,9 +286,7 @@ class HardwareEncoder(
     fun forceKeyframe() {
         if (released.get()) return
         try {
-            mediaCodec?.setParameters(Bundle().apply {
-                putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
-            })
+            mediaCodec?.setParameters(syncFrameBundle)
         } catch (e: Exception) {
             Log.w(tag, "forceKeyframe failed: ${e.message}")
         }

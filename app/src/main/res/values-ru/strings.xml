@@ -49,7 +49,7 @@
     <string name="settings_app_language">Язык приложения</string>
     <string name="settings_wear_sync">Синхронизация WearOS</string>
     <string name="settings_instant_sync">Мгновенная синхронизация</string>
-    <string name="settings_instant_sync_desc">Обновлять часы в реальном времени</string>
+    <string name="settings_instant_sync_desc">Изменения, сделанные во время подключения, отправляются на часы немедленно. Если отключено, синхронизация произойдёт при следующем подключении.</string>
     <string name="settings_watch_connection">Подключение часов</string>
     <string name="settings_status_label">Статус</string>
     <string name="settings_connected">Подключено</string>

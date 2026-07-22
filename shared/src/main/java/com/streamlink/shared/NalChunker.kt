@@ -46,7 +46,7 @@ object NalChunker {
                 val wireSize = encodeWireFrameFromByteBuffer(
                     wire, src, currentNalOffset, chunkPayload,
                     nalSeq, chunkIdx, totalChunks,
-                    hardened.timestampUs, hardened.isKeyframe, nalType
+                    hardened.timestampUs, hardened.deadlineUs, hardened.isKeyframe, nalType
                 )
                 onChunkReady(wire, wireSize, chunkPayload)
                 currentNalOffset += chunkPayload
@@ -91,7 +91,7 @@ object NalChunker {
     private fun encodeWireFrameFromByteBuffer(
         wire: ByteArray, src: ByteBuffer, srcOffset: Int, payloadSize: Int,
         nalSeq: Int, chunkIdx: Int, totalChunks: Int,
-        timestampUs: Long, isKey: Boolean, nalType: Int
+        timestampUs: Long, deadlineUs: Long, isKey: Boolean, nalType: Int
     ): Int {
         val buffer = java.nio.ByteBuffer.wrap(wire).order(java.nio.ByteOrder.BIG_ENDIAN)
         
@@ -120,6 +120,9 @@ object NalChunker {
         // timestampUs (8)
         buffer.putLong(timestampUs)
         
+        // deadlineUs (8)
+        buffer.putLong(deadlineUs)
+        
         // Copy directly from source ByteBuffer into the output wire array
         val dup = src.duplicate()
         dup.position(srcOffset)
@@ -134,6 +137,7 @@ data class HardenedFrame(
     val buffer: ByteBuffer,
     val size: Int,
     val timestampUs: Long,
+    val deadlineUs: Long,
     val isKeyframe: Boolean,
     val sps: ByteArray? = null,
     val pps: ByteArray? = null,

@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import androidx.lifecycle.viewModelScope
+import com.streamlink.shared.StreamProtocol
 
 /**
  * WearTelemetryViewModel
@@ -48,6 +49,8 @@ class WearTelemetryViewModel(application: Application) :
     private var simJob: Job? = null
     var isDemoMode = false
         private set
+
+    var lastHeartbeatTimestamp: Long = 0L
 
     init {
         messageClient.addListener(this)
@@ -89,6 +92,11 @@ class WearTelemetryViewModel(application: Application) :
     }
 
     override fun onMessageReceived(event: MessageEvent) {
+        if (event.path == StreamProtocol.PATH_HEARTBEAT_PING) {
+            onHeartbeatReceived()
+            return
+        }
+
         if (isDemoMode) return // إذا كان طور المحاكاة نشطاً، نتجاهل بيانات الموبايل مؤقتاً للتجربة
         if (event.path != "/telemetry_stream") return
 
@@ -110,6 +118,12 @@ class WearTelemetryViewModel(application: Application) :
         } catch (e: Exception) {
             Log.w(tag, "Failed to parse telemetry payload: ${e.message}")
         }
+    }
+
+    private fun onHeartbeatReceived() {
+        lastHeartbeatTimestamp = System.currentTimeMillis()
+        // Reset session timeout watchdogs here without triggering full UI re-renders
+        Log.d(tag, "Heartbeat Ping received from Phone. Session kept alive.")
     }
 
     override fun onCleared() {

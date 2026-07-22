@@ -151,6 +151,17 @@ class MainActivity : BaseActivity() {
                 }
             }
 
+            // ✅ NANO-FIX: تطبيق الثيم على المستوى النظامي (System/AppCompat) عشان الحوارات (Dialogs)
+            // والقوائم القديمة تتلون بنفس الثيم المختار في Compose.
+            LaunchedEffect(themeMode) {
+                val nightMode = when (themeMode) {
+                    com.streamlink.app.ui.theme.ThemeMode.LIGHT -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+                    com.streamlink.app.ui.theme.ThemeMode.DARK -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                    com.streamlink.app.ui.theme.ThemeMode.SYSTEM -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+                }
+                androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(nightMode)
+            }
+
             com.streamlink.app.ui.theme.StreamLinkTheme(themeMode = themeMode) {
                 MainScreenLayout(
                     settingsStore = settingsStore,
@@ -288,7 +299,7 @@ fun MainScreenLayout(
                 0 -> {
                     Column(modifier = Modifier.fillMaxSize()) {
                         // كونسول البث الرئيسي وعداد المقاييس الفوري
-                        TelemetryDashboard()
+                        TelemetryDashboard(viewModel = viewModel)
                         
                         Spacer(modifier = Modifier.weight(1f))
                         

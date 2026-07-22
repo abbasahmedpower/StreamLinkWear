@@ -49,7 +49,7 @@
     <string name="settings_app_language">App-Sprache</string>
     <string name="settings_wear_sync">WearOS-Synchronisierung</string>
     <string name="settings_instant_sync">Sofortige Synchronisierung</string>
-    <string name="settings_instant_sync_desc">Uhr in Echtzeit aktualisieren</string>
+    <string name="settings_instant_sync_desc">Änderungen während der Verbindung werden sofort an die Uhr gesendet. Wenn deaktiviert, erfolgt die Synchronisierung erst bei der nächsten Verbindung.</string>
     <string name="settings_watch_connection">Uhrverbindung</string>
     <string name="settings_status_label">Status</string>
     <string name="settings_connected">Verbunden</string>

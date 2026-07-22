@@ -5,8 +5,8 @@ object StreamProtocol {
     const val DIRECT_SOCKET_PORT = 8999
     const val CHUNK_MTU = 3900
 
-    // Wire header: HORU(4) | VERSION(1) | nalSeq(4) | chunkIdx(2) | totalChunks(2) | flags(1) | nalType(1) | payloadSize(2) | timestampUs(8)
-    const val WIRE_HEADER_SIZE = 25
+    // Wire header: HORU(4) | VERSION(1) | nalSeq(4) | chunkIdx(2) | totalChunks(2) | flags(1) | nalType(1) | payloadSize(2) | timestampUs(8) | deadlineUs(8)
+    const val WIRE_HEADER_SIZE = 33
     
     // Horus Protocol Identifiers
     const val MAGIC_NUMBER = 0x484F5255 // "HORU"
@@ -22,6 +22,7 @@ object StreamProtocol {
     const val HDR_NAL_TYPE      = 14  // Byte  (1 byte)
     const val HDR_PAYLOAD_SIZE  = 15  // Short (2 bytes)
     const val HDR_TIMESTAMP_US  = 17  // Long  (8 bytes)
+    const val HDR_DEADLINE_US   = 25  // Long  (8 bytes)
 
     // Wire buffer pool
     const val WIRE_BUFFER_SIZE = CHUNK_MTU + WIRE_HEADER_SIZE + 64
@@ -41,6 +42,7 @@ object StreamProtocol {
     const val PATH_SECURE  = "/streamlink/secure"
     const val PATH_CONTROL = "/streamlink/control"
     const val PATH_ACK     = "/streamlink/ack"
+    const val PATH_HEARTBEAT_PING = "/streamlink/heartbeat"
 
     // Control messages
     const val MSG_STOP_STREAM      = "STOP"
@@ -117,6 +119,7 @@ object StreamProtocol {
     const val CMD_SET_BUFFER_JITTER_MS = 3   // phone → watch: jitter-buffer target (0-800ms)
     const val CMD_SET_QUALITY_MODE = 4       // watch → phone: 0=BATTERY_SAVER, 1=BALANCED, 2=HIGH_QUALITY
     const val CMD_REQUEST_KEYFRAME = 5       // watch → phone: request IDR frame
+    const val CMD_EPOCH_ACK = 6              // phone <-> watch: Fast Crypto Resumption Handshake
 
     val ALLOWED_DOMAINS: Set<String> = setOf(
         "streamlink.local",

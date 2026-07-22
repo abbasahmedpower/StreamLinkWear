@@ -156,6 +156,11 @@ class DirectSocketServer {
 
                 try {
                     newClient.tcpNoDelay = true
+                    newClient.keepAlive = true
+                    newClient.reuseAddress = true
+                    newClient.trafficClass = 0x10
+                    newClient.sendBufferSize = 32 * 1024
+                    newClient.receiveBufferSize = 32 * 1024
                     newClient.setPerformancePreferences(0, 1, 2)
                     newClient.soTimeout = 8_000
 
@@ -248,6 +253,7 @@ class DirectSocketServer {
                     }
 
                     dos.writeByte(0x01)
+                    dos.writeLong(System.nanoTime())
                     dos.flush()
                     pairingThrottle.recordSuccess(remote)
                     PairingManager.notifyPaired()
@@ -516,6 +522,11 @@ class DirectSocketServer {
             val newSocket = java.net.Socket()
             newSocket.connect(java.net.InetSocketAddress(newHost, newPort), 5000)
             newSocket.tcpNoDelay = true
+            newSocket.keepAlive = true
+            newSocket.reuseAddress = true
+            newSocket.trafficClass = 0x10
+            newSocket.sendBufferSize = 32 * 1024
+            newSocket.receiveBufferSize = 32 * 1024
             newSocket.setPerformancePreferences(0, 1, 2)
             newSocket.soTimeout = 0
 

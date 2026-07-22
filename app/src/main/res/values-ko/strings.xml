@@ -49,7 +49,7 @@
     <string name="settings_app_language">앱 언어</string>
     <string name="settings_wear_sync">WearOS 동기화</string>
     <string name="settings_instant_sync">즉시 동기화</string>
-    <string name="settings_instant_sync_desc">시계를 실시간으로 업데이트</string>
+    <string name="settings_instant_sync_desc">연결 중 변경한 설정이 즉시 시계로 전송됩니다. 끄면 다음 연결 시 동기화됩니다.</string>
     <string name="settings_watch_connection">시계 연결</string>
     <string name="settings_status_label">상태</string>
     <string name="settings_connected">연결됨</string>

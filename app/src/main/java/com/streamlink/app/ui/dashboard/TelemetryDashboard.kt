@@ -14,23 +14,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamlink.shared.telemetry.TelemetryCollector
 import kotlinx.coroutines.delay
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.streamlink.shared.GlobalStreamState
 
 @Composable
-fun TelemetryDashboard() {
-    // سحب البيانات دورياً كل 500 مللي ثانية لمنع Recomposition الجائر
-    val telemetryState by produceState(
-        initialValue = TelemetryData(0, 0, 0f, 0f)
-    ) {
-        while (true) {
-            value = TelemetryData(
-                fps = TelemetryCollector.currentFps,
-                droppedFps = TelemetryCollector.currentDroppedFps,
-                avgLatencyMs = TelemetryCollector.averageLatencyMs,
-                bandwidthMbps = TelemetryCollector.bandwidthMbps
-            )
-            delay(500) // التهدئة لضمان ثبات البطارية
-        }
-    }
+fun TelemetryDashboard(viewModel: com.streamlink.app.ui.viewmodel.TelemetryViewModel) {
+    val state by com.streamlink.shared.GlobalStreamState.snapshot.collectAsStateWithLifecycle()
+    val metrics by viewModel.metricsState.collectAsStateWithLifecycle()
+    val bitrate by viewModel.currentBitrateRaw.collectAsStateWithLifecycle()
 
     Card(
         modifier = Modifier
@@ -54,20 +45,23 @@ fun TelemetryDashboard() {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                TelemetryMetricItem("FPS", "${telemetryState.fps}", Color.Green)
-                TelemetryMetricItem("Dropped", "${telemetryState.droppedFps}", 
-                    if (telemetryState.droppedFps > 2) Color.Red else Color.Gray)
+                TelemetryMetricItem("FPS", "${state.fps}", Color.Green)
+                TelemetryMetricItem("Drops", "${metrics.network.droppedFramesDelta}", 
+                    if (metrics.network.droppedFramesDelta > 2) Color.Red else Color.Gray)
                 
                 // تلوين مؤشر الـ Latency ديناميكياً بناءً على جودة الشبكة
                 val latencyColor by animateColorAsState(
                     targetValue = when {
-                        telemetryState.avgLatencyMs < 15 -> Color.Green // أداء خارق
-                        telemetryState.avgLatencyMs < 40 -> Color.Yellow // أداء مقبول
+                        state.latencyMs == 0L -> Color.Gray
+                        state.latencyMs < 50 -> Color.Green // أداء خارق
+                        state.latencyMs < 120 -> Color.Yellow // أداء مقبول
                         else -> Color.Red // شبكة تعيسة تحتاج تدخل
                     }
                 )
-                TelemetryMetricItem("Latency", "${telemetryState.avgLatencyMs.toInt()}ms", latencyColor)
-                TelemetryMetricItem("Bitrate", String.format("%.2f Mbps", telemetryState.bandwidthMbps), Color.Cyan)
+                TelemetryMetricItem("Latency", "${state.latencyMs}ms", latencyColor)
+                
+                val bitrateMbps = bitrate / 1000f
+                TelemetryMetricItem("Bitrate", String.format("%.2f Mbps", bitrateMbps), Color.Cyan)
             }
         }
     }

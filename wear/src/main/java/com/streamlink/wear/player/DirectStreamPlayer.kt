@@ -195,6 +195,12 @@ class DirectStreamPlayer @Inject constructor(
         fun enqueueNal(nal: FrameAssembler.AssembledNal) {
             val nowUs = System.nanoTime() / 1000
 
+            // Packet Deadline Check (Drop late frames before decoding to minimize latency)
+            if (nal.deadlineUs > 0 && nowUs > nal.deadlineUs) {
+                Log.w(tag, "Frame ${nal.nalSeq} exceeded deadline (Late: ${(nowUs - nal.deadlineUs) / 1000}ms). Dropping before Decode!")
+                return
+            }
+
             // مزامنة التوقيت مع أول إطار مستلم لتحديد خط الأساس (Baseline)
             if (firstFrameSystemTimeUs == -1L) {
                 firstFrameSystemTimeUs = nowUs

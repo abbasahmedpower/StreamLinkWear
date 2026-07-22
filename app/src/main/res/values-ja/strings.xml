@@ -49,7 +49,7 @@
     <string name="settings_app_language">アプリの言語</string>
     <string name="settings_wear_sync">WearOS 同期</string>
     <string name="settings_instant_sync">インスタント同期</string>
-    <string name="settings_instant_sync_desc">ウォッチをリアルタイムで更新</string>
+    <string name="settings_instant_sync_desc">接続中に行った変更は即座にウォッチに送信されます。オフの場合、次回の接続時に同期されます。</string>
     <string name="settings_watch_connection">ウォッチの接続</string>
     <string name="settings_status_label">ステータス</string>
     <string name="settings_connected">接続済み</string>

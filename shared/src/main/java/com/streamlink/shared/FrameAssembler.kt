@@ -18,6 +18,7 @@ class FrameAssembler {
         val data: ByteArray,          // Complete NAL data WITH 4-byte start code prefix
         val size: Int,
         val timestampUs: Long,
+        val deadlineUs: Long,
         val isKeyframe: Boolean,
         val nalType: Int
     )
@@ -26,6 +27,7 @@ class FrameAssembler {
         val nalSeq: Int,
         val totalChunks: Int,
         val timestampUs: Long,
+        val deadlineUs: Long,
         val isKeyframe: Boolean,
         val nalType: Int
     ) {
@@ -57,6 +59,7 @@ class FrameAssembler {
                 data       = buf,
                 size       = buf.size,
                 timestampUs = chunk.timestampUs,
+                deadlineUs  = chunk.deadlineUs,
                 isKeyframe  = chunk.isKeyframe,
                 nalType     = chunk.nalType
             )
@@ -64,7 +67,7 @@ class FrameAssembler {
 
         // Multi-chunk path
         val nal = pending.getOrPut(chunk.nalSeq) {
-            PendingNal(chunk.nalSeq, chunk.totalChunks, chunk.timestampUs, chunk.isKeyframe, chunk.nalType)
+            PendingNal(chunk.nalSeq, chunk.totalChunks, chunk.timestampUs, chunk.deadlineUs, chunk.isKeyframe, chunk.nalType)
         }
 
         // Append chunk data immediately (chunk.data is shared/reused)
@@ -83,6 +86,7 @@ class FrameAssembler {
                 data        = nal.buf,
                 size        = nal.writePos,
                 timestampUs = nal.timestampUs,
+                deadlineUs  = nal.deadlineUs,
                 isKeyframe  = nal.isKeyframe,
                 nalType     = nal.nalType
             )

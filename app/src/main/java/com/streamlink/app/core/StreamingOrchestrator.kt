@@ -19,6 +19,10 @@ import com.streamlink.app.capture.HardwareEncoder
 import com.streamlink.app.stream.MirrorDataPlane
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -57,6 +61,60 @@ class StreamingOrchestrator @Inject constructor(
     private val sessionController: StreamSessionController
 ) {
     private val tag = "StreamingOrchestrator"
+    private val settingsStore = com.streamlink.shared.util.SystemSettingsStore.get(context)
+    private val settingsPrefs = SettingsPrefs.get(context)
+    
+    // --- Telemetry & Adaptive Engines ---
+    private val telemetryRingBuffer = com.streamlink.app.core.telemetry.TelemetryRingBuffer()
+    private val telemetryAggregator = com.streamlink.app.core.telemetry.TelemetryAggregator(telemetryRingBuffer)
+    private val decisionEngine = com.streamlink.app.core.decision.DecisionEngine()
+    private val adaptiveEngine = com.streamlink.app.core.adaptive.AdaptiveQualityEngine(
+        hardwareEncoder = hardwareEncoder,
+        baseBitrateBps = StreamProtocol.WEAR_BPS_FULL * 1000,
+        decisionFlow = decisionEngine.decisionFlow
+    )
+
+    // --- Session / Crypto (Phase D) ---
+    private val cryptoManager = com.streamlink.app.core.crypto.FastCryptoResumptionManager(
+        masterSecret = ByteArray(32) { 1 }, // TODO: Inject actual ECDH negotiated secret
+        sessionId = java.util.UUID.randomUUID().toString(),
+        deviceNonce = "PhoneNonce"
+    )
+    
+    // Active Channel Keys
+    @Volatile
+    private var videoCryptoContext = cryptoManager.deriveChannelKeys("video")
+
+    private var heartbeatJob: kotlinx.coroutines.Job? = null
+    private val wearMessageClient by lazy { com.google.android.gms.wearable.Wearable.getMessageClient(context) }
+    private val wearNodeClient by lazy { com.google.android.gms.wearable.Wearable.getNodeClient(context) }
+
+    fun startBluetoothHeartbeat() {
+        stopBluetoothHeartbeat() // Ensure no duplicate jobs
+        heartbeatJob = scope.launch(Dispatchers.IO) {
+            while (isActive) {
+                try {
+                    val nodes = wearNodeClient.connectedNodes.await()
+                    nodes.forEach { node ->
+                        wearMessageClient.sendMessage(
+                            node.id,
+                            StreamProtocol.PATH_HEARTBEAT_PING,
+                            byteArrayOf()
+                        )
+                    }
+                    Log.d(tag, "BT Control Heartbeat sent to Watch")
+                } catch (e: Exception) {
+                    Log.w(tag, "Failed to send BT heartbeat: ${e.message}")
+                }
+                delay(3000L) // Ping every 3 seconds
+            }
+        }
+    }
+
+    fun stopBluetoothHeartbeat() {
+        heartbeatJob?.cancel()
+        heartbeatJob = null
+    }
 
     // ─── Public delegates for backward compatibility ─────────────────────────
 
@@ -70,6 +128,29 @@ class StreamingOrchestrator @Inject constructor(
     // ─── Initialization ──────────────────────────────────────────────────────
 
     init {
+        // Wire HardwareEncoder to TelemetryRingBuffer
+        hardwareEncoder.telemetryRingBuffer = telemetryRingBuffer
+
+        // Start Telemetry & Adaptive components
+        telemetryAggregator.start(scope)
+        adaptiveEngine.startListening(scope)
+
+        // Wire Aggregator to Decision Engine
+        scope.launch {
+            telemetryAggregator.aggregatedStats.collect { stats ->
+                val rttMs = latencyTracker.report().avgNetworkMs.toInt()
+                val thermalCelsius = thermalMonitor.thermalLevel.value.toFloat() * 10f // mock mapping
+                
+                val snapshot = com.streamlink.app.core.decision.TelemetrySnapshot(
+                    rttMs = if (rttMs > 0) rttMs else 20, // default good
+                    thermalCelsius = if (thermalCelsius > 0) thermalCelsius else 35f, // default normal
+                    packetLossPercent = 0f, // TODO: Hook into network layer packet loss
+                    decoderDroppedFrames = stats.drops
+                )
+                decisionEngine.evaluate(snapshot)
+            }
+        }
+
         // Wire touch events from socket server to the touch pipeline
         socketServer.onTouchEvent = { event ->
             touchPipeline.publishTouch(
@@ -101,6 +182,12 @@ class StreamingOrchestrator @Inject constructor(
                     Log.i(tag, "Watch requested IDR frame (Surface recovery/Ambient exit)")
                     requestKeyframe()
                 }
+                StreamProtocol.CMD_EPOCH_ACK -> {
+                    val epoch = msg.value
+                    Log.i(tag, "Received Epoch ACK from Watch: $epoch")
+                    // If Watch ACK matches our current epoch, we can safely resume data transmission.
+                    // In a full implementation, we'd unblock the MirrorDataPlane queue here.
+                }
             }
         }
         socketServer.onWatchDimensions = { w, h ->
@@ -109,17 +196,19 @@ class StreamingOrchestrator @Inject constructor(
         }
         
         socketServer.onClientConnected = { name, ip ->
-            com.streamlink.shared.util.SystemSettingsStore.get(context).setConnectedWatch(name, ip)
+            settingsStore.setConnectedWatch(name, ip)
+            // ✅ NANO-FIX: sync أساسي يحصل دايمًا عند أول اتصال — مش مرتبط بـ Instant Sync.
+            // الساعة دايمًا تبدأ بالقيم المحفوظة عند المستخدم مش بالقيم الهارد-كودد الافتراضية.
+            val currentJitter = settingsPrefs.bufferJitterMs.value
+            socketServer.sendControlToWatch(StreamProtocol.CMD_SET_BUFFER_JITTER_MS, currentJitter)
+            Log.i(tag, "Watch connected: $name ($ip) — pushed jitter=${currentJitter}ms")
         }
-        
-        // ✅ NANO-FIX: المسار الوحيد الصحيح لإرسال Jitter Buffer للساعة.
-        // شرطان مطلوبان:
-        //   1. isInstantSyncEnabled = true (المستخدم فعّله)
-        //   2. البث نشط فعلاً (مفيش رسائل control في الـ idle)
-        com.streamlink.app.core.SettingsPrefs.get(context).onJitterBufferSendRequested = { ms ->
+
+        // Instant Sync: يرسل فوراً التحديثات اللحظية *أثناء* الاتصال فقط
+        settingsPrefs.onJitterBufferSendRequested = { ms ->
             val isStreaming = com.streamlink.shared.GlobalStreamState.snapshot.value.state ==
                 com.streamlink.shared.GlobalStreamState.State.STREAMING
-            if (isStreaming && com.streamlink.shared.util.SystemSettingsStore.get(context).isInstantSyncEnabled.value) {
+            if (isStreaming && settingsStore.isInstantSyncEnabled.value) {
                 socketServer.sendControlToWatch(StreamProtocol.CMD_SET_BUFFER_JITTER_MS, ms)
                 Log.i(tag, "✅ Jitter Buffer → Watch: ${ms}ms (InstantSync active)")
             }
@@ -171,9 +260,31 @@ class StreamingOrchestrator @Inject constructor(
     }
 
     fun pauseTransport() = networkController.pauseTransport()
+    
+    fun pauseVideo() = mirrorDataPlane.pauseVideoFrameDelivery()
+    
+    fun resumeVideo() = mirrorDataPlane.resumeVideoFrameDelivery()
+    
+    fun triggerInstantSync() {
+        val currentJitter = settingsPrefs.bufferJitterMs.value
+        socketServer.sendControlToWatch(StreamProtocol.CMD_SET_BUFFER_JITTER_MS, currentJitter)
+        Log.i(tag, "Instant Sync sent: Jitter=${currentJitter}ms")
+    }
 
-    suspend fun migrateTransportSocket(newHost: String, newPort: Int, isRelay: Boolean): Boolean =
-        networkController.migrateTransportSocket(newHost, newPort, isRelay)
+    suspend fun migrateTransportSocket(newHost: String, newPort: Int, isRelay: Boolean, transportType: String = "WIFI"): Boolean {
+        // Zero-RTT Crypto Resumption
+        val epoch = cryptoManager.onNetworkHandover(transportType)
+        
+        // Immediately re-derive all channel keys securely
+        videoCryptoContext = cryptoManager.deriveChannelKeys("video")
+        
+        // Perform Epoch ACK Handshake
+        // We send the ACK to the watch. The watch must derive the same keys and ACK back.
+        socketServer.sendControlToWatch(StreamProtocol.CMD_EPOCH_ACK, epoch)
+        Log.i(tag, "Crypto Epoch $epoch Handshake initiated. Migrating socket...")
+
+        return networkController.migrateTransportSocket(newHost, newPort, isRelay)
+    }
 
     /**
      * NANO-FIX (HandoverCoordinator hardcoded-IP bug): exposes the last host actually

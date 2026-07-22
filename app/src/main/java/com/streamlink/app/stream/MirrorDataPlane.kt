@@ -18,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Zero-allocation data plane.
@@ -50,6 +51,18 @@ class MirrorDataPlane(
     }.asCoroutineDispatcher()
 
     private var sendJob: Job? = null
+    private val isPaused = AtomicBoolean(false)
+
+    fun pauseVideoFrameDelivery() {
+        isPaused.set(true)
+        Log.i(tag, "Video frame delivery paused")
+    }
+
+    fun resumeVideoFrameDelivery() {
+        isPaused.set(false)
+        encoder.forceKeyframe() // Guarantee a clean frame upon resume
+        Log.i(tag, "Video frame delivery resumed. IDR requested.")
+    }
 
     fun start(scope: CoroutineScope) {
         val handler = CoroutineExceptionHandler { _, e ->
@@ -64,6 +77,11 @@ class MirrorDataPlane(
     }
 
     private fun processPacket(packet: FramePacket) {
+        if (isPaused.get()) {
+            packet.release()
+            return
+        }
+
         var hardened: HardenedFrame? = null
         try {
             // ✅ FIX N1: No buffer.duplicate() — build MediaCodec.BufferInfo directly from

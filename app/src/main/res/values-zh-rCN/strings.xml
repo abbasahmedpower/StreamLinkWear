@@ -49,7 +49,7 @@
     <string name="settings_app_language">应用语言</string>
     <string name="settings_wear_sync">WearOS 同步</string>
     <string name="settings_instant_sync">即时同步</string>
-    <string name="settings_instant_sync_desc">实时更新手表</string>
+    <string name="settings_instant_sync_desc">连接时所做的更改将立即发送到手表。如果关闭，则仅在下次连接时同步。</string>
     <string name="settings_watch_connection">手表连接</string>
     <string name="settings_status_label">状态</string>
     <string name="settings_connected">已连接</string>

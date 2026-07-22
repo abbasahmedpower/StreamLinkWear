@@ -49,7 +49,7 @@
     <string name="settings_app_language">Uygulama Dili</string>
     <string name="settings_wear_sync">WearOS Senkronizasyonu</string>
     <string name="settings_instant_sync">Anlık Senkronizasyon</string>
-    <string name="settings_instant_sync_desc">Saati gerçek zamanlı güncelle</string>
+    <string name="settings_instant_sync_desc">Bağlıyken yapılan değişiklikler saate anında gönderilir. Kapalıysa, yalnızca bir sonraki bağlantıda senkronize edilir.</string>
     <string name="settings_watch_connection">Saat Bağlantısı</string>
     <string name="settings_status_label">Durum</string>
     <string name="settings_connected">Bağlı</string>

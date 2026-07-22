@@ -31,6 +31,7 @@ class DirectSocketClient(
     private var socket: Socket? = null
     private val closed = AtomicBoolean(false)
     private var encryptedChannel: EncryptedChannel? = null
+    private val clockSyncEngine = com.streamlink.shared.transport.ClockSyncEngine()
 
     // Pairing code — set by the Wear UI before attempting to connect.
     // ✅ FIX #5 (أمني): مفيش قيمة افتراضية ("000000") — لو فضل null وقت
@@ -55,6 +56,7 @@ class DirectSocketClient(
         val chunkIdx: Int,         // ✅ Chunk index within this NAL (0..totalChunks-1)
         val totalChunks: Int,
         val timestampUs: Long,     // ✅ From wire header (correct PTS)
+        val deadlineUs: Long,      // ✅ Monotonic deadline for dropping frames
         val isKeyframe: Boolean,
         val nalType: Int,
         val data: ByteArray,       // Slice — caller must NOT hold ref after onChunk returns
@@ -112,6 +114,11 @@ class DirectSocketClient(
                 val s = Socket().apply {
                     connect(InetSocketAddress(finalHostToUse, port), 5_000)
                     tcpNoDelay = true
+                    keepAlive = true
+                    reuseAddress = true
+                    trafficClass = 0x10
+                    sendBufferSize = 32 * 1024
+                    receiveBufferSize = 32 * 1024
                     soTimeout = 15_000
                     setPerformancePreferences(0, 2, 1)  // latency > bandwidth > connection time
                 }
@@ -188,6 +195,10 @@ class DirectSocketClient(
                     delay(2000)
                     continue
                 }
+
+                val phoneTimeNanos = dis.readLong()
+                val localTimeNanos = System.nanoTime()
+                clockSyncEngine.updateOffset(localTimeNanos, localTimeNanos, phoneTimeNanos)
 
                 Log.i(tag, "✅ Connected and Handshake complete with $finalHostToUse:$port")
                 context.getSharedPreferences("StreamLinkPrefs", android.content.Context.MODE_PRIVATE)
@@ -291,6 +302,8 @@ class DirectSocketClient(
                 val nalType     = buffer.get().toInt() and 0xFF
                 val payloadSize = buffer.getShort().toInt() and 0xFFFF
                 val timestampUs = buffer.getLong()
+                val deadlineUs  = buffer.getLong()
+                val localDeadlineUs = clockSyncEngine.remoteToLocalNanos(deadlineUs * 1000) / 1000
 
                 // 3. Validate before reading
                 if (payloadSize <= 0 || (StreamProtocol.WIRE_HEADER_SIZE + payloadSize > decryptedSize)) {
@@ -308,6 +321,7 @@ class DirectSocketClient(
                         chunkIdx    = chunkIdx,
                         totalChunks = totalChunks,
                         timestampUs = timestampUs,
+                        deadlineUs  = localDeadlineUs,
                         isKeyframe  = isKeyframe,
                         nalType     = nalType,
                         data        = dataBuf,   // Shared buffer — FrameAssembler copies on receipt

@@ -45,8 +45,8 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val prefs = remember { SettingsPrefs.get(context) }
-    val quality by prefs.quality.collectAsState()
-    val bufferJitterMs by prefs.bufferJitterMs.collectAsState()
+    val quality by prefs.quality.collectAsStateWithLifecycle()
+    val bufferJitterMs by prefs.bufferJitterMs.collectAsStateWithLifecycle()
     // ✅ تحقق: نفس النمط المستخدم فعليًا في MainActivity.kt سطر 151 (collectAsStateWithLifecycle)
     val streamState by GlobalStreamState.snapshot.collectAsStateWithLifecycle()
     val isStreaming = streamState.state == GlobalStreamState.State.STREAMING

@@ -49,7 +49,7 @@
     <string name="settings_app_language">لغة التطبيق</string>
     <string name="settings_wear_sync">مزامنة WearOS</string>
     <string name="settings_instant_sync">مزامنة فورية</string>
-    <string name="settings_instant_sync_desc">تحديث الساعة في الوقت الفعلي</string>
+    <string name="settings_instant_sync_desc">التغييرات اللي بتعملها وانت متصل بتوصل للساعة فوراً. لو مقفول، هتوصل بس عند إعادة الاتصال.</string>
     <string name="settings_watch_connection">اتصال الساعة</string>
     <string name="settings_status_label">الحالة</string>
     <string name="settings_connected">متصل</string>
