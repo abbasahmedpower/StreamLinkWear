@@ -92,12 +92,17 @@ $RECYCLE.BIN/
 .trash
 
 # ── 📊 8. السجلات والتقارير والملفات المؤقتة (Logs & Diagnostics) ─────
+# JVM Crash Dumps & KSP Errors
+hs_err_pid*.log
+replay_pid*.log
+ksp_error.txt
+ksp_stacktrace.txt
+build_*.txt
+test_output.txt
 *.log
 logs/
 log/
 crash_reports/
-hs_err_pid*.log
-replay_pid*.log
 .attach_pid*
 
 # ── 🗄️ 9. قواعد البيانات والملفات المؤقتة للمشغل (Databases & Cache) ──

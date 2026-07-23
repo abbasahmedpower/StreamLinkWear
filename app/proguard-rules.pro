@@ -24,12 +24,32 @@
     public static ** valueOf(java.lang.String);
 }
 
-# مكتبات خارجية بتتكسر لو اتعملها obfuscate
--keep class org.tensorflow.** { *; }
--keep class org.webrtc.** { *; }
--keep class io.getstream.** { *; }
+# ✅ مكتبات خارجية — قواعد مُضيَّقة للسماح لـ R8 بالـ Tree-Shaking
+# بدلاً من الإبقاء الحرفي على كل شيء، نبقي فقط على Native JNI والواجهات التفاعلية
+
+# TensorFlow Lite — JNI Bindings + Interpreter interface فقط
+-keepclasseswithmembernames class org.tensorflow.** {
+    native <methods>;
+}
+-keep class org.tensorflow.lite.Interpreter { *; }
+-keep class org.tensorflow.lite.InterpreterApi { *; }
 -dontwarn org.tensorflow.**
+
+# WebRTC — JNI + Audio/Video interfaces فقط (يوفر 2-4 MB)
+-keepclasseswithmembernames class org.webrtc.** {
+    native <methods>;
+}
+-keep class org.webrtc.Audio* { *; }
+-keep class org.webrtc.Video* { *; }
+-keep class org.webrtc.PeerConnection* { *; }
+-keep class org.webrtc.DataChannel* { *; }
+-keep class org.webrtc.IceCandidate { *; }
+-keep class org.webrtc.SessionDescription { *; }
 -dontwarn org.webrtc.**
+
+# Stream WebRTC SDK — الواجهات العامة فقط
+-keep class io.getstream.webrtc.** { *; }
+-dontwarn io.getstream.**
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ML Kit Barcode Scanning
