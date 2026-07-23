@@ -20,7 +20,7 @@ object NetworkUtils {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("NetworkUtils", "Error finding local IP", e)
         }
         return null
     }

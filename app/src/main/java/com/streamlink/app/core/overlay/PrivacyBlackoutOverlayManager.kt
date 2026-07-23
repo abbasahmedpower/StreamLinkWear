@@ -55,7 +55,7 @@ class PrivacyBlackoutOverlayManager(private val context: Context) {
             windowManager.addView(overlayView, params)
             isActive = true
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("PrivacyOverlay", "Error showing overlay", e)
         }
     }
 
@@ -68,7 +68,7 @@ class PrivacyBlackoutOverlayManager(private val context: Context) {
         try {
             windowManager.removeView(overlayView)
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("PrivacyOverlay", "Error hiding overlay", e)
         } finally {
             overlayView = null
             isActive = false

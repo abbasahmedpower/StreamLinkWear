@@ -272,7 +272,7 @@ fun QrScannerScreen(onQrScanned: (String) -> Unit) {
                         cameraProvider.unbindAll()
                         cameraProvider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageAnalyzer)
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        android.util.Log.e("MobileQrScanner", "Error analyzing barcode", e)
                     }
                 }, ContextCompat.getMainExecutor(ctx))
 

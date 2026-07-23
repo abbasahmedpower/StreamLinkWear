@@ -87,7 +87,7 @@ class NetworkController @Inject constructor(
             .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
             .build()
 
-        networkCallback = object : ConnectivityManager.NetworkCallback() {
+        val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                 evaluateNetworkState(network, capabilities, connectivityManager.getLinkProperties(network))
             }
@@ -108,7 +108,8 @@ class NetworkController @Inject constructor(
                 }
             }
         }
-        connectivityManager.registerNetworkCallback(request, networkCallback!!)
+        networkCallback = callback
+        connectivityManager.registerNetworkCallback(request, callback)
         
         connectivityManager.activeNetwork?.let { net ->
             evaluateNetworkState(

@@ -28,7 +28,7 @@ object QrGenerator {
             }
             bitmap
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("QrGenerator", "Error generating QR code", e)
             null
         }
     }
