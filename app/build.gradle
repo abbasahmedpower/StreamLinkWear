@@ -180,3 +180,39 @@ dependencies {
     // ML Kit Barcode Scanning
     implementation 'com.google.mlkit:barcode-scanning:17.2.0'
 }
+
+// 🛡️ Fail-Fast Guard for HORUS_SECRET_TOKEN
+gradle.taskGraph.whenReady { graph ->
+    def needsRelease = graph.allTasks.any { 
+        it.name.contains('Release') && 
+        (it.name.contains('bundle') || it.name.contains('assemble')) 
+    }
+    
+    if (needsRelease) {
+        def token = project.findProperty('HORUS_SECRET_TOKEN')
+        
+        if (!token || 
+            token.toString().isBlank() || 
+            token == 'dummy_token_for_build' ||
+            token.toString().startsWith('CHANGE_ME')) {
+            throw new GradleException(
+                "❌ HORUS_SECRET_TOKEN غير مضبوط لبناء الإصدار!\n" +
+                "   الحل:\n" +
+                "   • محلياً: أضف HORUS_SECRET_TOKEN=xxx في local.properties\n" +
+                "   • في CI: أضفه كـ GitHub Secret\n" +
+                "   • أو مرره عبر: -PHORUS_SECRET_TOKEN=xxx"
+            )
+        }
+        
+        // تحقق من الطول (64+ chars)
+        if (token.toString().length() < 64) {
+            throw new GradleException(
+                "⚠️ HORUS_SECRET_TOKEN قصير جداً (${token.toString().length()} chars)!\n" +
+                "   المطلوب: 64 character على الأقل.\n" +
+                "   ولّده بـ: openssl rand -hex 32"
+            )
+        }
+        
+        println "✅ HORUS_SECRET_TOKEN validated for Release build"
+    }
+}
