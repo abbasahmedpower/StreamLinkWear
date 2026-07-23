@@ -14,21 +14,14 @@ import javax.crypto.spec.SecretKeySpec
  * - The E2EE ECDH shared-secret is never involved; this key is exclusively
  *   for backend-to-client authentication.
  * - Constant-time comparison prevents timing side-channel attacks.
- *
- * Test Instrumentation:
- * - Set JVM system property `SERVER_PRIVATE_KEY_OVERRIDE_FOR_TEST` to inject
- *   a deterministic key during unit tests without modifying environment variables.
- *   This property is ONLY checked in non-production builds and is ignored if the
- *   real env variable is present.
+ * - ✅ §3.6: Tokens embed an issuedAt timestamp and expire after TOKEN_TTL_MS.
+ *   Revocation is handled separately via Redis (see Application.kt /api/v1/revoke).
  */
 object ServerIdentityVerifier {
 
-    /**
-     * Resolves the HMAC signing key.
-     * Resolution order:
-     *   1. `SERVER_PRIVATE_KEY` environment variable  (production, takes priority)
-     *   2. `SERVER_PRIVATE_KEY_OVERRIDE_FOR_TEST` JVM system property  (test only)
-     */
+    /** 30-day token lifetime — cheap to tune without changing the protocol */
+    private const val TOKEN_TTL_MS = 30L * 24 * 60 * 60 * 1000
+
     private val SERVER_PRIVATE_KEY: ByteArray by lazy {
         val envKey  = System.getenv("SERVER_PRIVATE_KEY")
         val testKey = System.getProperty("SERVER_PRIVATE_KEY_OVERRIDE_FOR_TEST")
@@ -39,27 +32,38 @@ object ServerIdentityVerifier {
     }
 
     /**
-     * Signs a userId and returns a token in the format `UUID.Signature`.
+     * Signs a userId + issuedAt timestamp and returns a token:
+     *   `userId|issuedAtMs.Signature`
      * Called once during device registration.
      */
     fun generateClientToken(userId: String): String {
-        val signature = hmacSign(userId)
-        return "$userId.$signature"
+        val issuedAt = System.currentTimeMillis()
+        val payload  = "$userId|$issuedAt"
+        val signature = hmacSign(payload)
+        return "$payload.$signature"
     }
 
     /**
-     * Verifies a `UUID.Signature` token.
+     * Verifies a `userId|issuedAtMs.Signature` token.
      * Returns the verified userId on success, null on any failure.
+     * Rejects tokens that are expired, malformed, or have a bad signature.
      * Uses constant-time comparison to prevent timing attacks.
      */
     fun verifyClientToken(rawToken: String): String? {
-        val dotIndex = rawToken.indexOf('.')
-        if (dotIndex < 1 || dotIndex == rawToken.lastIndex) return null
+        val lastDot = rawToken.lastIndexOf('.')
+        if (lastDot < 1 || lastDot == rawToken.lastIndex) return null
 
-        val userId         = rawToken.substring(0, dotIndex)
-        val clientSig      = rawToken.substring(dotIndex + 1)
-        val expectedSig    = hmacSign(userId)
+        val payload   = rawToken.substring(0, lastDot)
+        val clientSig = rawToken.substring(lastDot + 1)
 
+        // ✅ §3.6: Parse and validate expiry before touching the signature
+        val parts = payload.split("|")
+        if (parts.size != 2) return null
+        val (userId, issuedAtStr) = parts
+        val issuedAt = issuedAtStr.toLongOrNull() ?: return null
+        if (System.currentTimeMillis() - issuedAt > TOKEN_TTL_MS) return null  // expired
+
+        val expectedSig = hmacSign(payload)
         val isValid = MessageDigest.isEqual(
             clientSig.toByteArray(Charsets.UTF_8),
             expectedSig.toByteArray(Charsets.UTF_8)

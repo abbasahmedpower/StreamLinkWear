@@ -2,11 +2,13 @@ import socket
 import threading
 import time
 import random
+import json
 
-# Engineering settings for the emulator
-SOURCE_PORT = 8554      # Port from real video stream source (Camera/Backend)
-PROXY_PORT = 9554       # New port the smartwatch will connect to for the stream
-BUFFER_SIZE = 65535
+# ✅ §4.1: Bind to localhost only — was 0.0.0.0 (reachable from any network interface)
+SOURCE_PORT   = 8554      # Port from real video stream source
+PROXY_PORT    = 9554      # Port the smartwatch connects to
+CONTROL_PORT  = 9600      # JSON control API for CI automation (127.0.0.1 only)
+BUFFER_SIZE   = 65535
 
 class ChaosStreamProxy:
     def __init__(self):
@@ -72,19 +74,66 @@ class ChaosStreamProxy:
 
         threading.Thread(target=forward_to_watch, daemon=True).start()
 
+    def handle_control(self, conn):
+        """One-shot JSON control commands for CI automation (127.0.0.1 only)."""
+        try:
+            data = conn.recv(1024)
+            cmd = json.loads(data.decode())
+            action = cmd.get("action")
+            value  = cmd.get("value")
+            if action == "set_drop_rate":
+                self.packet_drop_rate = float(value)
+            elif action == "set_jitter":
+                self.jitter_max_ms = int(value)
+            elif action == "set_blackout":
+                self.burst_drop_active = bool(value)
+            elif action == "reset":
+                self.packet_drop_rate = 0.0
+                self.jitter_max_ms = 0
+                self.burst_drop_active = False
+                self.corrupt_byte_rate = 0.0
+            else:
+                conn.sendall(json.dumps({"ok": False, "error": f"Unknown action: {action}"}).encode())
+                return
+            conn.sendall(json.dumps({"ok": True}).encode())
+        except Exception as e:
+            try:
+                conn.sendall(json.dumps({"ok": False, "error": str(e)}).encode())
+            except Exception:
+                pass
+        finally:
+            conn.close()
+
+    def start_control_server(self):
+        """TCP control socket on 127.0.0.1 only — used by run_chaos_assessment.py."""
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind(("127.0.0.1", CONTROL_PORT))   # ✅ §4.1: localhost only
+        srv.listen(5)
+        print(f"[CHAOS PROXY] Control API listening on 127.0.0.1:{CONTROL_PORT} (CI automation)")
+        while True:
+            try:
+                conn, _ = srv.accept()
+                threading.Thread(target=self.handle_control, args=(conn,), daemon=True).start()
+            except OSError as e:
+                print(f"[CHAOS CONTROL] accept() error, continuing: {e}")
+
     def start(self):
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(("0.0.0.0", PROXY_PORT))
+        server.bind(("127.0.0.1", PROXY_PORT))   # ✅ §4.1: was 0.0.0.0
         server.listen(5)
-        print(f"[CHAOS PROXY] Chaos Gateway running on port {PROXY_PORT}...")
-        
-        # Dedicated thread for real-time chaos control via Terminal
+        print(f"[CHAOS PROXY] Chaos Gateway on 127.0.0.1:{PROXY_PORT} (dev/CI only — NEVER expose externally)")
+
         threading.Thread(target=self.cli_control, daemon=True).start()
+        threading.Thread(target=self.start_control_server, daemon=True).start()   # ✅ §2.5 + §4.1
 
         while True:
-            client_sock, _ = server.accept()
-            threading.Thread(target=self.handle_client, args=(client_sock,), daemon=True).start()
+            try:   # ✅ §4.1: Was unguarded — one OSError killed the entire proxy
+                client_sock, _ = server.accept()
+                threading.Thread(target=self.handle_client, args=(client_sock,), daemon=True).start()
+            except OSError as e:
+                print(f"[CHAOS PROXY] accept() error, continuing: {e}")
 
     def cli_control(self):
         """ Instant control panel to inject faults live and monitor RecoveryManager on watch """

@@ -39,7 +39,7 @@ class HandoffOrchestrator(
                 val latencyMs = payloadJson["latencyMs"]?.let { it as? kotlinx.serialization.json.JsonPrimitive }?.content?.toLongOrNull() ?: 0L
                 val lossPercent = payloadJson["packetLossPercent"]?.let { it as? kotlinx.serialization.json.JsonPrimitive }?.content?.toFloatOrNull() ?: 0f
                 
-                LiveMetrics.update(fps, latencyMs, bitrateKbps, (lossPercent * 10).toInt())
+                LiveMetrics.update(userId, fps, latencyMs, bitrateKbps, (lossPercent * 10).toInt())
             } catch (e: Exception) {
                 // Ignore parsing errors for metrics
             }

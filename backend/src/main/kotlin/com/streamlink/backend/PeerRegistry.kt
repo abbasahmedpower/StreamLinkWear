@@ -15,7 +15,7 @@ class PeerRegistry {
     data class PeerSession(
         val peerId: String,
         val userId: String,
-        val deviceType: DeviceType,   // PHONE or WATCH
+        val deviceType: DeviceType,
         val wsSession: DefaultWebSocketSession,
         val connectedAtMs: Long = System.currentTimeMillis(),
         var lastPingMs: Long = System.currentTimeMillis()
@@ -30,19 +30,33 @@ class PeerRegistry {
         val pairedAtMs: Long = System.currentTimeMillis()
     )
 
-    private val peers  = ConcurrentHashMap<String, PeerSession>()  // peerId → session
-    private val pairs  = ConcurrentHashMap<String, PeerPair>()     // userId → pair
-    private val mutex  = Mutex()
+    private val peers     = ConcurrentHashMap<String, PeerSession>()                       // peerId → session
+    private val pairs     = ConcurrentHashMap<String, PeerPair>()                          // userId → pair
+    // ✅ §3.5: Deterministic key prevents stale-session pairing on reconnect
+    private val byKey     = ConcurrentHashMap<Pair<String, DeviceType>, PeerSession>()     // (userId,type) → session
+    private val mutex     = Mutex()
     private val pairCount = AtomicLong(0)
 
     suspend fun register(session: PeerSession): Unit = mutex.withLock {
+        val key = session.userId to session.deviceType
+        // ✅ §3.5: Replace-on-reconnect — close stale socket instead of leaving two entries
+        byKey[key]?.let { old ->
+            if (old.peerId != session.peerId) {
+                peers.remove(old.peerId)
+                pairs.remove(session.userId)   // force re-pair with the fresh session
+                try {
+                    old.wsSession.close(CloseReason(CloseReason.Codes.NORMAL, "Replaced by new connection"))
+                } catch (_: Exception) { /* already dead — fine */ }
+            }
+        }
         peers[session.peerId] = session
+        byKey[key] = session
         tryPairUser(session.userId)
     }
 
     suspend fun unregister(peerId: String): Unit = mutex.withLock {
         val session = peers.remove(peerId) ?: return@withLock
-        // Remove pair if either side disconnects
+        byKey.remove(session.userId to session.deviceType)   // ✅ §3.5: keep byKey consistent
         pairs.remove(session.userId)
     }
 
@@ -64,13 +78,11 @@ class PeerRegistry {
     }
 
     private fun tryPairUser(userId: String) {
-        val userPeers = peers.values.filter { it.userId == userId }
-        val phone = userPeers.find { it.deviceType == DeviceType.PHONE } ?: return
-        val watch = userPeers.find { it.deviceType == DeviceType.WATCH } ?: return
-        if (pairs.containsKey(userId)) return  // Already paired
-
-        val pair = PeerPair(phone = phone, watch = watch)
-        pairs[userId] = pair
+        // ✅ §3.5: O(1) deterministic lookup — no ambiguity when two sessions exist for same (user,type)
+        val phone = byKey[userId to DeviceType.PHONE] ?: return
+        val watch = byKey[userId to DeviceType.WATCH] ?: return
+        if (pairs.containsKey(userId)) return   // already paired
+        pairs[userId] = PeerPair(phone = phone, watch = watch)
         pairCount.incrementAndGet()
     }
 
@@ -83,6 +95,7 @@ class PeerRegistry {
         stale.forEach { peerId ->
             val session = peers.remove(peerId)
             if (session != null) {
+                byKey.remove(session.userId to session.deviceType)   // ✅ §3.5
                 pairs.remove(session.userId)
             }
         }

@@ -93,23 +93,29 @@ data class StreamMetricsSnapshot(
     val packetLossPercent: Float = 0f
 )
 
-// Global live metric state (updated by signaling events)
+// ✅ §4.2: Per-user metrics instead of one global object that overwrites all users
 object LiveMetrics {
-    val fps         = AtomicInteger(0)
-    val latencyMs   = AtomicLong(0)
-    val bitrateKbps = AtomicInteger(0)
-    val lossPercent = AtomicInteger(0)  // stored as permille (×10) for int atomics
+    @Serializable
+    data class UserSnapshot(
+        val fps: Int = 0,
+        val latencyMs: Long = 0L,
+        val bitrateKbps: Int = 0,
+        val lossPermille: Int = 0
+    )
+
+    private val perUser = java.util.concurrent.ConcurrentHashMap<String, UserSnapshot>()
+
+    fun update(userId: String, fps: Int, latencyMs: Long, bitrateKbps: Int, lossPermille: Int) {
+        perUser[userId] = UserSnapshot(fps, latencyMs, bitrateKbps, lossPermille)
+    }
+
+    fun snapshotFor(userId: String): UserSnapshot? = perUser[userId]
+    fun all(): Collection<UserSnapshot> = perUser.values
+    fun remove(userId: String) { perUser.remove(userId) }
 
     // Dashboard WebSocket sessions
     val dashboardSessions: MutableSet<DefaultWebSocketSession> =
         Collections.synchronizedSet(LinkedHashSet())
-
-    fun update(fps: Int, latencyMs: Long, bitrateKbps: Int, lossPermille: Int) {
-        this.fps.set(fps)
-        this.latencyMs.set(latencyMs)
-        this.bitrateKbps.set(bitrateKbps)
-        this.lossPercent.set(lossPermille)
-    }
 }
 
 fun Application.module(nodeId: String, redisUrl: String) {
@@ -155,10 +161,11 @@ fun Application.module(nodeId: String, redisUrl: String) {
                 activePeers       = (stats["peers"] as? Int) ?: 0,
                 activePairs       = (stats["pairs"] as? Int) ?: 0,
                 totalPairedSessions = (stats["totalPairs"] as? Long) ?: 0L,
-                fps               = LiveMetrics.fps.get(),
-                latencyMs         = LiveMetrics.latencyMs.get(),
-                bitrateKbps       = LiveMetrics.bitrateKbps.get(),
-                packetLossPercent = LiveMetrics.lossPercent.get() / 10f
+                // ✅ §4.2: Use aggregated metrics from all active users
+                fps               = LiveMetrics.all().map { it.fps }.maxOrNull() ?: 0,
+                latencyMs         = LiveMetrics.all().map { it.latencyMs }.maxOrNull() ?: 0L,
+                bitrateKbps       = LiveMetrics.all().sumOf { it.bitrateKbps },
+                packetLossPercent = LiveMetrics.all().map { it.lossPermille / 10f }.maxOrNull() ?: 0f
             )
             val json = Json.encodeToString(snapshot)
             val dead = mutableListOf<DefaultWebSocketSession>()
@@ -199,6 +206,23 @@ fun Application.module(nodeId: String, redisUrl: String) {
             call.respond(mapOf("token" to token))
         }
 
+        // ✅ §3.6: Per-device token revocation endpoint
+        post("/api/v1/revoke/{userId}") {
+            val globalAuth = call.request.headers["X-Horus-Global-Token"] ?: ""
+            if (!java.security.MessageDigest.isEqual(
+                    globalAuth.toByteArray(Charsets.UTF_8),
+                    expectedToken.toByteArray(Charsets.UTF_8)
+                )) {
+                call.respond(io.ktor.http.HttpStatusCode.Unauthorized, "Unauthorized")
+                return@post
+            }
+            val userId = call.parameters["userId"] ?: return@post call.respond(io.ktor.http.HttpStatusCode.BadRequest)
+            // TTL matches token lifetime (30 days in seconds)
+            redis?.async()?.setex("sl:revoked:$userId", 30L * 24 * 60 * 60, "1")
+            LiveMetrics.remove(userId)
+            call.respond(io.ktor.http.HttpStatusCode.OK, mapOf("revoked" to userId))
+        }
+
         // ── Real-time metrics for Dashboard ──────────────────────────────────
         webSocket("/metrics") {
             // ✅ FIX High #4: Protect /metrics from unauthenticated reconnaissance.
@@ -234,6 +258,12 @@ fun Application.module(nodeId: String, redisUrl: String) {
             val verifiedUserId = ServerIdentityVerifier.verifyClientToken(clientToken)
             if (verifiedUserId == null || verifiedUserId != routeUserId) {
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Invalid Identity Token"))
+                return@webSocket
+            }
+
+            // ✅ §3.6: Check revocation list in Redis before accepting connection
+            if (redis?.sync()?.get("sl:revoked:$verifiedUserId") == "1") {
+                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Token revoked"))
                 return@webSocket
             }
 
@@ -274,12 +304,12 @@ fun Application.module(nodeId: String, redisUrl: String) {
             }
         }
 
-        // ── Legacy handoff endpoint (DEPRECATED — use /signal) ──────────────
+        // ✅ §2.4: Fixed — reuse the single shared orchestrator instance so both devices
+        // register into the SAME legacyRooms map and can actually reach each other.
         webSocket("/stream/handoff/{roomId}/{deviceType}") {
             val roomId     = call.parameters["roomId"]     ?: "default"
             val deviceType = call.parameters["deviceType"] ?: "UNKNOWN"
             
-            // ✅ FIX High #3: Constant-time comparison to prevent timing side-channel.
             val authToken = call.request.headers["X-Horus-Authorization"] ?: ""
             if (!java.security.MessageDigest.isEqual(
                     authToken.toByteArray(Charsets.UTF_8),
@@ -294,14 +324,15 @@ fun Application.module(nodeId: String, redisUrl: String) {
                 return@webSocket
             }
 
-            val legacyOrch = HandoffOrchestrator(registry, redis, nodeId)
-            legacyOrch.registerDevice(roomId, deviceType, this)
+            // ✅ §2.4: Was: val legacyOrch = HandoffOrchestrator(...) — each connection
+            // got its own isolated instance, so no two devices could ever meet.
+            orchestrator.registerDevice(roomId, deviceType, this)
             try {
                 for (frame in incoming) {
-                    if (frame is Frame.Text) legacyOrch.broadcastToPeer(roomId, deviceType, frame.readText())
+                    if (frame is Frame.Text) orchestrator.broadcastToPeer(roomId, deviceType, frame.readText())
                 }
             } finally {
-                legacyOrch.removeDevice(roomId, deviceType)
+                orchestrator.removeDevice(roomId, deviceType)
             }
         }
     }

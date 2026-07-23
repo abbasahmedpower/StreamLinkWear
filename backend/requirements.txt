@@ -3,7 +3,8 @@
 
 # Chaos proxy & assessment scripts
 aiohttp==3.9.3
-asyncio==3.4.3
+# asyncio is part of the Python stdlib since 3.4 — do NOT install from PyPI
+# (the PyPI package is a legacy backport that can shadow the stdlib and break things)
 
 # AI training — stream predictor model
 numpy==1.26.4
