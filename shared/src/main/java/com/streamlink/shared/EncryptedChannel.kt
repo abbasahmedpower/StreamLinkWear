@@ -32,7 +32,7 @@ class EncryptedChannel(
 
     private val key: SecretKey = SecretKeySpec(sessionKey, "AES")
     private val sendSeq = AtomicLong(0)
-    private var lastAcceptedSeq = -1L
+    private val lastAcceptedSeq = AtomicLong(-1L)
     private val random = SecureRandom()
     private val staticNoncePrefix = ByteArray(4).also { random.nextBytes(it) }
 
@@ -96,8 +96,9 @@ class EncryptedChannel(
             val buf = ByteBuffer.wrap(cipherData)
             val seq = buf.long
 
-            if (seq <= lastAcceptedSeq) {
-                throw ReplayDetectedException("Replay detected: seq=$seq <= lastAccepted=$lastAcceptedSeq")
+            val prev = lastAcceptedSeq.get()
+            if (seq <= prev) {
+                throw ReplayDetectedException("Replay detected: seq=$seq <= lastAccepted=$prev")
             }
 
             val nonce = ByteArray(12).also { buf.get(it) }
@@ -108,7 +109,13 @@ class EncryptedChannel(
             val cipher = getCipher(Cipher.DECRYPT_MODE, nonce, buildAad(seq, expectedRecvLabel))
             val plaintext = cipher.doFinal(ciphertext)
             // Note: This method is only used for fully encrypted small chunks, so tailLen is assumed 0 here.
-            lastAcceptedSeq = seq
+            
+            var cur = lastAcceptedSeq.get()
+            while (seq > cur) {
+                if (lastAcceptedSeq.compareAndSet(cur, seq)) break
+                cur = lastAcceptedSeq.get()
+            }
+            
             plaintext
         } catch (e: Exception) {
             Log.e(tag, "Decryption failed: ${e.message}")
@@ -122,8 +129,9 @@ class EncryptedChannel(
         val buf = ByteBuffer.wrap(ciphertext, offset, length)
         val seq = buf.long
 
-        if (seq <= lastAcceptedSeq) {
-            throw ReplayDetectedException("Replay detected: seq=$seq <= lastAccepted=$lastAcceptedSeq")
+        val prev = lastAcceptedSeq.get()
+        if (seq <= prev) {
+            throw ReplayDetectedException("Replay detected: seq=$seq <= lastAccepted=$prev")
         }
 
         val nonce = ByteArray(12)
@@ -137,7 +145,12 @@ class EncryptedChannel(
         
         val decLen = cipher.doFinal(ciphertext, offset + headerLen, encryptedPartLen, output, outputOffset)
         
-        lastAcceptedSeq = seq
+        var cur = lastAcceptedSeq.get()
+        while (seq > cur) {
+            if (lastAcceptedSeq.compareAndSet(cur, seq)) break
+            cur = lastAcceptedSeq.get()
+        }
+        
         return decLen
     }
 

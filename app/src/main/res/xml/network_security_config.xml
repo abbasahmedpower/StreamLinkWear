@@ -9,10 +9,11 @@
     <domain-config>
         <domain includeSubdomains="true">signaling.streamlink.com</domain>
         <!-- Certificate Pinning for signaling server -->
+        <!-- TODO: Enable when WAN_RELAY_ENABLED is true. Use real Base64 PINs from server.
         <pin-set expiration="2027-01-01">
             <pin digest="SHA-256">Base64EncodedPinHere</pin>
-            <!-- Backup pin -->
             <pin digest="SHA-256">BackupBase64EncodedPinHere</pin>
         </pin-set>
+        -->
     </domain-config>
 </network-security-config>
