@@ -49,8 +49,8 @@ class StreamViewModel @Inject constructor(
             WearUiState(
                 isStreaming  = snap.state == GlobalStreamState.State.STREAMING,
                 isConnecting = snap.state in connectingStates,
-                isRecovering = snap.state == GlobalStreamState.State.RECOVERING,
-                isDegraded   = snap.state == GlobalStreamState.State.DEGRADED,
+                isRecovering = snap.state == GlobalStreamState.State.RECONNECTING,
+                isDegraded   = snap.state == GlobalStreamState.State.STREAMING,
                 bitrateKbps  = snap.bitrateKbps,
                 latencyMs    = snap.latencyMs,
                 fps          = snap.fps,
@@ -92,9 +92,9 @@ class StreamViewModel @Inject constructor(
 
     companion object {
         private val connectingStates = setOf(
-            GlobalStreamState.State.PRELOADING,
+            GlobalStreamState.State.IDLE,
             GlobalStreamState.State.CONNECTING,
-            GlobalStreamState.State.STREAM_STARTING
+            GlobalStreamState.State.AUTHENTICATING
         )
     }
 }

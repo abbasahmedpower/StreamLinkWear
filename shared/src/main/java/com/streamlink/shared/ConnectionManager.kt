@@ -71,7 +71,7 @@ class ConnectionManager @Inject constructor(
             GlobalStreamState.snapshot.collect { snapshot ->
                 when (snapshot.state) {
                     GlobalStreamState.State.FAILED,
-                    GlobalStreamState.State.STOPPED -> {
+                    GlobalStreamState.State.IDLE -> {
                         // Only auto-reconnect from FAILED — STOPPED is user-initiated.
                         if (snapshot.state == GlobalStreamState.State.FAILED) {
                             scheduleReconnect(externalScope, reconnectAction)

@@ -33,6 +33,7 @@ class StreamSessionController @Inject constructor(
     private var blackoutManager: com.streamlink.app.core.overlay.PrivacyBlackoutOverlayManager? = null
     private val settingsStore = com.streamlink.shared.util.SystemSettingsStore.get(context)
     private var batteryReceiver: android.content.BroadcastReceiver? = null
+    private val isSessionActive = java.util.concurrent.atomic.AtomicBoolean(false)
 
     fun initialize() {
         // Auto-reconnect triggered by ConnectionManager
@@ -89,6 +90,10 @@ class StreamSessionController @Inject constructor(
         isDrm: Boolean,
         networkQuality: Float
     ) {
+        if (!isSessionActive.compareAndSet(false, true)) {
+            Log.w(tag, "startStream() ignored — already active or starting")
+            return
+        }
         Log.i(tag, "Starting stream ✨ url=$url drm=$isDrm nq=$networkQuality")
         
         if (settingsStore.isPrivacyBlackoutEnabled.value) {
@@ -134,18 +139,22 @@ class StreamSessionController @Inject constructor(
                     putExtra(CaptureService.EXTRA_DATA, projectionData)
                 }
                 context.startForegroundService(serviceIntent)
-                GlobalStreamState.transition(GlobalStreamState.State.STREAM_STARTING)
+                GlobalStreamState.transition(GlobalStreamState.State.AUTHENTICATING)
                 GlobalStreamState.transition(GlobalStreamState.State.STREAMING)
             }
         } else {
             scope.launch {
-                GlobalStreamState.transition(GlobalStreamState.State.STREAM_STARTING)
+                GlobalStreamState.transition(GlobalStreamState.State.AUTHENTICATING)
                 GlobalStreamState.transition(GlobalStreamState.State.STREAMING)
             }
         }
     }
 
     fun stopStream() {
+        if (!isSessionActive.compareAndSet(true, false)) {
+            Log.w(tag, "stopStream() ignored — already stopped")
+            return
+        }
         Log.i(tag, "Stopping stream")
         stopBatteryListener()
         blackoutManager?.disable()
@@ -173,7 +182,7 @@ class StreamSessionController @Inject constructor(
         touchPipeline.stop()
         
         scope.launch {
-            GlobalStreamState.transition(GlobalStreamState.State.STOPPED)
+            GlobalStreamState.transition(GlobalStreamState.State.IDLE)
         }
     }
 }

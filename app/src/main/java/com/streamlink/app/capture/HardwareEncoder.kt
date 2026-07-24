@@ -11,11 +11,15 @@ import android.os.Process
 import android.util.Log
 import android.view.Surface
 import com.streamlink.shared.AdaptiveBufferChannel
+import com.streamlink.shared.EncodingProfile
 import com.streamlink.shared.FramePacket
 import com.streamlink.shared.StreamObservability
 import com.streamlink.shared.StreamProtocol
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -74,6 +78,8 @@ class HardwareEncoder(
 
     val encoderSurface: Surface? get() = inputSurface
     val codec: MediaCodec? get() = mediaCodec
+    val currentWidth: Int get() = width
+    val currentHeight: Int get() = height
 
     var telemetryRingBuffer: com.streamlink.app.core.telemetry.TelemetryRingBuffer? = null
 
@@ -142,50 +148,132 @@ class HardwareEncoder(
         }
     }
 
+    // ─── Unified Entry Point (C-5 Fix) ──────────────────────────────────────────
+    //
+    // applyProfile() هي نقطة الكتابة الوحيدة المعتمدة على HardwareEncoder.
+    // كل المكونات الخارجية (UnifiedQualityAuthority, SettingsPrefs, CMD_SET_BITRATE)
+    // يجب أن تمر عبرها فقط — setBitrate/reconfigure للاستخدام الداخلي فقط.
+    //
+    // يستخدم Mutex من coroutines لضمان:
+    //  - عدم حجب threads (مناسب لـ Coroutine Scheduler)
+    //  - Cooldown مشترك بين Resolution Change و Bitrate-Only Change
+    //  - Log موحد لكل تغيير
+
+    private val applyProfileMutex = Mutex()
+    private var lastAppliedMs = 0L
+    private val MIN_PROFILE_INTERVAL_MS = 500L
+    private var lastAppliedProfile: EncodingProfile? = null
+
+    /**
+     * نقطة الدخول الموحدة لتطبيق أي تغيير على الإنكودر.
+     * يُستدعى دائمًا من UnifiedQualityAuthority فقط.
+     *
+     * @param profile  الحالة الكاملة المطلوبة للإنكودر
+     * @param reason   سبب التغيير للـ log (اختياري)
+     * @param force    تجاوز الـ Cooldown (للتدخل اليدوي من المستخدم)
+     */
+    fun applyProfile(
+        profile: EncodingProfile,
+        reason: String = "auto",
+        force: Boolean = false
+    ) {
+        if (released.get()) return
+        // runBlocking آمن هنا لأن applyProfile يُستدعى من encoder thread أو dispatchers.IO
+        runBlocking {
+            applyProfileMutex.withLock {
+                val now = System.currentTimeMillis()
+                val last = lastAppliedProfile
+
+                val resolutionChanged = last == null ||
+                    last.width != profile.width ||
+                    last.height != profile.height ||
+                    last.fps != profile.fps
+
+                val bitrateChanged = last == null || last.bitrateKbps != profile.bitrateKbps
+
+                if (!resolutionChanged && !bitrateChanged) return@withLock
+
+                // Cooldown للـ resolution rebuild (expensive) — bypass للتدخل اليدوي
+                if (resolutionChanged && !force && (now - lastAppliedMs) < MIN_PROFILE_INTERVAL_MS) {
+                    Log.d(tag, "applyProfile: cooldown (${now - lastAppliedMs}ms), skipping resolution change")
+                    // لو بس البِتريت اتغير خلال الـ cooldown، طبّقه بدون rebuild
+                    if (bitrateChanged) {
+                        Log.d(tag, "applyProfile [$reason]: bitrate-only → ${profile.bitrateKbps}kbps")
+                        setBitrateInternal(profile.bitrateKbps)
+                        lastAppliedProfile = last?.copy(bitrateKbps = profile.bitrateKbps)
+                    }
+                    return@withLock
+                }
+
+                Log.i(tag, "applyProfile [$reason]: ${last?.label ?: "init"} → ${profile.label} " +
+                    "(${profile.width}x${profile.height}@${profile.fps}fps, ${profile.bitrateKbps}kbps)")
+
+                if (resolutionChanged) {
+                    lastAppliedMs = now
+                    rebuildCodecInternal(profile)
+                } else if (bitrateChanged) {
+                    setBitrateInternal(profile.bitrateKbps)
+                }
+
+                lastAppliedProfile = profile
+            }
+        }
+    }
+
     private var lastReconfigureMs = 0L
 
+    /**
+     * داخلي فقط — يُستدعى من applyProfile() أو reconfigure().
+     * يوقف الـ Codec الحالي ويُعيد بناءه بالكامل بالـ profile الجديد.
+     */
+    private fun rebuildCodecInternal(profile: EncodingProfile) {
+        Log.i(tag, "rebuildCodec: ${profile.label} (${profile.width}x${profile.height}@${profile.fps}fps ${profile.bitrateKbps}kbps)")
+        try { mediaCodec?.stop()    } catch (e: Exception) { Log.w(tag, "stop error: ${e.message}") }
+        try { mediaCodec?.release() } catch (e: Exception) { Log.w(tag, "release error: ${e.message}") }
+        mediaCodec = null
+        try { inputSurface?.release() } catch (e: Exception) { Log.w(tag, "surface release error: ${e.message}") }
+        inputSurface = null
+
+        width             = profile.width
+        height            = profile.height
+        targetFps         = profile.fps
+        currentBitrateKbps = profile.bitrateKbps
+        frameIntervalNs   = 1_000_000_000L / targetFps
+
+        if (initialize()) {
+            inputSurface?.let { onSurfaceChanged?.invoke(it) }
+        }
+    }
+
+    /** داخلي فقط — يُستدعى من applyProfile() أو setBitrate() */
+    private fun setBitrateInternal(kbps: Int) {
+        val clamped = kbps.coerceIn(200, 4000)
+        if (clamped == currentBitrateKbps) return
+        currentBitrateKbps = clamped
+        try {
+            bitrateBundle.putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, clamped * 1000)
+            mediaCodec?.setParameters(bitrateBundle)
+            Log.d(tag, "setBitrateInternal → ${clamped}kbps")
+        } catch (e: Exception) {
+            Log.w(tag, "setBitrateInternal failed: ${e.message}")
+        }
+    }
+
+    // ─── Legacy API (للتوافق مؤقتًا — سيُزال بعد اكتمال Phase 7) ──────────────
+    // تفضيل: استخدم applyProfile() مباشرة من UnifiedQualityAuthority
+
+    @Deprecated("Use UnifiedQualityAuthority.applyProfile() instead for atomic resolution/bitrate changes.")
     fun reconfigure(profile: com.streamlink.shared.ResolutionProfile) {
         if (width == profile.width && height == profile.height && targetFps == profile.fps) return
-        
-        // ✅ FIX: Hysteresis — prevent rapid reconfigurations that cause video stuttering
         val now = System.currentTimeMillis()
         if (now - lastReconfigureMs < 2000L) {
             Log.d(tag, "Ignoring rapid reconfigure request (${now - lastReconfigureMs}ms ago)")
             return
         }
         lastReconfigureMs = now
-
-        Log.i(tag, "Reconfiguring encoder to ${profile.label} (${profile.width}x${profile.height}@${profile.fps})")
-        
-        // Stop current codec
-        try {
-            mediaCodec?.stop()
-        } catch (e: Exception) {
-            Log.w(tag, "Error stopping codec during reconfigure: ${e.message}")
-        }
-        try {
-            mediaCodec?.release()
-        } catch (e: Exception) {
-            Log.w(tag, "Error releasing codec during reconfigure: ${e.message}")
-        }
-        mediaCodec = null
-        try {
-            inputSurface?.release()
-        } catch (e: Exception) {
-            Log.w(tag, "Error releasing input surface during reconfigure: ${e.message}")
-        }
-        inputSurface = null
-        
-        width = profile.width
-        height = profile.height
-        targetFps = profile.fps
-        currentBitrateKbps = profile.bitrateKbps
-        frameIntervalNs = 1_000_000_000L / targetFps
-        
-        if (initialize()) {
-            inputSurface?.let { onSurfaceChanged?.invoke(it) }
-        }
+        rebuildCodecInternal(EncodingProfile.from(profile))
     }
+
 
     private val encoderCallback = object : MediaCodec.Callback() {
         override fun onOutputBufferAvailable(
@@ -287,6 +375,7 @@ class HardwareEncoder(
         putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
     }
 
+    @Deprecated("Use UnifiedQualityAuthority.adjustBitrateOnly() instead for synchronized state.")
     fun setBitrate(kbps: Int) {
         if (released.get()) return
         val clamped = kbps.coerceIn(200, 4000)

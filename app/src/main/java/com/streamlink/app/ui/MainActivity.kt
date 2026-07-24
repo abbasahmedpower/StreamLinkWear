@@ -322,7 +322,7 @@ fun MainScreenLayout(
                         val state by GlobalStreamState.snapshot.collectAsStateWithLifecycle()
                         val isStreaming  = state.state == GlobalStreamState.State.STREAMING
                         val isConnecting = state.state == GlobalStreamState.State.CONNECTING ||
-                                state.state == GlobalStreamState.State.STREAM_STARTING
+                                state.state == GlobalStreamState.State.AUTHENTICATING
 
                         if (isStreaming || isConnecting) {
                             Button(
@@ -383,7 +383,7 @@ fun StreamLinkPhoneScreen(
     val state by GlobalStreamState.snapshot.collectAsStateWithLifecycle()
     val isStreaming  = state.state == GlobalStreamState.State.STREAMING
     val isConnecting = state.state == GlobalStreamState.State.CONNECTING ||
-            state.state == GlobalStreamState.State.STREAM_STARTING
+            state.state == GlobalStreamState.State.AUTHENTICATING
 
     var aiEnabled by remember { mutableStateOf(true) }
 

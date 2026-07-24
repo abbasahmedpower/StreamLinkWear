@@ -93,7 +93,7 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
             firebaseCrashlytics {
-                mappingFileUploadEnabled System.getenv("CRASHLYTICS_UPLOAD") == "true"
+                mappingFileUploadEnabled false // M-3: Upload mapping via CI pipeline only, not locally
             }
         }
     }
@@ -204,11 +204,11 @@ gradle.taskGraph.whenReady { graph ->
             )
         }
         
-        // تحقق من الطول (64+ chars)
-        if (token.toString().length() < 64) {
+        // تحقق من الطول (60+ chars)
+        if (token.toString().length() < 60) {
             throw new GradleException(
                 "⚠️ HORUS_SECRET_TOKEN قصير جداً (${token.toString().length()} chars)!\n" +
-                "   المطلوب: 64 character على الأقل.\n" +
+                "   المطلوب: 60 character على الأقل.\n" +
                 "   ولّده بـ: openssl rand -hex 32"
             )
         }

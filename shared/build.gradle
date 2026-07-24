@@ -18,9 +18,18 @@ android {
             secrets.load(new FileInputStream(secretsFile))
         }
         
-        buildConfigField "String", "TURN_USERNAME", "\"${secrets.getProperty('TURN_USERNAME', 'streamlink')}\""
-        buildConfigField "String", "TURN_PASSWORD", "\"${secrets.getProperty('TURN_PASSWORD', 'supersecret')}\""
-        
+        def turnUsername = secrets.getProperty('TURN_USERNAME')
+        if (turnUsername == null || turnUsername.isEmpty()) {
+            throw new GradleException("❌ TURN_USERNAME مش موجود في secrets.properties!")
+        }
+        buildConfigField "String", "TURN_USERNAME", "\"${turnUsername}\""
+
+        def turnPassword = secrets.getProperty('TURN_PASSWORD')
+        if (turnPassword == null || turnPassword.isEmpty()) {
+            throw new GradleException("❌ TURN_PASSWORD مش موجود في secrets.properties!")
+        }
+        buildConfigField "String", "TURN_PASSWORD", "\"${turnPassword}\""
+
         def horusToken = secrets.getProperty('HORUS_SECRET_TOKEN')
         if (horusToken == null || horusToken.isEmpty()) {
             throw new GradleException(

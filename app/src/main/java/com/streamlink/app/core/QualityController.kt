@@ -35,7 +35,8 @@ class QualityController @Inject constructor(
     private val networkController: NetworkController,
     private val latencyTracker: com.streamlink.shared.LatencyTracker,
     val metricsCollector: MetricsCollector,
-    val fuzzyDecisionEngine: FuzzyDecisionEngine
+    val fuzzyDecisionEngine: FuzzyDecisionEngine,
+    private val unifiedQualityAuthority: com.streamlink.app.core.decision.UnifiedQualityAuthority
 ) {
     private val tag = "QualityController"
 
@@ -44,7 +45,7 @@ class QualityController @Inject constructor(
     private var currentFps = StreamProtocol.WEAR_FPS_FULL
     private var currentBitrate = StreamProtocol.WEAR_BPS_FULL
 
-    private val hardwareActuator = HardwareActuator(hardwareEncoder)
+    private val hardwareActuator = HardwareActuator(hardwareEncoder, unifiedQualityAuthority)
 
     @Volatile var isFuzzyOptimizationEnabled = true
 
@@ -52,16 +53,16 @@ class QualityController @Inject constructor(
         scope = scope,
         onBitrateChange = { kbps ->
             currentBitrate = kbps
-            hardwareEncoder.setBitrate(kbps)
+            unifiedQualityAuthority.adjustBitrateOnly(kbps, "IntelEngine: Bitrate Change")
         },
         onFpsChange = { fps ->
             currentFps = fps
-            hardwareEncoder.reconfigure(ResolutionProfile("CUSTOM", currentWidth, currentHeight, currentFps, currentBitrate))
+            unifiedQualityAuthority.adjustResolutionOnly(currentWidth, currentHeight, fps, "IntelEngine: FPS Change")
         },
         onResolutionChange = { scale ->
             currentWidth = (StreamProtocol.WEAR_W_FULL * scale).toInt()
             currentHeight = (StreamProtocol.WEAR_H_FULL * scale).toInt()
-            hardwareEncoder.reconfigure(ResolutionProfile("CUSTOM", currentWidth, currentHeight, currentFps, currentBitrate))
+            unifiedQualityAuthority.adjustResolutionOnly(currentWidth, currentHeight, currentFps, "IntelEngine: Resolution Change")
         },
         onIFrameIntervalChange = { _ ->
             hardwareEncoder.forceKeyframe()
@@ -98,9 +99,14 @@ class QualityController @Inject constructor(
                 if (currentBitrate != newBitrate || currentFps != newFps) {
                     currentBitrate = newBitrate
                     currentFps = newFps
-                    hardwareEncoder.reconfigure(
-                        ResolutionProfile(quality.name, currentWidth, currentHeight, currentFps, currentBitrate)
+                    val prof = com.streamlink.shared.EncodingProfile(
+                        label = quality.name,
+                        width = currentWidth,
+                        height = currentHeight,
+                        fps = currentFps,
+                        bitrateKbps = currentBitrate
                     )
+                    unifiedQualityAuthority.applyManualOverride(prof)
                     Log.i(tag, "Quality changed to $quality → $newBitrate kbps @ $newFps fps")
                 }
             }
@@ -126,7 +132,7 @@ class QualityController @Inject constructor(
         scope.launch {
             GlobalStreamState.snapshot.collect { snapshot ->
                 if (snapshot.state == GlobalStreamState.State.STREAMING ||
-                    snapshot.state == GlobalStreamState.State.DEGRADED) {
+                    snapshot.state == GlobalStreamState.State.STREAMING) {
                     val report = latencyTracker.report()
                     intelEngine.currentRttMs = report.avgE2EMs
                     intelEngine.jitterMs = report.jitterMs

@@ -204,7 +204,7 @@ class PhoneStreamingForegroundService : Service() {
                             "جاري البث · ${snapshot.bitrateKbps} kbps · ${snapshot.latencyMs} ms"
                         )
                     }
-                    GlobalStreamState.State.STOPPED,
+                    GlobalStreamState.State.IDLE,
                     GlobalStreamState.State.FAILED -> {
                         Log.i(tag, "Stream ended (${snapshot.state}) — auto-stopping foreground service")
                         shutdown()

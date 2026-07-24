@@ -38,7 +38,7 @@ class HardwareWatchdog(
         watchdogJob = scope.launch {
             while (isActive) {
                 val state = GlobalStreamState.current
-                if (state != GlobalStreamState.State.STREAMING && state != GlobalStreamState.State.RECOVERING && state != GlobalStreamState.State.REPAIRING) {
+                if (state != GlobalStreamState.State.STREAMING && state != GlobalStreamState.State.RECONNECTING && state != GlobalStreamState.State.RECONNECTING) {
                     delay(1000)
                     continue
                 }
@@ -49,13 +49,13 @@ class HardwareWatchdog(
                 if (!isRecovering && elapsed > TIMEOUT_MS) {
                     Log.e(tag, "CRITICAL: Watchdog detected Hardware/Network hang! Initiating Recovery...")
                     isRecovering = true
-                    GlobalStreamState.transition(GlobalStreamState.State.RECOVERING)
+                    GlobalStreamState.transition(GlobalStreamState.State.RECONNECTING)
                     
                     // Trigger actual hardware encoder flush/restart here
                     hardwareEncoder.flushAndRestart()
                     com.streamlink.app.core.telemetry.ProductionAnalytics.logCodecRecovery()
                     
-                    GlobalStreamState.transition(GlobalStreamState.State.REPAIRING)
+                    GlobalStreamState.transition(GlobalStreamState.State.RECONNECTING)
                     lastHeartbeatMs = System.currentTimeMillis() // Reset for recovery grace period
                 } else if (isRecovering && elapsed > RECOVERY_TIMEOUT_MS) {
                     Log.e(tag, "FATAL: Watchdog Recovery failed. Terminating Stream.")

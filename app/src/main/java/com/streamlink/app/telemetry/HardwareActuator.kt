@@ -11,6 +11,7 @@ import java.util.concurrent.Executors
  */
 class HardwareActuator(
     private val hardwareEncoder: HardwareEncoder?,
+    private val unifiedQualityAuthority: com.streamlink.app.core.decision.UnifiedQualityAuthority?,
     // Use SingleThreadExecutor to ensure atomic applications
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
 ) {
@@ -22,11 +23,14 @@ class HardwareActuator(
             try {
                 Log.d(TAG, "Actuating: Bitrate=${action.targetBitrateKbps}Kbps, Profile=${action.profile.width}x${action.profile.height}@${action.targetFps}, Reason=${action.reason}")
 
-                // 1. Adjust hardware encoder bitrate dynamically (bps scaling)
-                hardwareEncoder.setBitrate(action.targetBitrateKbps)
-
-                // 2. Adjust resolution / FPS if severity dictates a step down
-                hardwareEncoder.reconfigure(action.profile)
+                // 1 & 2. Adjust resolution / FPS / Bitrate atomically via UnifiedQualityAuthority
+                unifiedQualityAuthority?.adjustQuality(
+                    width = action.profile.width,
+                    height = action.profile.height,
+                    fps = action.targetFps,
+                    bitrateKbps = action.targetBitrateKbps,
+                    reason = action.reason
+                )
 
                 // 3. Immediately trigger a keyframe (I-Frame) if the TCP queue dropped frames
                 if (action.requestKeyframe) {

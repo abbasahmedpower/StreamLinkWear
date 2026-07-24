@@ -80,7 +80,7 @@ class SessionViewModel @Inject constructor(
                         mode          = snap.mode,
                         errorMessage  = snap.errorMessage,
                         isConnecting  = snap.state == GlobalStreamState.State.CONNECTING ||
-                                        snap.state == GlobalStreamState.State.STREAM_STARTING,
+                                        snap.state == GlobalStreamState.State.AUTHENTICATING,
                         isStreaming   = snap.state == GlobalStreamState.State.STREAMING
                     )
                 }
@@ -112,7 +112,7 @@ class SessionViewModel @Inject constructor(
             }
             is UserAction.StopStream -> viewModelScope.launch {
                 orchestrator.stopStream(context)
-                GlobalStreamState.transition(GlobalStreamState.State.STOPPED)
+                GlobalStreamState.transition(GlobalStreamState.State.IDLE)
             }
             is UserAction.ForceKeyframe -> viewModelScope.launch {
                 orchestrator.requestKeyframe()

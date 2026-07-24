@@ -100,6 +100,21 @@ class CaptureService : Service() {
             autoRestartEncoder()
         }
 
+        hardwareEncoder.onSurfaceChanged = { newSurface ->
+            try {
+                virtualDisplay?.setSurface(newSurface)
+                virtualDisplay?.resize(
+                    hardwareEncoder.currentWidth, 
+                    hardwareEncoder.currentHeight, 
+                    resources.displayMetrics.densityDpi
+                )
+                Log.i(tag, "VirtualDisplay surface hot-swapped to new Encoder surface")
+            } catch (e: Exception) {
+                Log.e(tag, "Failed to hot-swap VirtualDisplay surface: ${e.message}")
+                autoRestartEncoder()
+            }
+        }
+
         // Ensure encoder is initialized
         if (!hardwareEncoder.initialize()) {
             Log.e(tag, "Failed to initialize HardwareEncoder")

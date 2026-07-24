@@ -7,8 +7,7 @@ import kotlinx.coroutines.sync.withLock
 
 object GlobalStreamState {
     enum class State {
-        IDLE, PRELOADING, CONNECTING, STREAM_STARTING,
-        STREAMING, DEGRADED, RECOVERING, REPAIRING, STOPPED, FAILED
+        IDLE, CONNECTING, AUTHENTICATING, STREAMING, RECONNECTING, FAILED
     }
 
 
@@ -21,6 +20,7 @@ object GlobalStreamState {
         val thermalLevel: Int = 0,
         val mode: String = StreamProtocol.MODE_MIRROR,
         val errorMessage: String = "",
+        val isFatal: Boolean = false,
         val predictedAction: StreamAction = StreamAction.IDLE
     )
 
@@ -42,7 +42,13 @@ object GlobalStreamState {
     ) = mutex.withLock {
         val current = _snapshot.value
         if (!isValidTransition(current.state, newState)) return@withLock
-        _snapshot.value = current.update().copy(state = newState)
+        
+        // Atomic teardown hook for terminal states
+        if (newState == State.IDLE || newState == State.FAILED) {
+            _snapshot.value = Snapshot(state = newState, isFatal = current.isFatal)
+        } else {
+            _snapshot.value = current.update().copy(state = newState)
+        }
         fsm.send(stateToFsmEvent(newState) ?: return@withLock)
     }
 
@@ -59,28 +65,22 @@ object GlobalStreamState {
 
     private fun stateToFsmEvent(state: State): StreamStateMachine.Event? = when (state) {
         State.CONNECTING     -> StreamStateMachine.Event.WatchFound
-        State.STREAM_STARTING -> StreamStateMachine.Event.StartCapture
+        State.AUTHENTICATING -> StreamStateMachine.Event.StartCapture
         State.STREAMING      -> StreamStateMachine.Event.FirstFrameSent
-        State.DEGRADED       -> StreamStateMachine.Event.NetworkDegraded
-        State.RECOVERING     -> StreamStateMachine.Event.RecoveryStarted
-        State.STOPPED        -> StreamStateMachine.Event.Stop
+        State.RECONNECTING   -> StreamStateMachine.Event.RecoveryStarted
         State.FAILED         -> StreamStateMachine.Event.Error
         State.IDLE           -> StreamStateMachine.Event.Reset
         else                 -> null
     }
 
     private fun isValidTransition(from: State, to: State): Boolean {
-        if (to == State.IDLE || to == State.STOPPED || to == State.FAILED) return true
+        if (to == State.IDLE || to == State.FAILED) return true
         return when (from) {
-            State.IDLE -> to in setOf(State.PRELOADING, State.CONNECTING)
-            State.PRELOADING -> to in setOf(State.CONNECTING, State.IDLE)
-            State.CONNECTING -> to in setOf(State.STREAM_STARTING, State.FAILED, State.IDLE)
-            State.STREAM_STARTING -> to in setOf(State.STREAMING, State.FAILED)
-            State.STREAMING -> to in setOf(State.DEGRADED, State.RECOVERING, State.STOPPED)
-            State.DEGRADED -> to in setOf(State.STREAMING, State.RECOVERING, State.STOPPED)
-            State.RECOVERING -> to in setOf(State.STREAMING, State.REPAIRING, State.FAILED, State.STOPPED)
-            State.REPAIRING -> to in setOf(State.STREAMING, State.FAILED, State.STOPPED)
-            State.STOPPED -> to == State.IDLE
+            State.IDLE -> to == State.CONNECTING
+            State.CONNECTING -> to in setOf(State.AUTHENTICATING, State.FAILED, State.IDLE)
+            State.AUTHENTICATING -> to in setOf(State.STREAMING, State.FAILED)
+            State.STREAMING -> to in setOf(State.RECONNECTING, State.IDLE)
+            State.RECONNECTING -> to in setOf(State.STREAMING, State.FAILED, State.IDLE)
             State.FAILED -> to == State.IDLE
         }
     }

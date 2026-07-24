@@ -194,10 +194,10 @@ class WearMainActivity : ComponentActivity() {
                                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                                 vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 100, 50, 100), -1))
                             }
-                            GlobalStreamState.State.STOPPED -> {
+                            GlobalStreamState.State.IDLE -> {
                                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                             }
-                            GlobalStreamState.State.DEGRADED -> {
+                            GlobalStreamState.State.STREAMING -> {
                                 vibrator?.vibrate(VibrationEffect.createOneShot(20, VibrationEffect.DEFAULT_AMPLITUDE))
                             }
                             else -> {}

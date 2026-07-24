@@ -133,7 +133,7 @@ class ContextIntelligenceEngine(
         when (action) {
             StreamAction.PRELOAD -> {
                 if (current.state == GlobalStreamState.State.IDLE) {
-                    GlobalStreamState.transition(GlobalStreamState.State.PRELOADING) {
+                    GlobalStreamState.transition(GlobalStreamState.State.IDLE) {
                         copy(
                             bitrateKbps = StreamProtocol.WEAR_BPS_ECO,
                             predictedAction = action
@@ -144,7 +144,7 @@ class ContextIntelligenceEngine(
 
             StreamAction.REDUCE_QUALITY, StreamAction.DROP_FPS -> {
                 if (current.state == GlobalStreamState.State.STREAMING) {
-                    GlobalStreamState.transition(GlobalStreamState.State.DEGRADED) {
+                    GlobalStreamState.transition(GlobalStreamState.State.STREAMING) {
                         copy(
                             fps = decisionEngine.performanceCap(action),
                             bitrateKbps = (bitrateKbps * 0.75)
@@ -158,7 +158,7 @@ class ContextIntelligenceEngine(
             }
 
             StreamAction.INCREASE_QUALITY -> {
-                if (current.state == GlobalStreamState.State.DEGRADED &&
+                if (current.state == GlobalStreamState.State.STREAMING &&
                     !trendAnalyzer.isRisingRapidly()
                 ) {
                     GlobalStreamState.transition(GlobalStreamState.State.STREAMING) {
@@ -173,7 +173,7 @@ class ContextIntelligenceEngine(
 
             StreamAction.RECONNECT -> {
                 if (current.state == GlobalStreamState.State.STREAMING) {
-                    GlobalStreamState.transition(GlobalStreamState.State.RECOVERING) {
+                    GlobalStreamState.transition(GlobalStreamState.State.RECONNECTING) {
                         copy(predictedAction = action)
                     }
                 }
@@ -182,10 +182,10 @@ class ContextIntelligenceEngine(
             StreamAction.PAUSE -> {
                 if (current.state in setOf(
                         GlobalStreamState.State.STREAMING,
-                        GlobalStreamState.State.DEGRADED
+                        GlobalStreamState.State.STREAMING
                     )
                 ) {
-                    GlobalStreamState.transition(GlobalStreamState.State.DEGRADED) {
+                    GlobalStreamState.transition(GlobalStreamState.State.STREAMING) {
                         copy(
                             fps = StreamProtocol.WEAR_FPS_ECO,
                             bitrateKbps = StreamProtocol.WEAR_BPS_ECO,

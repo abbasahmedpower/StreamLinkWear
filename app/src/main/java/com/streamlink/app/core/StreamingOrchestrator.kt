@@ -58,7 +58,8 @@ class StreamingOrchestrator @Inject constructor(
     private val qualityController: QualityController,
     private val touchPipeline: TouchPipeline,
     private val telemetryCollector: TelemetryCollector,
-    private val sessionController: StreamSessionController
+    private val sessionController: StreamSessionController,
+    private val unifiedQualityAuthority: com.streamlink.app.core.decision.UnifiedQualityAuthority
 ) {
     private val tag = "StreamingOrchestrator"
     private val settingsStore = com.streamlink.shared.util.SystemSettingsStore.get(context)
@@ -67,13 +68,6 @@ class StreamingOrchestrator @Inject constructor(
     // --- Telemetry & Adaptive Engines ---
     private val telemetryRingBuffer = com.streamlink.app.core.telemetry.TelemetryRingBuffer()
     private val telemetryAggregator = com.streamlink.app.core.telemetry.TelemetryAggregator(telemetryRingBuffer)
-    private val decisionEngine = com.streamlink.app.core.decision.DecisionEngine()
-    private val adaptiveResolutionController = com.streamlink.shared.AdaptiveResolutionController() // ✅ §3.1: Wiring
-    private val adaptiveEngine = com.streamlink.app.core.adaptive.AdaptiveQualityEngine(
-        hardwareEncoder = hardwareEncoder,
-        baseBitrateBps = StreamProtocol.WEAR_BPS_FULL * 1000,
-        decisionFlow = decisionEngine.decisionFlow
-    )
     
     // Stage 5: Self-Healing
     private val recoveryManager = com.streamlink.app.core.StreamRecoveryManager(scope, this)
@@ -137,33 +131,38 @@ class StreamingOrchestrator @Inject constructor(
 
         // Start Telemetry & Adaptive components
         telemetryAggregator.start(scope)
-        adaptiveEngine.startListening(scope)
         
         // Start Self-Healing Worker
         recoveryManager.startListening()
 
-        // Wire Aggregator to Decision Engine
+        // Wire Aggregator to UnifiedQualityAuthority (Phase 4)
+        val cpuTracker = com.streamlink.shared.telemetry.ProcessCpuTracker()
+        var snapshotCounter = 0L
+        
         scope.launch {
             telemetryAggregator.aggregatedStats.collect { stats ->
-                val rttMs = latencyTracker.report().avgNetworkMs.toInt()
-                val thermalCelsius = thermalMonitor.thermalLevel.value.toFloat() * 10f // mock mapping
+                val latencyReport = latencyTracker.report()
+                val rttMs = latencyReport.avgNetworkMs.toInt()
+                val thermalLvl = thermalMonitor.thermalLevel.value
+                val packetLossPercent = latencyReport.lateFramePct
+                val jitterMs = latencyReport.jitterMs.toInt()
+                val currentBitrateKbps = com.streamlink.shared.GlobalStreamState.snapshot.value.bitrateKbps
                 
-                // ✅ §3.2: Hook into real network layer packet loss (late frames in latencyTracker)
-                val packetLossPercent = latencyTracker.report().lateFramePct
+                snapshotCounter++
                 
                 val snapshot = com.streamlink.app.core.decision.TelemetrySnapshot(
+                    snapshotId = snapshotCounter,
                     rttMs = if (rttMs > 0) rttMs else 20, // default good
-                    thermalCelsius = if (thermalCelsius > 0) thermalCelsius else 35f, // default normal
                     packetLossPercent = packetLossPercent,
-                    decoderDroppedFrames = stats.drops
+                    jitterMs = jitterMs,
+                    bitrateKbps = currentBitrateKbps,
+                    thermalLevel = thermalLvl,
+                    decoderDroppedFrames = stats.drops,
+                    cpuLoad = cpuTracker.sampleFraction()
                 )
-                decisionEngine.evaluate(snapshot)
-
-                // ✅ §3.1: Wire the previously unused AdaptiveResolutionController
-                val cpuLoad = 0.5f // We don't have real CPU load, mock for now
-                val profile = adaptiveResolutionController.determine(rttMs.toLong(), cpuLoad, thermalMonitor.thermalLevel.value)
-                hardwareEncoder.reconfigure(profile) // internally handles hysteresis and codec rebuild
                 
+                unifiedQualityAuthority.evaluate(snapshot)
+
                 // Enforce Memory Budgets during streaming
                 com.streamlink.app.core.telemetry.MemoryBudgetMonitor.checkBudgets()
             }
@@ -183,7 +182,7 @@ class StreamingOrchestrator @Inject constructor(
             when (msg.command) {
                 StreamProtocol.CMD_SET_BITRATE -> {
                     Log.i(tag, "AI Reverse Control: Bitrate → ${msg.value} kbps")
-                    hardwareEncoder.setBitrate(msg.value)
+                    unifiedQualityAuthority.adjustBitrateOnly(msg.value, "AI Reverse Control (Watch)")
                 }
                 StreamProtocol.CMD_SET_QUALITY_MODE -> {
                     val newMode = com.streamlink.shared.QualityMode.values().getOrNull(msg.value)
@@ -268,7 +267,7 @@ class StreamingOrchestrator @Inject constructor(
         qualityController.intelEngine.start()
         hardwareEncoder.resume()
         mirrorDataPlane.start(scope)
-        GlobalStreamState.transition(GlobalStreamState.State.STREAM_STARTING)
+        GlobalStreamState.transition(GlobalStreamState.State.AUTHENTICATING)
         GlobalStreamState.transition(GlobalStreamState.State.STREAMING)
     }
 

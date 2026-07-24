@@ -10,10 +10,11 @@ object HeuristicsEvaluator {
     private const val WEIGHT_BATTERY = 0.05f
 
     fun calculateHealthScore(snapshot: TelemetrySnapshot): Float {
-        val scoreRtt = normalizeRtt(snapshot.rttMs)
-        val scoreThermal = normalizeThermal(snapshot.thermalCelsius)
-        val scoreLoss = normalizePacketLoss(snapshot.packetLossPercent)
-        val scoreDrops = normalizeDrops(snapshot.decoderDroppedFrames)
+        val scoreRtt     = normalizeRtt(snapshot.rttMs)
+        // ✅ FIX C-5: استخدم thermalLevel (0-10) مباشرة بدل thermalCelsius الوهمي لتجنب Step-Function Bug
+        val scoreThermal = normalizeThermal(snapshot.thermalLevel)
+        val scoreLoss    = normalizePacketLoss(snapshot.packetLossPercent)
+        val scoreDrops   = normalizeDrops(snapshot.decoderDroppedFrames)
         val scoreBattery = normalizeBattery(snapshot.batteryPercent)
 
         return (scoreRtt * WEIGHT_RTT) +
@@ -30,10 +31,12 @@ object HeuristicsEvaluator {
     private inline fun normalizeRtt(rtt: Int): Float =
         (100f - ((rtt - 20) * (100f / 80f))).coerceIn(0f, 100f)
 
-    // Thermal: < 35C = 100, > 50C = 0
+    // ✅ FIX C-5: thermalLevel 0..10 → score 100..0 (gradient حقيقي متدرج)
+    // level=0(NONE)=100, level=5(MODERATE)=50, level=10(EMERGENCY)=0
+    // يحذف تحويل ×10f الوهمي الذي كان يلغي أي تدرج بين LIGHT وNONE
     @Suppress("NOTHING_TO_INLINE")
-    private inline fun normalizeThermal(temp: Float): Float =
-        (100f - ((temp - 35f) * (100f / 15f))).coerceIn(0f, 100f)
+    private inline fun normalizeThermal(level: Int): Float =
+        (100f - (level * 10f)).coerceIn(0f, 100f)
 
     // Packet Loss: 0% = 100, > 5% = 0
     @Suppress("NOTHING_TO_INLINE")

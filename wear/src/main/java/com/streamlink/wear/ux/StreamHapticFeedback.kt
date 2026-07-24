@@ -18,7 +18,7 @@ class StreamHapticFeedback(context: Context) {
                 val effect = VibrationEffect.createOneShot(40, VibrationEffect.DEFAULT_AMPLITUDE)
                 vibrator.vibrate(effect)
             }
-            GlobalStreamState.State.DEGRADED -> {
+            GlobalStreamState.State.STREAMING -> {
                 // Two successive pulses to gently alert the user of stream quality degradation
                 val timings = longArrayOf(0, 30, 100, 30)
                 val amplitudes = intArrayOf(0, 150, 0, 150)

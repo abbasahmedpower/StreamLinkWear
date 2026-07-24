@@ -57,7 +57,7 @@ fun WearStreamOverlay(
     Box(modifier = Modifier.fillMaxSize()) {
         // ─── Case 1: Connecting / Starting (Skeleton Loading) ───
         if (state.state == GlobalStreamState.State.CONNECTING ||
-            state.state == GlobalStreamState.State.STREAM_STARTING
+            state.state == GlobalStreamState.State.AUTHENTICATING
         ) {
             ShimmerSkeleton()
         }
@@ -68,13 +68,13 @@ fun WearStreamOverlay(
         }
 
         // ─── Case 3: Stopped State (Empty State) ───
-        if (state.state == GlobalStreamState.State.STOPPED) {
+        if (state.state == GlobalStreamState.State.IDLE) {
             EmptyScreen(onRetry = onRetry)
         }
 
         // ─── HUD Overlay (Status & Controls) ───
         AnimatedVisibility(
-            visible = visible && (state.state == GlobalStreamState.State.STREAMING || state.state == GlobalStreamState.State.DEGRADED),
+            visible = visible && (state.state == GlobalStreamState.State.STREAMING || state.state == GlobalStreamState.State.STREAMING),
             enter = fadeIn(tween(300)),
             exit = fadeOut(tween(500))
         ) {

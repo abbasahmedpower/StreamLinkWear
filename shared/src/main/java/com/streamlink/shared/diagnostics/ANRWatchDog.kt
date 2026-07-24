@@ -32,26 +32,43 @@ class ANRWatchDog(
 
     override fun run() {
         var lastTick = -1L
+        var anrDetectedCount = 0
 
         while (!isInterrupted) {
             val currentTick = tick
-            if (currentTick == lastTick && !reported) {
-                // ANR detected
-                reported = true
-                val mainThread = Looper.getMainLooper().thread
-                val stackTrace = mainThread.stackTrace
-                val e = ANRException("ANR Detected! Main thread is blocked for >${timeoutMs}ms", stackTrace)
-                
-                // We use Log.e directly to ensure it gets recorded.
-                // If CrashReporter is active, this will crash the app and save the trace.
-                Log.e("ANRWatchDog", "Application Not Responding (ANR)", e)
-                
-                // Throw it on the current thread to trigger the global CrashReporter
-                throw e
+            if (currentTick == lastTick) {
+                anrDetectedCount++
+                if (anrDetectedCount == 1) {
+                    // First detection: wait 2s to confirm it's not a temporary GC pause or Doze mode
+                    Log.w("ANRWatchDog", "Main thread blocked for >${timeoutMs}ms. Waiting 2s for confirmation...")
+                    try {
+                        sleep(2000L)
+                    } catch (e: InterruptedException) {
+                        return
+                    }
+                    continue
+                } else if (!reported) {
+                    // Second pass: confirmed ANR
+                    reported = true
+                    val mainThread = Looper.getMainLooper().thread
+                    val stackTrace = mainThread.stackTrace
+                    val e = ANRException("ANR Confirmed! Main thread is blocked for >${timeoutMs + 2000}ms", stackTrace)
+                    
+                    Log.e("ANRWatchDog", "Application Not Responding (ANR)", e)
+                    
+                    if (com.streamlink.shared.BuildConfig.DEBUG) {
+                        Log.e("ANRWatchDog", "Crashing app due to ANR in DEBUG build.")
+                        throw e
+                    } else {
+                        Log.w("ANRWatchDog", "RELEASE build: Skipping forced crash to preserve crash-free metrics.")
+                    }
+                }
+            } else {
+                anrDetectedCount = 0
+                reported = false
+                lastTick = currentTick
+                mainHandler.post(ticker)
             }
-
-            lastTick = currentTick
-            mainHandler.post(ticker)
 
             try {
                 sleep(timeoutMs)

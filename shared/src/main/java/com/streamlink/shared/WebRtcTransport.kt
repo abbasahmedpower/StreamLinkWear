@@ -11,6 +11,7 @@ import org.json.JSONObject
 import org.webrtc.*
 import java.nio.ByteBuffer
 import java.util.concurrent.locks.LockSupport
+import com.streamlink.shared.util.LockFreeMpmcQueue
 import com.streamlink.shared.util.LockFreeSpscQueue
 
 class WebRtcTransport(
@@ -29,8 +30,8 @@ class WebRtcTransport(
         var wire: ByteArray? = null
         var size: Int = 0
     }
-    private val sendQueue = LockFreeSpscQueue<SendTask>(256)
-    private val freeTasks = LockFreeSpscQueue<SendTask>(256).apply {
+    private val sendQueue = LockFreeMpmcQueue<SendTask>(256)
+    private val freeTasks = LockFreeMpmcQueue<SendTask>(256).apply {
         repeat(256) { offer(SendTask()) }
     }
     

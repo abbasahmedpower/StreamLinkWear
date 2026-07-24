@@ -83,59 +83,40 @@ class StreamStateMachine {
 
         GlobalStreamState.State.IDLE -> when (event) {
             is Event.WatchFound    -> GlobalStreamState.State.CONNECTING
-            is Event.Reset         -> GlobalStreamState.State.IDLE
             else                   -> null
         }
 
         GlobalStreamState.State.CONNECTING -> when (event) {
-            is Event.StartCapture  -> GlobalStreamState.State.STREAM_STARTING
+            is Event.StartCapture  -> GlobalStreamState.State.AUTHENTICATING
             is Event.Error         -> GlobalStreamState.State.FAILED
-            is Event.Stop          -> GlobalStreamState.State.STOPPED
+            is Event.Stop          -> GlobalStreamState.State.IDLE
             else                   -> null
         }
 
-        GlobalStreamState.State.STREAM_STARTING -> when (event) {
+        GlobalStreamState.State.AUTHENTICATING -> when (event) {
             is Event.FirstFrameSent   -> GlobalStreamState.State.STREAMING
-            is Event.ThermalWarning   -> GlobalStreamState.State.DEGRADED   // ✅ Fixed
             is Event.Error            -> GlobalStreamState.State.FAILED
-            is Event.Stop             -> GlobalStreamState.State.STOPPED
+            is Event.Stop             -> GlobalStreamState.State.IDLE
             else                      -> null
         }
 
         GlobalStreamState.State.STREAMING -> when (event) {
-            is Event.NetworkDegraded  -> GlobalStreamState.State.DEGRADED
-            is Event.RecoveryStarted  -> GlobalStreamState.State.RECOVERING
-            is Event.ThermalWarning   -> GlobalStreamState.State.DEGRADED
-            is Event.StartCapture     -> GlobalStreamState.State.STREAM_STARTING  // ✅ Codec reset
-            is Event.Stop             -> GlobalStreamState.State.STOPPED
-            is Event.Error            -> GlobalStreamState.State.RECOVERING
+            is Event.RecoveryStarted  -> GlobalStreamState.State.RECONNECTING
+            is Event.StartCapture     -> GlobalStreamState.State.AUTHENTICATING
+            is Event.Stop             -> GlobalStreamState.State.IDLE
+            is Event.Error            -> GlobalStreamState.State.RECONNECTING
             else                      -> null
         }
 
-        GlobalStreamState.State.DEGRADED -> when (event) {
-            is Event.NetworkRecovered -> GlobalStreamState.State.STREAMING
-            is Event.RecoveryStarted  -> GlobalStreamState.State.RECOVERING
-            is Event.Error            -> GlobalStreamState.State.FAILED    // ✅ Fixed
-            is Event.Stop             -> GlobalStreamState.State.STOPPED
-            else                      -> null
-        }
-
-        GlobalStreamState.State.RECOVERING -> when (event) {
+        GlobalStreamState.State.RECONNECTING -> when (event) {
             is Event.RecoverySuccess  -> GlobalStreamState.State.STREAMING
             is Event.RecoveryFailed   -> GlobalStreamState.State.FAILED
-            is Event.Stop             -> GlobalStreamState.State.STOPPED
+            is Event.Stop             -> GlobalStreamState.State.IDLE
             else                      -> null
         }
 
-        GlobalStreamState.State.STOPPED,
         GlobalStreamState.State.FAILED -> when (event) {
             is Event.Reset            -> GlobalStreamState.State.IDLE
-            else                      -> null
-        }
-
-        GlobalStreamState.State.PRELOADING -> when (event) {
-            is Event.WatchFound       -> GlobalStreamState.State.CONNECTING
-            is Event.Stop             -> GlobalStreamState.State.IDLE
             else                      -> null
         }
     }

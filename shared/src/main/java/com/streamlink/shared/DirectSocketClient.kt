@@ -11,6 +11,7 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.LockSupport
+import com.streamlink.shared.util.LockFreeMpmcQueue
 import com.streamlink.shared.util.LockFreeSpscQueue
 
 /**
@@ -375,8 +376,8 @@ class DirectSocketClient(
     }
 
     // Capacity must be power of 2
-    private val touchSendQueue = LockFreeSpscQueue<TouchFrameTask>(64)
-    private val touchFreeTasks = LockFreeSpscQueue<TouchFrameTask>(64).apply {
+    private val touchSendQueue = LockFreeMpmcQueue<TouchFrameTask>(64)
+    private val touchFreeTasks = LockFreeMpmcQueue<TouchFrameTask>(64).apply {
         repeat(64) { offer(TouchFrameTask()) }
     }
     private val touchSenderStarted = AtomicBoolean(false)

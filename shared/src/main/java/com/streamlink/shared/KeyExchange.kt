@@ -69,8 +69,21 @@ object KeyExchange {
         val sharedSecret = ka.generateSecret()
 
         // Standard HKDF-SHA256 derivation with pairing code as info/salt
-        val infoString = "$SESSION_KEY_LABEL|PIN:$pairingCode"
-        val sessionKey = hkdfDerive(sharedSecret, infoString.toByteArray())
+        // Using ByteArray directly to avoid String pool retention of the PIN
+        val labelBytes = SESSION_KEY_LABEL.toByteArray(Charsets.UTF_8)
+        val pinPrefixBytes = "|PIN:".toByteArray(Charsets.UTF_8)
+        val pairingCodeBytes = pairingCode.toByteArray(Charsets.UTF_8)
+        
+        val infoBytes = ByteArray(labelBytes.size + pinPrefixBytes.size + pairingCodeBytes.size)
+        System.arraycopy(labelBytes, 0, infoBytes, 0, labelBytes.size)
+        System.arraycopy(pinPrefixBytes, 0, infoBytes, labelBytes.size, pinPrefixBytes.size)
+        System.arraycopy(pairingCodeBytes, 0, infoBytes, labelBytes.size + pinPrefixBytes.size, pairingCodeBytes.size)
+
+        val sessionKey = hkdfDerive(sharedSecret, infoBytes)
+        
+        // Zeroize sensitive composition bytes
+        java.util.Arrays.fill(infoBytes, 0.toByte())
+        java.util.Arrays.fill(pairingCodeBytes, 0.toByte())
         Log.i(TAG, "Session key derived (${sessionKey.size * 8} bits)")
         return sessionKey
     }
@@ -119,19 +132,33 @@ object KeyExchange {
      */
     private fun hkdfDerive(sharedSecret: ByteArray, info: ByteArray): ByteArray {
         val macAlgo = "HmacSHA256"
-        
-        // 1. HKDF-Extract(salt, IKM)
-        val salt = ByteArray(32) { 0 }
-        val extractMac = Mac.getInstance(macAlgo)
-        extractMac.init(SecretKeySpec(salt, macAlgo))
-        val prk = extractMac.doFinal(sharedSecret)
-        
-        // 2. HKDF-Expand(PRK, info, L=32)
-        val expandMac = Mac.getInstance(macAlgo)
-        expandMac.init(SecretKeySpec(prk, macAlgo))
-        expandMac.update(info)
-        expandMac.update(1.toByte())
-        return expandMac.doFinal() // 32 bytes
+        var prk: ByteArray? = null
+        try {
+            // 1. HKDF-Extract(salt, IKM)
+            val salt = ByteArray(32) { 0 }
+            val extractMac = Mac.getInstance(macAlgo)
+            extractMac.init(SecretKeySpec(salt, macAlgo))
+            prk = extractMac.doFinal(sharedSecret)
+            
+            // 2. HKDF-Expand(PRK, info, L=32)
+            val expandMac = Mac.getInstance(macAlgo)
+            expandMac.init(SecretKeySpec(prk, macAlgo))
+            expandMac.update(info)
+            expandMac.update(1.toByte())
+            val expanded = expandMac.doFinal() // 32 bytes
+            
+            val sessionKey = ByteArray(32)
+            System.arraycopy(expanded, 0, sessionKey, 0, 32)
+            
+            // Wipe the temporary expanded array
+            java.util.Arrays.fill(expanded, 0.toByte())
+            
+            return sessionKey
+        } finally {
+            // ✅ ZEROIZATION: Ensure raw shared secret and PRK are wiped from the Heap completely
+            java.util.Arrays.fill(sharedSecret, 0.toByte())
+            prk?.let { java.util.Arrays.fill(it, 0.toByte()) }
+        }
     }
 
     /**
