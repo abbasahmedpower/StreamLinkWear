@@ -32,6 +32,7 @@ class DirectSocketClient(
     private val closed = AtomicBoolean(false)
     private var encryptedChannel: EncryptedChannel? = null
     private val clockSyncEngine = com.streamlink.shared.transport.TimeSynchronizer()
+    private val circuitBreaker = CircuitBreaker() // ✅ Circuit Breaker Integration
 
     // Pairing code — set by the Wear UI before attempting to connect.
     // ✅ FIX #5 (أمني): مفيش قيمة افتراضية ("000000") — لو فضل null وقت
@@ -76,7 +77,9 @@ class DirectSocketClient(
         var timeoutFired = false
 
         while (!closed.get() && attempt < maxAttempts) {
-            val host = manualHostOverride ?: discovery.discoveredHost.value
+            val discovered = discovery.discoveredHost.value
+            val validDiscoveredIp = discovered?.takeIf { System.currentTimeMillis() - it.timestampMs < 30_000 }?.ip
+            val host = manualHostOverride ?: validDiscoveredIp
             if (host == null) {
                 val cachedHost = context.getSharedPreferences("StreamLinkPrefs", android.content.Context.MODE_PRIVATE).getString("last_host", null)
                 
@@ -109,6 +112,11 @@ class DirectSocketClient(
                  continue
             }
             attempt++
+            if (!circuitBreaker.isAllowed()) {
+                Log.w(tag, "Connect attempt $attempt/$maxAttempts blocked by Circuit Breaker")
+                delay(1000)
+                continue
+            }
             Log.i(tag, "Connect attempt $attempt/$maxAttempts → $finalHostToUse:$port")
             try {
                 val s = Socket().apply {
@@ -131,11 +139,11 @@ class DirectSocketClient(
                 val dis = java.io.DataInputStream(s.inputStream)
                 
                 // 1. Handshake: Exchange Protocol Versions
-                dos.writeByte(StreamProtocol.PROTOCOL_VERSION.toInt())
+                dos.writeByte(2) // We support up to version 2
                 dos.flush()
                 val serverVersion = dis.readByte()
-                if (serverVersion != StreamProtocol.PROTOCOL_VERSION) {
-                    Log.e(tag, "❌ Unsupported protocol version from phone: $serverVersion (Expected: ${StreamProtocol.PROTOCOL_VERSION})")
+                if (serverVersion < 1 || serverVersion > 2) {
+                    Log.e(tag, "❌ Unsupported protocol version from phone: $serverVersion (Expected: 1 or 2)")
                     s.close()
                     delay(1000)
                     continue
@@ -223,12 +231,15 @@ class DirectSocketClient(
                 attempt = 0
                 
                 // Launch touch sender as a sibling coroutine alongside the receive loop
-                startTouchSenderOnce()
+                // ✅ Start Receiver
+                circuitBreaker.recordSuccess() // ✅ HALF_OPEN -> CLOSED on successful handshake
                 receiveLoop(s.inputStream, onChunk, onControlMessage)
                 
                 onStateChange(false)
-            } catch (e: IOException) {
-                Log.w(tag, "Connection failed: ${e.message}")
+            } catch (e: Exception) {
+                Log.e(tag, "Connection failed: ${e.message}")
+                circuitBreaker.recordFailure()
+                socket?.close()
                 delay(minOf(500L * attempt, 8_000L))
             }
         }
@@ -425,7 +436,7 @@ class DirectSocketClient(
         seq: Int,
         timestampUs: Long
     ) {
-        val task = touchFreeTasks.poll() ?: return // Dropped if pool is exhausted (extreme load)
+        val task = touchFreeTasks.poll() ?: TouchFrameTask() // ✅ Dynamically expand if pool exhausted
         TouchCodec.encodeDirect(phase, pointerId, nx, ny, seq, timestampUs, task.wire)
         task.hasData = true
         if (!touchSendQueue.offer(task)) {
@@ -436,7 +447,7 @@ class DirectSocketClient(
 
     /** Call this to queue a control packet for reverse-channel delivery to phone. */
     fun sendControl(command: Int, value: Int) {
-        val task = touchFreeTasks.poll() ?: return // Dropped if pool is exhausted
+        val task = touchFreeTasks.poll() ?: TouchFrameTask() // ✅ Dynamically expand if pool exhausted
         ControlCodec.encodeDirect(command, value, task.wire)
         task.hasData = true
         if (!touchSendQueue.offer(task)) {

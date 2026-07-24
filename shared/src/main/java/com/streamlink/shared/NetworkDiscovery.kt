@@ -8,6 +8,8 @@ import com.streamlink.shared.util.safeSystemService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
+data class DiscoveredHost(val ip: String, val timestampMs: Long = System.currentTimeMillis())
+
 /**
  * NetworkDiscovery — Automatic Phone/Watch IP discovery via NSD (Bonjour/mDNS).
  *
@@ -24,8 +26,8 @@ class NetworkDiscovery(private val context: Context) {
     private val nsdManager: NsdManager? = context.safeSystemService(Context.NSD_SERVICE)
     val isDiscoveryAvailable: Boolean get() = nsdManager != null
 
-    private val _discoveredHost = MutableStateFlow<String?>(null)
-    val discoveredHost: StateFlow<String?> = _discoveredHost
+    private val _discoveredHost = MutableStateFlow<DiscoveredHost?>(null)
+    val discoveredHost: StateFlow<DiscoveredHost?> = _discoveredHost
 
     @Volatile private var isPublishing = false
 
@@ -145,7 +147,7 @@ class NetworkDiscovery(private val context: Context) {
         override fun onServiceResolved(info: NsdServiceInfo) {
             val ip = info.host.hostAddress
             Log.i(tag, "✅ Phone found at $ip:${info.port}")
-            _discoveredHost.value = ip
+            _discoveredHost.value = DiscoveredHost(ip)
         }
     }
 }

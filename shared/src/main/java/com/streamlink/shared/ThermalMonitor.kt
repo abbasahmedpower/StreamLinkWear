@@ -28,10 +28,13 @@ class ThermalMonitor(
 
     private val listener = PowerManager.OnThermalStatusChangedListener { status ->
         val level = mapStatusToLevel(status)
-        Log.i(tag, "Thermal status: $status → level $level/10")
-        _thermalLevel.value = level
-        intelEngine?.thermalLevel = level
-        intelEngine?.thermalCeilingKbps = ceilingForLevel(level)
+        // ✅ FIX #10: Thermal hysteresis to prevent rapid bitrate flapping
+        if (kotlin.math.abs(level - _thermalLevel.value) >= 2 || level == 0 || level >= 9) {
+            Log.i(tag, "Thermal status: $status → level $level/10")
+            _thermalLevel.value = level
+            intelEngine?.thermalLevel = level
+            intelEngine?.thermalCeilingKbps = ceilingForLevel(level)
+        }
     }
 
     fun start() {

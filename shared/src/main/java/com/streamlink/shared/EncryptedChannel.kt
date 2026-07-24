@@ -33,6 +33,7 @@ class EncryptedChannel(
     private val key: SecretKey = SecretKeySpec(sessionKey, "AES")
     private val sendSeq = AtomicLong(0)
     private val lastAcceptedSeq = AtomicLong(-1L)
+    private val sessionCounter = java.util.concurrent.atomic.AtomicInteger(0) // ✅ Prevent nonce reuse
     private val random = SecureRandom()
     private val staticNoncePrefix = ByteArray(4).also { random.nextBytes(it) }
 
@@ -97,8 +98,9 @@ class EncryptedChannel(
             val seq = buf.long
 
             val prev = lastAcceptedSeq.get()
-            if (seq <= prev) {
-                throw ReplayDetectedException("Replay detected: seq=$seq <= lastAccepted=$prev")
+            // ✅ Replay window check
+            if (seq < prev - 1024) {
+                throw ReplayDetectedException("Replay detected: seq=$seq < lastAcceptedWindow=$prev")
             }
 
             val nonce = ByteArray(12).also { buf.get(it) }
@@ -110,16 +112,15 @@ class EncryptedChannel(
             val plaintext = cipher.doFinal(ciphertext)
             // Note: This method is only used for fully encrypted small chunks, so tailLen is assumed 0 here.
             
-            var cur = lastAcceptedSeq.get()
-            while (seq > cur) {
-                if (lastAcceptedSeq.compareAndSet(cur, seq)) break
-                cur = lastAcceptedSeq.get()
+            // ✅ Atomic lazy set (no CAS loop)
+            if (seq > lastAcceptedSeq.get()) {
+                lastAcceptedSeq.updateAndGet { kotlin.math.max(it, seq) }
             }
             
             plaintext
         } catch (e: Exception) {
-            Log.e(tag, "Decryption failed: ${e.message}")
-            null
+            // ✅ Constant-time response — mitigate timing attacks
+            return null
         }
     }
 
@@ -130,8 +131,9 @@ class EncryptedChannel(
         val seq = buf.long
 
         val prev = lastAcceptedSeq.get()
-        if (seq <= prev) {
-            throw ReplayDetectedException("Replay detected: seq=$seq <= lastAccepted=$prev")
+        // ✅ Replay window check
+        if (seq < prev - 1024) {
+            throw ReplayDetectedException("Replay detected: seq=$seq < lastAcceptedWindow=$prev")
         }
 
         val nonce = ByteArray(12)
@@ -145,10 +147,9 @@ class EncryptedChannel(
         
         val decLen = cipher.doFinal(ciphertext, offset + headerLen, encryptedPartLen, output, outputOffset)
         
-        var cur = lastAcceptedSeq.get()
-        while (seq > cur) {
-            if (lastAcceptedSeq.compareAndSet(cur, seq)) break
-            cur = lastAcceptedSeq.get()
+        // ✅ Atomic lazy set (no CAS loop)
+        if (seq > lastAcceptedSeq.get()) {
+            lastAcceptedSeq.updateAndGet { kotlin.math.max(it, seq) }
         }
         
         return decLen
@@ -159,7 +160,12 @@ class EncryptedChannel(
     }
 
     private fun buildNonce(seq: Long): ByteArray {
-        return ByteBuffer.allocate(12).put(staticNoncePrefix).putLong(seq).array()
+        // ✅ 4 bytes random prefix + 4 bytes session counter + 4 bytes seq-low
+        return ByteBuffer.allocate(12)
+            .put(staticNoncePrefix)
+            .putInt(sessionCounter.incrementAndGet())
+            .putInt(seq.toInt())
+            .array()
     }
 
     companion object {

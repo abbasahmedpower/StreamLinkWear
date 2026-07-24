@@ -4,11 +4,11 @@ import time
 import random
 import json
 
-# ✅ §4.1: Bind to localhost only — was 0.0.0.0 (reachable from any network interface)
-SOURCE_PORT   = 8554      # Port from real video stream source
-PROXY_PORT    = 9554      # Port the smartwatch connects to
-CONTROL_PORT  = 9600      # JSON control API for CI automation (127.0.0.1 only)
-BUFFER_SIZE   = 65535
+# Engineering settings for the emulator
+SOURCE_PORT = 8554      # Port from real video stream source (Camera/Backend)
+PROXY_PORT = 9554       # New port the smartwatch will connect to for the stream
+PROXY_HOST = "127.0.0.1" # ✅ §4.1: Bind only to localhost (dev/CI only)
+BUFFER_SIZE = 65535
 
 class ChaosStreamProxy:
     def __init__(self):
@@ -74,62 +74,54 @@ class ChaosStreamProxy:
 
         threading.Thread(target=forward_to_watch, daemon=True).start()
 
+    # ✅ §2.5: Add control server for CI automation
     def handle_control(self, conn):
-        """One-shot JSON control commands for CI automation (127.0.0.1 only)."""
+        """One-shot JSON control commands over a local TCP port, for CI automation."""
+        data = conn.recv(1024)
         try:
-            data = conn.recv(1024)
             cmd = json.loads(data.decode())
-            action = cmd.get("action")
-            value  = cmd.get("value")
-            if action == "set_drop_rate":
-                self.packet_drop_rate = float(value)
-            elif action == "set_jitter":
-                self.jitter_max_ms = int(value)
-            elif action == "set_blackout":
-                self.burst_drop_active = bool(value)
-            elif action == "reset":
+            if cmd["action"] == "set_drop_rate":
+                self.packet_drop_rate = float(cmd["value"])
+            elif cmd["action"] == "set_jitter":
+                self.jitter_max_ms = int(cmd["value"])
+            elif cmd["action"] == "set_blackout":
+                self.burst_drop_active = bool(cmd["value"])
+            elif cmd["action"] == "reset":
                 self.packet_drop_rate = 0.0
                 self.jitter_max_ms = 0
                 self.burst_drop_active = False
-                self.corrupt_byte_rate = 0.0
-            else:
-                conn.sendall(json.dumps({"ok": False, "error": f"Unknown action: {action}"}).encode())
-                return
-            conn.sendall(json.dumps({"ok": True}).encode())
+            conn.sendall(b'{"ok": true}')
         except Exception as e:
-            try:
-                conn.sendall(json.dumps({"ok": False, "error": str(e)}).encode())
-            except Exception:
-                pass
-        finally:
-            conn.close()
+            conn.sendall(json.dumps({"ok": False, "error": str(e)}).encode())
+        conn.close()
 
-    def start_control_server(self):
-        """TCP control socket on 127.0.0.1 only — used by run_chaos_assessment.py."""
+    def start_control_server(self, port=9600):
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        srv.bind(("127.0.0.1", CONTROL_PORT))   # ✅ §4.1: localhost only
+        srv.bind(("127.0.0.1", port))
         srv.listen(5)
-        print(f"[CHAOS PROXY] Control API listening on 127.0.0.1:{CONTROL_PORT} (CI automation)")
         while True:
             try:
                 conn, _ = srv.accept()
-                threading.Thread(target=self.handle_control, args=(conn,), daemon=True).start()
+                self.handle_control(conn)
             except OSError as e:
-                print(f"[CHAOS CONTROL] accept() error, continuing: {e}")
+                print(f"[CHAOS PROXY] Control accept() error: {e}")
 
     def start(self):
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(("127.0.0.1", PROXY_PORT))   # ✅ §4.1: was 0.0.0.0
+        server.bind((PROXY_HOST, PROXY_PORT))
         server.listen(5)
-        print(f"[CHAOS PROXY] Chaos Gateway on 127.0.0.1:{PROXY_PORT} (dev/CI only — NEVER expose externally)")
-
+        print(f"[CHAOS PROXY] Chaos Gateway running on {PROXY_HOST}:{PROXY_PORT} (dev/CI only — never expose this)")
+        
+        # Dedicated thread for real-time chaos control via Terminal
         threading.Thread(target=self.cli_control, daemon=True).start()
-        threading.Thread(target=self.start_control_server, daemon=True).start()   # ✅ §2.5 + §4.1
+        # Thread for CI automation
+        threading.Thread(target=self.start_control_server, daemon=True).start()
 
         while True:
-            try:   # ✅ §4.1: Was unguarded — one OSError killed the entire proxy
+            # ✅ §4.1: Protect accept() from crashing the whole tool
+            try:
                 client_sock, _ = server.accept()
                 threading.Thread(target=self.handle_client, args=(client_sock,), daemon=True).start()
             except OSError as e:

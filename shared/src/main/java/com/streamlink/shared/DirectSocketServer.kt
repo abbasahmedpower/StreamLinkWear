@@ -27,7 +27,8 @@ class DirectSocketServer {
     private val tag = "DirectSocket"
 
     private var serverSocket: ServerSocket? = null
-    private var clientSocket: Socket? = null
+    @Volatile private var clientSocket: Socket? = null
+    @Volatile private var inputReceiverThread: Thread? = null // ✅ FIX: Track receiver thread
     private val running = AtomicBoolean(false)
     private val isClientConnectedField = AtomicBoolean(false)
     
@@ -183,12 +184,14 @@ class DirectSocketServer {
                     val dos = java.io.DataOutputStream(newClient.outputStream)
 
                     val clientVersion = dis.readByte()
-                    if (clientVersion != StreamProtocol.PROTOCOL_VERSION) {
-                        Log.e(tag, "❌ Unsupported protocol version from watch: $clientVersion (Expected: ${StreamProtocol.PROTOCOL_VERSION})")
+                    // ✅ Version Negotiation Protocol: Accept v1 or v2
+                    if (clientVersion < 1 || clientVersion > 2) {
+                        Log.e(tag, "❌ Unsupported protocol version from watch: $clientVersion (Expected: 1 or 2)")
                         newClient.close()
                         continue
                     }
-                    dos.writeByte(StreamProtocol.PROTOCOL_VERSION.toInt())
+                    val agreedVersion = kotlin.math.min(clientVersion.toInt(), 2)
+                    dos.writeByte(agreedVersion)
                     dos.flush()
 
                     val clientLen = dis.readInt()
@@ -282,10 +285,8 @@ class DirectSocketServer {
                     newClient.soTimeout = 0
                     isClientConnected = true
 
-                    // ✅ FIX #6: Process.setThreadPriority بدل Thread.priority — تأثيره
-                    // حقيقي على ART عكس Java Thread priority الضعيف. خيط استقبال
-                    // اللمس محتاج أولوية فعلية عشان الـ touch latency يكون منخفض.
-                    Thread({
+                    // ✅ FIX #6: Track thread to prevent leaks
+                    inputReceiverThread = Thread({
                         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
                         runInputReceiver(newClient)
                     }, "SL-InputReceiver").apply {
@@ -542,6 +543,10 @@ class DirectSocketServer {
 
             Log.d(tag, "Establishing new socket connection to $newHost:$newPort")
 
+            // ✅ Kill the old thread first to prevent thread leak
+            inputReceiverThread?.interrupt()
+            inputReceiverThread?.join(1000)
+
             // 2. إنشاء اتصال سوكيت جديد بالمسار الجديد
             val newSocket = java.net.Socket()
             newSocket.connect(java.net.InetSocketAddress(newHost, newPort), 5000)
@@ -557,7 +562,7 @@ class DirectSocketServer {
             this.clientSocket = newSocket
             this.isClientConnected = true
 
-            Thread({
+            inputReceiverThread = Thread({
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
                 runInputReceiver(newSocket)
             }, "SL-InputReceiver-Migrated").apply {

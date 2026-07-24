@@ -70,6 +70,13 @@ class FrameAssembler {
             PendingNal(chunk.nalSeq, chunk.totalChunks, chunk.timestampUs, chunk.deadlineUs, chunk.isKeyframe, chunk.nalType)
         }
 
+        // ✅ FIX: Bounds checking to prevent buffer overflow (ArrayIndexOutOfBoundsException)
+        if (nal.writePos + chunk.dataSize > nal.buf.size) {
+            Log.e(tag, "NAL buffer overflow: seq=${chunk.nalSeq}, dropping")
+            pending.remove(chunk.nalSeq)
+            return null
+        }
+
         // Append chunk data immediately (chunk.data is shared/reused)
         System.arraycopy(chunk.data, 0, nal.buf, nal.writePos, chunk.dataSize)
         nal.writePos += chunk.dataSize
@@ -92,10 +99,23 @@ class FrameAssembler {
             )
         }
 
-        // Stale frame cleanup: evict oldest if too many pending
+        // ✅ Stale frame cleanup based on time, not just count, to prevent memory leaks
+        val nowMs = System.currentTimeMillis()
+        val it = pending.entries.iterator()
+        while (it.hasNext()) {
+            val entry = it.next()
+            // Assume timestampUs is closely tied to current time if network is fast.
+            // But to be robust against monotonic/wall clock diffs, we can use 500ms since insertion.
+            // Since we don't have insertion time, and deadlineUs is present, let's use deadlineUs.
+            if (entry.value.deadlineUs > 0 && System.nanoTime() / 1000 > entry.value.deadlineUs) {
+                Log.w(tag, "Evicting stale NAL seq=${entry.key} (deadline passed)")
+                it.remove()
+            }
+        }
+
         if (pending.size > 16) {
             val stalest = pending.entries.iterator().next()
-            Log.w(tag, "Evicting stale NAL seq=${stalest.key} (${pending.size} pending)")
+            Log.w(tag, "Evicting oldest NAL seq=${stalest.key} (queue full)")
             pending.remove(stalest.key)
         }
 

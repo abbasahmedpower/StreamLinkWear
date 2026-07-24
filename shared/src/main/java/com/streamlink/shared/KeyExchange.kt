@@ -84,18 +84,33 @@ object KeyExchange {
 
     /**
      * Verify peer public key is a valid P-256 point (prevents invalid curve attack).
+     * Optional TOFU pinning via expectedFingerprint.
      */
-    fun validatePeerKey(peerPublicKeyBase64: String): Boolean {
+    fun validatePeerKey(peerPublicKeyBase64: String, expectedFingerprint: String? = null): Boolean {
         return try {
             val bytes = Base64.getDecoder().decode(peerPublicKeyBase64)
             if (bytes.size < 32 || bytes.size > 256) return false
             val kf = KeyFactory.getInstance(KEY_ALGO)
             kf.generatePublic(java.security.spec.X509EncodedKeySpec(bytes))
+            
+            if (expectedFingerprint != null) {
+                val actualFingerprint = getFingerprint(peerPublicKeyBase64)
+                if (actualFingerprint != expectedFingerprint) {
+                    Log.e(TAG, "❌ Public Key Fingerprint Mismatch! Expected $expectedFingerprint, got $actualFingerprint")
+                    return false
+                }
+            }
             true
         } catch (e: Exception) {
             Log.w(TAG, "Invalid peer public key: ${e.message}")
             false
         }
+    }
+
+    fun getFingerprint(publicKeyBase64: String): String {
+        val bytes = Base64.getDecoder().decode(publicKeyBase64)
+        val hash = MessageDigest.getInstance("SHA-256").digest(bytes)
+        return hash.joinToString(":") { "%02X".format(it) }
     }
 
     /**

@@ -68,6 +68,7 @@ class StreamingOrchestrator @Inject constructor(
     private val telemetryRingBuffer = com.streamlink.app.core.telemetry.TelemetryRingBuffer()
     private val telemetryAggregator = com.streamlink.app.core.telemetry.TelemetryAggregator(telemetryRingBuffer)
     private val decisionEngine = com.streamlink.app.core.decision.DecisionEngine()
+    private val adaptiveResolutionController = com.streamlink.shared.AdaptiveResolutionController() // ✅ §3.1: Wiring
     private val adaptiveEngine = com.streamlink.app.core.adaptive.AdaptiveQualityEngine(
         hardwareEncoder = hardwareEncoder,
         baseBitrateBps = StreamProtocol.WEAR_BPS_FULL * 1000,
@@ -147,13 +148,21 @@ class StreamingOrchestrator @Inject constructor(
                 val rttMs = latencyTracker.report().avgNetworkMs.toInt()
                 val thermalCelsius = thermalMonitor.thermalLevel.value.toFloat() * 10f // mock mapping
                 
+                // ✅ §3.2: Hook into real network layer packet loss (late frames in latencyTracker)
+                val packetLossPercent = latencyTracker.report().lateFramePct
+                
                 val snapshot = com.streamlink.app.core.decision.TelemetrySnapshot(
                     rttMs = if (rttMs > 0) rttMs else 20, // default good
                     thermalCelsius = if (thermalCelsius > 0) thermalCelsius else 35f, // default normal
-                    packetLossPercent = 0f, // TODO: Hook into network layer packet loss
+                    packetLossPercent = packetLossPercent,
                     decoderDroppedFrames = stats.drops
                 )
                 decisionEngine.evaluate(snapshot)
+
+                // ✅ §3.1: Wire the previously unused AdaptiveResolutionController
+                val cpuLoad = 0.5f // We don't have real CPU load, mock for now
+                val profile = adaptiveResolutionController.determine(rttMs.toLong(), cpuLoad, thermalMonitor.thermalLevel.value)
+                hardwareEncoder.reconfigure(profile) // internally handles hysteresis and codec rebuild
                 
                 // Enforce Memory Budgets during streaming
                 com.streamlink.app.core.telemetry.MemoryBudgetMonitor.checkBudgets()
@@ -303,7 +312,7 @@ class StreamingOrchestrator @Inject constructor(
      * discovered via mDNS/NSD, so callers stop guessing a fake LAN address.
      * Returns null if no watch has been discovered yet on this network.
      */
-    fun lastKnownLocalHost(): String? = discovery.discoveredHost.value
+    fun lastKnownLocalHost(): String? = discovery.discoveredHost.value?.ip
 
     /** Surfaces a user-facing, non-crashing reason on the stream UI + event log. */
     fun reportTransportIssue(code: String, message: String) {
