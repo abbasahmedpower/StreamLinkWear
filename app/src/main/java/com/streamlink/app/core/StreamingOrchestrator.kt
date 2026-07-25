@@ -73,15 +73,23 @@ class StreamingOrchestrator @Inject constructor(
     private val recoveryManager = com.streamlink.app.core.StreamRecoveryManager(scope, this)
 
     // --- Session / Crypto (Phase D) ---
-    private val cryptoManager = com.streamlink.app.core.crypto.FastCryptoResumptionManager(
-        masterSecret = ByteArray(32) { 1 }, // TODO: Inject actual ECDH negotiated secret
-        sessionId = java.util.UUID.randomUUID().toString(),
-        deviceNonce = "PhoneNonce"
-    )
+    @Volatile
+    private var cryptoManager: com.streamlink.app.core.crypto.FastCryptoResumptionManager? = null
     
     // Active Channel Keys
     @Volatile
-    private var videoCryptoContext = cryptoManager.deriveChannelKeys("video")
+    private var videoCryptoContext: com.streamlink.app.core.crypto.ChannelKeys? = null
+
+    fun onPairingHandshakeComplete(realSessionKey: ByteArray) {
+        cryptoManager = com.streamlink.app.core.crypto.FastCryptoResumptionManager(
+            masterSecret = realSessionKey,
+            sessionId = java.util.UUID.randomUUID().toString(),
+            deviceNonce = "PhoneNonce"
+        ).also {
+            videoCryptoContext = it.deriveChannelKeys("video")
+            android.util.Log.i(tag, "✅ Real ECDH SessionKey established & Crypto Contexts primed")
+        }
+    }
 
     private var heartbeatJob: kotlinx.coroutines.Job? = null
     private val wearMessageClient by lazy { com.google.android.gms.wearable.Wearable.getMessageClient(context) }
@@ -128,6 +136,11 @@ class StreamingOrchestrator @Inject constructor(
     init {
         // Wire HardwareEncoder to TelemetryRingBuffer
         hardwareEncoder.telemetryRingBuffer = telemetryRingBuffer
+        
+        // M-9: Wire negotiated key from server to the Orchestrator
+        socketServer.onSessionEstablished = { key ->
+            onPairingHandshakeComplete(key)
+        }
 
         // Start Telemetry & Adaptive components
         telemetryAggregator.start(scope)
@@ -293,10 +306,11 @@ class StreamingOrchestrator @Inject constructor(
 
     suspend fun migrateTransportSocket(newHost: String, newPort: Int, isRelay: Boolean, transportType: String = "WIFI"): Boolean {
         // Zero-RTT Crypto Resumption
-        val epoch = cryptoManager.onNetworkHandover(transportType)
+        val epoch = cryptoManager?.onNetworkHandover(transportType) ?: return false
+        android.util.Log.i(tag, "Handover completed, new epoch: $epoch")
         
-        // Immediately re-derive all channel keys securely
-        videoCryptoContext = cryptoManager.deriveChannelKeys("video")
+        // Refresh channel keys
+        videoCryptoContext = cryptoManager?.deriveChannelKeys("video")
         
         // Perform Epoch ACK Handshake
         // We send the ACK to the watch. The watch must derive the same keys and ACK back.

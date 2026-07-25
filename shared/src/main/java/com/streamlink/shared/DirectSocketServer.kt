@@ -91,6 +91,7 @@ class DirectSocketServer {
     // من غير @Volatile مفيش ضمان JMM إنه هيشوف القيمة الجديدة — ثغرة
     // ممكن تخلي الفيديو يتبعت من غير تشفير بصمت في أسوأ سيناريو).
     @Volatile private var encryptedChannel: EncryptedChannel? = null
+    var onSessionEstablished: ((sessionKey: ByteArray) -> Unit)? = null
 
     private val pairingThrottle = PairingAttemptThrottle()
 
@@ -258,6 +259,9 @@ class DirectSocketServer {
                     }
 
                     dos.writeByte(0x01)
+                    dos.flush()
+
+                    onSessionEstablished?.invoke(sessionKey)
                     dos.writeLong(System.nanoTime())
                     dos.flush()
                     pairingThrottle.recordSuccess(remote)

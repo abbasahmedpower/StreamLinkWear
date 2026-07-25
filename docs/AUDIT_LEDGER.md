@@ -11,3 +11,4 @@ No report or agent output is considered valid unless verified with tool-backed e
 | M-5 (TOFU Handshake) | High | ✅ CONFIRMED-BY-CODE | `DirectSocketServer.kt:244` validates auth block but skips deviceId enforcement. | PENDING | N/A |
 | M-6 (Hardcoded Telemetry) | Medium | ✅ CONFIRMED-BY-CODE | `StreamingOrchestrator.kt:148` missed `jitterMs` despite it being calculated in `latencyTracker.report()`. | PENDING | N/A (Sprint 1) |
 | M-7 (Empty Catches) | Low | ✅ CONFIRMED-BY-CODE | 9 matches in `DirectSocketServer.kt` (lines 110, 124, 130, 252, 296, 308, 501, 516, 583), all intentionally logged. | PENDING | N/A (Sprint 2) |
+| M-9 (Hardcoded Master Secret) | Critical | ✅ CONFIRMED-BY-CODE | `StreamingOrchestrator.kt:77` used `ByteArray(32) { 1 }`. `DirectSocketServer.kt:232` did not expose negotiated `sessionKey`. | PENDING | N/A |
