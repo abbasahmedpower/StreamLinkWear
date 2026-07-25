@@ -1,86 +1,115 @@
 package com.streamlink.shared.util
 
 import android.content.Context
-import android.content.SharedPreferences
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.SharedPreferencesMigration
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
-/**
- * ✅ NANO-FIX: كانت الكلاس دي بتتعمل instantiate من 4 أماكن مختلفة، كل واحدة
- * نسخة منفصلة عن التانية. الكتابة في نسخة والقراءة من نسخة تانية = القيمة
- * الجديدة عمرها ما توصل للـ UI. الحل: Singleton حقيقي + StateFlow بدل plain var
- * عشان Compose يعمل recomposition تلقائي لما القيمة تتغير.
- */
-class SystemSettingsStore private constructor(context: Context) {
-    private val prefs: SharedPreferences =
-        context.applicationContext.getSharedPreferences("streamlink_settings", Context.MODE_PRIVATE)
+enum class SettingSyncState { IDLE, PENDING, CONFIRMED, FAILED }
 
-    private val _isDynamicFpsEnabled = MutableStateFlow(prefs.getBoolean("dynamic_fps", true))
-    val isDynamicFpsEnabled: StateFlow<Boolean> = _isDynamicFpsEnabled.asStateFlow()
+val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
+    name = "streamlink_settings_datastore",
+    produceMigrations = { context ->
+        listOf(SharedPreferencesMigration(context, "streamlink_settings"))
+    }
+)
 
-    private val _isPrivacyBlackoutEnabled = MutableStateFlow(prefs.getBoolean("privacy_blackout", false))
-    val isPrivacyBlackoutEnabled: StateFlow<Boolean> = _isPrivacyBlackoutEnabled.asStateFlow()
+class SystemSettingsStore private constructor(private val context: Context) {
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    private val _isImuGesturesEnabled = MutableStateFlow(prefs.getBoolean("imu_gestures", false))
-    val isImuGesturesEnabled: StateFlow<Boolean> = _isImuGesturesEnabled.asStateFlow()
+    private val KEY_DYNAMIC_FPS = booleanPreferencesKey("dynamic_fps")
+    private val KEY_PRIVACY_BLACKOUT = booleanPreferencesKey("privacy_blackout")
+    private val KEY_IMU_GESTURES = booleanPreferencesKey("imu_gestures")
+    private val KEY_INSTANT_SYNC = booleanPreferencesKey("instant_sync")
+    private val KEY_WATCH_NAME = stringPreferencesKey("watch_name")
+    private val KEY_WATCH_IP = stringPreferencesKey("watch_ip")
+    private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
 
-    private val _isInstantSyncEnabled = MutableStateFlow(prefs.getBoolean("instant_sync", true))
-    val isInstantSyncEnabled: StateFlow<Boolean> = _isInstantSyncEnabled.asStateFlow()
+    val isDynamicFpsEnabled: StateFlow<Boolean> = context.dataStore.data
+        .map { it[KEY_DYNAMIC_FPS] ?: true }
+        .stateIn(scope, SharingStarted.Eagerly, true)
 
-    private val _connectedWatchName = MutableStateFlow(prefs.getString("watch_name", "") ?: "")
-    val connectedWatchName: StateFlow<String> = _connectedWatchName.asStateFlow()
+    val isPrivacyBlackoutEnabled: StateFlow<Boolean> = context.dataStore.data
+        .map { it[KEY_PRIVACY_BLACKOUT] ?: false }
+        .stateIn(scope, SharingStarted.Eagerly, false)
 
-    private val _connectedWatchIp = MutableStateFlow(prefs.getString("watch_ip", "") ?: "")
-    val connectedWatchIp: StateFlow<String> = _connectedWatchIp.asStateFlow()
+    val isImuGesturesEnabled: StateFlow<Boolean> = context.dataStore.data
+        .map { it[KEY_IMU_GESTURES] ?: false }
+        .stateIn(scope, SharingStarted.Eagerly, false)
 
-    private val _themeMode = MutableStateFlow(prefs.getString("theme_mode", "SYSTEM") ?: "SYSTEM")
-    val themeMode: StateFlow<String> = _themeMode.asStateFlow()
+    val isInstantSyncEnabled: StateFlow<Boolean> = context.dataStore.data
+        .map { it[KEY_INSTANT_SYNC] ?: true }
+        .stateIn(scope, SharingStarted.Eagerly, true)
 
-    // Callback لإرسال تحديث Jitter Buffer للساعة عبر control channel
-    @Volatile var onJitterBufferUpdateRequested: ((Int) -> Unit)? = null
+    val connectedWatchName: StateFlow<String> = context.dataStore.data
+        .map { it[KEY_WATCH_NAME] ?: "" }
+        .stateIn(scope, SharingStarted.Eagerly, "")
+
+    val connectedWatchIp: StateFlow<String> = context.dataStore.data
+        .map { it[KEY_WATCH_IP] ?: "" }
+        .stateIn(scope, SharingStarted.Eagerly, "")
+
+    val themeMode: StateFlow<String> = context.dataStore.data
+        .map { it[KEY_THEME_MODE] ?: "SYSTEM" }
+        .stateIn(scope, SharingStarted.Eagerly, "SYSTEM")
+
+    private val _syncState = MutableStateFlow(SettingSyncState.IDLE)
+    val syncState: StateFlow<SettingSyncState> = _syncState.asStateFlow()
+
+    fun setSyncState(state: SettingSyncState) {
+        _syncState.value = state
+    }
 
     fun setDynamicFps(enabled: Boolean) {
-        _isDynamicFpsEnabled.value = enabled
-        prefs.edit().putBoolean("dynamic_fps", enabled).apply()
+        scope.launch { context.dataStore.edit { it[KEY_DYNAMIC_FPS] = enabled } }
     }
 
     fun setPrivacyBlackout(enabled: Boolean) {
-        _isPrivacyBlackoutEnabled.value = enabled
-        prefs.edit().putBoolean("privacy_blackout", enabled).apply()
+        scope.launch { context.dataStore.edit { it[KEY_PRIVACY_BLACKOUT] = enabled } }
     }
 
     fun setImuGestures(enabled: Boolean) {
-        _isImuGesturesEnabled.value = enabled
-        prefs.edit().putBoolean("imu_gestures", enabled).apply()
+        scope.launch { context.dataStore.edit { it[KEY_IMU_GESTURES] = enabled } }
     }
 
     fun setInstantSync(enabled: Boolean) {
-        _isInstantSyncEnabled.value = enabled
-        prefs.edit().putBoolean("instant_sync", enabled).apply()
+        scope.launch { context.dataStore.edit { it[KEY_INSTANT_SYNC] = enabled } }
     }
 
     fun setConnectedWatch(name: String, ip: String) {
-        _connectedWatchName.value = name
-        _connectedWatchIp.value = ip
-        prefs.edit()
-            .putString("watch_name", name)
-            .putString("watch_ip", ip)
-            .apply()
+        scope.launch {
+            context.dataStore.edit {
+                it[KEY_WATCH_NAME] = name
+                it[KEY_WATCH_IP] = ip
+            }
+        }
     }
 
     fun clearConnectedWatch() {
-        _connectedWatchName.value = ""
-        _connectedWatchIp.value = ""
-        prefs.edit()
-            .remove("watch_name")
-            .remove("watch_ip")
-            .apply()
+        scope.launch {
+            context.dataStore.edit {
+                it.remove(KEY_WATCH_NAME)
+                it.remove(KEY_WATCH_IP)
+            }
+        }
     }
 
     fun setThemeMode(mode: String) {
-        _themeMode.value = mode
-        prefs.edit().putString("theme_mode", mode).apply()
+        scope.launch { context.dataStore.edit { it[KEY_THEME_MODE] = mode } }
     }
 
     companion object {

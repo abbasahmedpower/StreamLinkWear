@@ -1,7 +1,10 @@
 package com.streamlink.app.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,11 +26,30 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.invisibleToUser
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.streamlink.app.BuildConfig
 import com.streamlink.app.R
+
+/**
+ * Safely launches a URL, falling back to a toast if no browser / intent handler is available.
+ * Fixes issue 3.3 — prevents ActivityNotFoundException crash on custom ROMs.
+ */
+private fun openUrlSafely(context: Context, url: String) {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+    try {
+        context.startActivity(intent)
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(context, context.getString(R.string.error_no_browser), Toast.LENGTH_SHORT).show()
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,7 +67,7 @@ fun InfoScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("About Developer", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.info_about_title), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
                 },
@@ -87,7 +110,7 @@ fun InfoScreen(onBack: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // App Name & Version
+                // App Name & Version — fix 6: read from BuildConfig, not hardcoded string
                 Text(
                     text = androidx.compose.ui.res.stringResource(R.string.app_title),
                     fontSize = 32.sp,
@@ -96,7 +119,7 @@ fun InfoScreen(onBack: () -> Unit) {
                     textAlign = TextAlign.Center
                 )
                 Text(
-                    text = "Version 4.0-ultra (Phase 1.5)",
+                    text = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Medium
@@ -118,7 +141,7 @@ fun InfoScreen(onBack: () -> Unit) {
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "DEVELOPED BY",
+                            text = stringResource(R.string.info_developer_label).uppercase(),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
@@ -134,7 +157,7 @@ fun InfoScreen(onBack: () -> Unit) {
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Building the future of WearOS connectivity.",
+                            text = stringResource(R.string.info_tagline),
                             fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
@@ -146,7 +169,7 @@ fun InfoScreen(onBack: () -> Unit) {
                 Spacer(modifier = Modifier.height(32.dp))
 
                 Text(
-                    text = "Socials & Communities",
+                    text = stringResource(R.string.info_social_title),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
@@ -154,27 +177,47 @@ fun InfoScreen(onBack: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Grid of Social Links
+                // Grid of Social Links — all URLs launched via openUrlSafely (fix 3.3)
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SocialButton(Modifier.weight(1f), "Channel", "📢", Color(0xFF0088CC)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/HoruselfardosTech"))) }
-                        SocialButton(Modifier.weight(1f), "Group", "👥", Color(0xFF0088CC)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/+YqkCX65xYhQxNDQ0"))) }
+                        SocialButton(Modifier.weight(1f), stringResource(R.string.info_join_telegram), "📢", Color(0xFF0088CC)) { openUrlSafely(context, "https://t.me/HoruselfardosTech") }
+                        SocialButton(Modifier.weight(1f), stringResource(R.string.info_join_group), "👥", Color(0xFF0088CC)) { openUrlSafely(context, "https://t.me/+YqkCX65xYhQxNDQ0") }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SocialButton(Modifier.weight(1f), "Facebook", "📘", Color(0xFF1877F2)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://facebook.com/AbbasAhmedpower"))) }
-                        SocialButton(Modifier.weight(1f), "Twitter (X)", "𝕏", Color(0xFF000000)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://x.com/abbasahmedhero"))) }
+                        SocialButton(Modifier.weight(1f), "Facebook", "📘", Color(0xFF1877F2)) { openUrlSafely(context, "https://facebook.com/AbbasAhmedpower") }
+                        SocialButton(Modifier.weight(1f), "Twitter (X)", "𝕏", Color(0xFF000000)) { openUrlSafely(context, "https://x.com/abbasahmedhero") }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SocialButton(Modifier.weight(1f), "Instagram", "📸", Color(0xFFE1306C)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.instagram.com/abbasahmedpower/"))) }
-                        SocialButton(Modifier.weight(1f), "Snapchat", "👻", Color(0xFFFFFC00), textColor = Color.Black) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.snapchat.com/add/abbasahmedpower"))) }
+                        SocialButton(Modifier.weight(1f), "Instagram", "📸", Color(0xFFE1306C)) { openUrlSafely(context, "https://www.instagram.com/abbasahmedpower/") }
+                        SocialButton(Modifier.weight(1f), "Snapchat", "👻", Color(0xFFFFFC00), textColor = Color.Black) { openUrlSafely(context, "https://www.snapchat.com/add/abbasahmedpower") }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SocialButton(Modifier.weight(1f), "TikTok", "🎵", Color(0xFF010101)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.tiktok.com/@abbasahmedpower"))) }
-                        SocialButton(Modifier.weight(1f), "Twitch", "👾", Color(0xFF9146FF)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.twitch.tv/abbasahmedpower"))) }
+                        SocialButton(Modifier.weight(1f), "TikTok", "🎵", Color(0xFF010101)) { openUrlSafely(context, "https://www.tiktok.com/@abbasahmedpower") }
+                        SocialButton(Modifier.weight(1f), "Twitch", "👾", Color(0xFF9146FF)) { openUrlSafely(context, "https://www.twitch.tv/abbasahmedpower") }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SocialButton(Modifier.weight(1f), "Discord", "💬", Color(0xFF5865F2)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://discord.gg/9AUKAVY4Y"))) }
-                        SocialButton(Modifier.weight(1f), "GitHub", "💻", Color(0xFF333333)) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/abbasahmedpower/StreamLinkWear"))) }
+                        SocialButton(Modifier.weight(1f), "Discord", "💬", Color(0xFF5865F2)) { openUrlSafely(context, "https://discord.gg/9AUKAVY4Y") }
+                        SocialButton(Modifier.weight(1f), stringResource(R.string.info_github), "💻", Color(0xFF333333)) { openUrlSafely(context, "https://github.com/abbasahmedpower/StreamLinkWear") }
+                    }
+                    // Privacy Policy — fix 4.2: uses previously orphaned info_privacy_policy key
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // fix 6: Check for Updates — links directly to GitHub Releases page
+                        OutlinedButton(
+                            onClick = { openUrlSafely(context, "https://github.com/abbasahmedpower/StreamLinkWear/releases") },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(stringResource(R.string.info_check_updates))
+                        }
+                        OutlinedButton(
+                            onClick = { openUrlSafely(context, "https://abbasahmedpower.github.io/StreamLinkWear/privacy") },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(stringResource(R.string.info_privacy_policy))
+                        }
                     }
                 }
 
@@ -189,7 +232,10 @@ fun SocialButton(modifier: Modifier = Modifier, title: String, icon: String, con
     Surface(
         modifier = modifier
             .height(64.dp)
-            .clickable { onClick() },
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$title button"
+            }
+            .clickable(role = Role.Button) { onClick() },
         color = containerColor,
         shape = RoundedCornerShape(16.dp),
         shadowElevation = 4.dp
@@ -199,7 +245,7 @@ fun SocialButton(modifier: Modifier = Modifier, title: String, icon: String, con
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            Text(text = icon, fontSize = 24.sp)
+            Text(text = icon, fontSize = 24.sp, modifier = Modifier.semantics { invisibleToUser() })
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = title,

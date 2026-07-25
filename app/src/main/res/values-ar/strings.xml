@@ -81,5 +81,19 @@
     <string name="info_social_title">تواصل مع المطور</string>
     <string name="info_privacy_policy">سياسة الخصوصية</string>
     <string name="info_open_source">مفتوح المصدر</string>
+    <string name="error_no_browser">لم يتم العثور على متصفح لفتح هذا الرابط.</string>
+    <string name="info_tagline">نبني مستقبل اتصال WearOS.</string>
+
+    <!-- Settings: Reset / Feedback -->
+    <string name="settings_reset_done">تمت استعادة الإعدادات إلى القيم الافتراضية.</string>
+    <string name="settings_saved_off">تم تعطيل الإعداد</string>
+    <string name="info_check_updates">تحقق من التحديثات</string>
+    <string name="settings_reset_defaults">إعادة تعيين</string>
+    <string name="settings_reset_confirm">سيؤدي هذا إلى استعادة جميع الإعدادات إلى قيمها الافتراضية. هل أنت متأكد؟</string>
+    <string name="settings_reset_confirm_btn">إعادة تعيين</string>
+    <string name="settings_about_row_title">StreamLinkWear والمطور</string>
+    <string name="settings_saved_on">تم تفعيل الإعداد ✓</string>
 </resources>
+
+
 

@@ -105,6 +105,7 @@ object StreamProtocol {
     // ── Touch & Control Reverse Channel ─────────────────────────────────────────────────────
     const val MAGIC_NUMBER_INPUT   = 0x484F5443 // "HOTC" — Horus Touch Control
     const val MAGIC_NUMBER_CONTROL = 0x484F434E // "HOCN" — Horus Control Network
+    const val MAGIC_NUMBER_JSON    = 0x484F4A53 // "HOJS" — Horus JSON payload
     const val INPUT_FRAME_SIZE     = 32         // 32-byte cache-aligned frame
     
     // Audio & Video payload types
@@ -120,6 +121,7 @@ object StreamProtocol {
     const val CMD_SET_QUALITY_MODE = 4       // watch → phone: 0=BATTERY_SAVER, 1=BALANCED, 2=HIGH_QUALITY
     const val CMD_REQUEST_KEYFRAME = 5       // watch → phone: request IDR frame
     const val CMD_EPOCH_ACK = 6              // phone <-> watch: Fast Crypto Resumption Handshake
+    const val CMD_JSON_SETTINGS = 7          // phone → watch: JSON-encoded ControlMessage.SettingsUpdate
 
     val ALLOWED_DOMAINS: Set<String> = setOf(
         "streamlink.local",

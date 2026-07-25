@@ -23,11 +23,15 @@ class HardenedStreamTextureView(context: Context) : TextureView(context), Textur
     private val dynamicFpsController = DynamicFpsController()
 
     /**
-     * يُستدعى من الخارج (ViewModel أو StreamingOrchestrator على الساعة)
-     * لتفعيل/تعطيل ميزة توفير الطاقة عند تغيير الإعدادات.
+     * Set by FeaturePolicyEngine after evaluating watch hardware conditions.
+     * This is the single source of truth for whether Dynamic FPS throttling is active.
      */
     @Volatile
-    var isDynamicFpsEnabled: Boolean = false // 🔥 BYPASSED temporarily (Fix #1)
+    var isDynamicFpsEnabled: Boolean = false
+        set(value) {
+            field = value
+            android.util.Log.i("HardenedStreamTextureView", "Dynamic FPS → $value")
+        }
 
     // مخزن مؤقت ثابت الحجم لعينات الـ Hash — بدون أي GC
     private val hashSampleBuffer: ByteBuffer = ByteBuffer

@@ -288,6 +288,9 @@ class NetworkController @Inject constructor(
 
     fun sendControlToWatch(command: Int, value: Int) =
         socketServer.sendControlToWatch(command, value)
+        
+    fun sendControlMessage(msg: com.streamlink.shared.protocol.ControlMessage) =
+        socketServer.sendControlMessage(msg)
 
     val pairingCode: String? get() = socketServer.pairingCode
 

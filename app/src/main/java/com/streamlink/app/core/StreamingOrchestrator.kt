@@ -147,6 +147,30 @@ class StreamingOrchestrator @Inject constructor(
         
         // Start Self-Healing Worker
         recoveryManager.startListening()
+        
+        // Phase 1.5: JSON Control Protocol Sync (Replaces old callback/CMD approach)
+        val settingsPrefs = com.streamlink.app.core.SettingsPrefs.get(context)
+        scope.launch {
+            kotlinx.coroutines.flow.combine(
+                settingsStore.isDynamicFpsEnabled,
+                settingsStore.isImuGesturesEnabled,
+                settingsPrefs.bufferJitterMs,
+                com.streamlink.shared.PairingManager.state
+            ) { fps, imu, jitter, pairingState ->
+                if (pairingState is com.streamlink.shared.PairingManager.PairingState.Paired) {
+                    com.streamlink.shared.protocol.ControlMessage.SettingsUpdate(
+                        dynamicFps = fps,
+                        imuGestures = imu,
+                        jitterBufferMs = jitter
+                    )
+                } else null
+            }.collect { settingsUpdate ->
+                settingsUpdate?.let {
+                    socketServer.sendControlMessage(it)
+                    android.util.Log.i(tag, "✅ Settings pushed to Watch via JSON ControlMessage")
+                }
+            }
+        }
 
         // Wire Aggregator to UnifiedQualityAuthority (Phase 4)
         val cpuTracker = com.streamlink.shared.telemetry.ProcessCpuTracker()
@@ -156,10 +180,14 @@ class StreamingOrchestrator @Inject constructor(
             telemetryAggregator.aggregatedStats.collect { stats ->
                 val latencyReport = latencyTracker.report()
                 val rttMs = latencyReport.avgNetworkMs.toInt()
-                val thermalLvl = thermalMonitor.thermalLevel.value
                 val packetLossPercent = latencyReport.lateFramePct
                 val jitterMs = latencyReport.jitterMs.toInt()
                 val currentBitrateKbps = com.streamlink.shared.GlobalStreamState.snapshot.value.bitrateKbps
+                val thermalLvl = thermalMonitor.thermalLevel.value
+
+                if (isFuzzyOptimizationEnabled) {
+                    qualityController.onMetricsUpdated(rttMs, packetLossPercent, jitterMs, currentBitrateKbps)
+                }
                 
                 snapshotCounter++
                 
@@ -220,6 +248,23 @@ class StreamingOrchestrator @Inject constructor(
                 }
             }
         }
+        
+        socketServer.onJsonControlMessage = { msg ->
+            when (msg) {
+                is com.streamlink.shared.protocol.ControlMessage.Ack -> {
+                    Log.i(tag, "Received JSON ACK for messageId=${msg.messageId}, status=${msg.status}")
+                    if (msg.status == "OK") {
+                        settingsStore.setSyncState(com.streamlink.shared.util.SettingSyncState.CONFIRMED)
+                    } else {
+                        settingsStore.setSyncState(com.streamlink.shared.util.SettingSyncState.FAILED)
+                    }
+                }
+                else -> {
+                    Log.i(tag, "Received unknown JSON control message: $msg")
+                }
+            }
+        }
+
         socketServer.onWatchDimensions = { w, h ->
             com.streamlink.app.control.RemoteControlAccessibilityService.instance
                 ?.updateWatchDimensions(w, h)
@@ -227,24 +272,10 @@ class StreamingOrchestrator @Inject constructor(
         
         socketServer.onClientConnected = { name, ip ->
             settingsStore.setConnectedWatch(name, ip)
-            // ✅ NANO-FIX: sync أساسي يحصل دايمًا عند أول اتصال — مش مرتبط بـ Instant Sync.
-            // الساعة دايمًا تبدأ بالقيم المحفوظة عند المستخدم مش بالقيم الهارد-كودد الافتراضية.
-            val currentJitter = settingsPrefs.bufferJitterMs.value
-            socketServer.sendControlToWatch(StreamProtocol.CMD_SET_BUFFER_JITTER_MS, currentJitter)
-            Log.i(tag, "Watch connected: $name ($ip) — pushed jitter=${currentJitter}ms")
+            android.util.Log.i(tag, "Watch connected: $name ($ip)")
             
             // Force an instant KeyFrame to immediately start rendering on the watch (Zero-delay startup)
             hardwareEncoder.forceInstantKeyFrame()
-        }
-
-        // Instant Sync: يرسل فوراً التحديثات اللحظية *أثناء* الاتصال فقط
-        settingsPrefs.onJitterBufferSendRequested = { ms ->
-            val isStreaming = com.streamlink.shared.GlobalStreamState.snapshot.value.state ==
-                com.streamlink.shared.GlobalStreamState.State.STREAMING
-            if (isStreaming && settingsStore.isInstantSyncEnabled.value) {
-                socketServer.sendControlToWatch(StreamProtocol.CMD_SET_BUFFER_JITTER_MS, ms)
-                Log.i(tag, "✅ Jitter Buffer → Watch: ${ms}ms (InstantSync active)")
-            }
         }
 
         // Socket metrics → QualityController (runs every 1s in quality wiring)

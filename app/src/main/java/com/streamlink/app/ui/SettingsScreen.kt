@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -20,10 +21,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.streamlink.app.BuildConfig
 import com.streamlink.app.R
 import com.streamlink.app.core.LocaleManager
 import com.streamlink.app.core.SettingsPrefs
@@ -33,6 +39,7 @@ import com.streamlink.app.ui.theme.SemanticColors
 import com.streamlink.app.ui.theme.ThemeMode
 import com.streamlink.shared.GlobalStreamState
 import com.streamlink.shared.util.SystemSettingsStore
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,11 +56,12 @@ fun SettingsScreen(
     val bufferJitterMs by prefs.bufferJitterMs.collectAsStateWithLifecycle()
     // ✅ تحقق: نفس النمط المستخدم فعليًا في MainActivity.kt سطر 151 (collectAsStateWithLifecycle)
     val streamState by GlobalStreamState.snapshot.collectAsStateWithLifecycle()
-    val isStreaming = streamState.state == GlobalStreamState.State.STREAMING
+    val isStreaming by remember { derivedStateOf { streamState.state == GlobalStreamState.State.STREAMING } }
 
     var showQualityMenu by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showAboutScreen by remember { mutableStateOf(false) }
+    var showResetDialog by remember { mutableStateOf(false) }
     val instantSync by settingsStore.isInstantSyncEnabled.collectAsStateWithLifecycle()
 
     val isDynamicFpsEnabled by settingsStore.isDynamicFpsEnabled.collectAsStateWithLifecycle()
@@ -61,6 +69,10 @@ fun SettingsScreen(
     val isImuGesturesEnabled by settingsStore.isImuGesturesEnabled.collectAsStateWithLifecycle()
     val connectedWatchName by settingsStore.connectedWatchName.collectAsStateWithLifecycle()
     val connectedWatchIp by settingsStore.connectedWatchIp.collectAsStateWithLifecycle()
+    val syncState by settingsStore.syncState.collectAsStateWithLifecycle()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -68,9 +80,16 @@ fun SettingsScreen(
                 title = { Text(stringResource(R.string.settings_title), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.cd_settings_icon)) }
+                },
+                actions = {
+                    // Reset to Defaults — fix 5c
+                    TextButton(onClick = { showResetDialog = true }) {
+                        Text(stringResource(R.string.settings_reset_defaults), style = MaterialTheme.typography.labelMedium)
+                    }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }  // fix 5b
     ) { padding ->
         LazyColumn(
             modifier = Modifier.padding(padding).padding(horizontal = 16.dp),
@@ -139,8 +158,14 @@ fun SettingsScreen(
                                 )
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(onClick = { if (bufferJitterMs > 0) prefs.setBufferJitterMs(bufferJitterMs - 50) }) { Text("−", fontWeight = FontWeight.Bold) }
-                                IconButton(onClick = { if (bufferJitterMs < 1000) prefs.setBufferJitterMs(bufferJitterMs + 50) }) { Text("+", fontWeight = FontWeight.Bold) }
+                                IconButton(
+                                    onClick = { if (bufferJitterMs > 0) prefs.setBufferJitterMs(bufferJitterMs - 50) },
+                                    modifier = Modifier.semantics { contentDescription = "Decrease Jitter Buffer" }
+                                ) { Text("−", fontWeight = FontWeight.Bold) }
+                                IconButton(
+                                    onClick = { if (bufferJitterMs < 1000) prefs.setBufferJitterMs(bufferJitterMs + 50) },
+                                    modifier = Modifier.semantics { contentDescription = "Increase Jitter Buffer" }
+                                ) { Text("+", fontWeight = FontWeight.Bold) }
                             }
                         }
                     }
@@ -221,8 +246,13 @@ fun SettingsScreen(
                             title = stringResource(R.string.settings_dynamic_fps_title),
                             description = stringResource(R.string.settings_dynamic_fps_desc),
                             checked = isDynamicFpsEnabled,
-                            onCheckedChange = {
-                                settingsStore.setDynamicFps(it)
+                            syncState = syncState,
+                            onCheckedChange = { v ->
+                                settingsStore.setDynamicFps(v)
+                                // fix 5b — lightweight Snackbar confirmation
+                                scope.launch { snackbarHostState.showSnackbar(
+                                    if (v) context.getString(R.string.settings_saved_on) else context.getString(R.string.settings_saved_off)
+                                ) }
                             }
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -230,8 +260,12 @@ fun SettingsScreen(
                             title = stringResource(R.string.settings_privacy_blackout_title),
                             description = stringResource(R.string.settings_privacy_blackout_desc),
                             checked = isPrivacyBlackoutEnabled,
-                            onCheckedChange = {
-                                settingsStore.setPrivacyBlackout(it)
+                            syncState = syncState,
+                            onCheckedChange = { v ->
+                                settingsStore.setPrivacyBlackout(v)
+                                scope.launch { snackbarHostState.showSnackbar(
+                                    if (v) context.getString(R.string.settings_saved_on) else context.getString(R.string.settings_saved_off)
+                                ) }
                             }
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -239,8 +273,12 @@ fun SettingsScreen(
                             title = stringResource(R.string.settings_imu_gestures_title),
                             description = stringResource(R.string.settings_imu_gestures_desc),
                             checked = isImuGesturesEnabled,
-                            onCheckedChange = {
-                                settingsStore.setImuGestures(it)
+                            syncState = syncState,
+                            onCheckedChange = { v ->
+                                settingsStore.setImuGestures(v)
+                                scope.launch { snackbarHostState.showSnackbar(
+                                    if (v) context.getString(R.string.settings_saved_on) else context.getString(R.string.settings_saved_off)
+                                ) }
                             }
                         )
                     }
@@ -251,9 +289,10 @@ fun SettingsScreen(
             item {
                 SettingsSectionLabel(stringResource(R.string.info_about_title))
                 Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                    // fix 5a — full-screen navigation instead of Dialog (back-stack, state restoration)
                     SettingsRow(
-                        title = "StreamLinkWear & Developer",
-                        value = "Version, Socials & Developer Info",
+                        title = stringResource(R.string.settings_about_row_title),
+                        value = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                         onClick = { showAboutScreen = true }
                     )
                 }
@@ -262,13 +301,35 @@ fun SettingsScreen(
         }
     }
 
+    // fix 5a — full-screen surface instead of Dialog: proper back-stack, state restoration, deep-link ready
     if (showAboutScreen) {
-        androidx.compose.ui.window.Dialog(
-            onDismissRequest = { showAboutScreen = false },
-            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            InfoScreen(onBack = { showAboutScreen = false })
-        }
+        InfoScreen(onBack = { showAboutScreen = false })
+        return
+    }
+
+    // fix 5c — Reset to Defaults confirmation dialog
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text(stringResource(R.string.settings_reset_defaults)) },
+            text = { Text(stringResource(R.string.settings_reset_confirm)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    prefs.setBufferJitterMs(200)
+                    prefs.setQuality(QualityMode.HD_720P)
+                    settingsStore.setDynamicFps(false)
+                    settingsStore.setPrivacyBlackout(false)
+                    settingsStore.setImuGestures(false)
+                    showResetDialog = false
+                    scope.launch { snackbarHostState.showSnackbar(
+                        context.getString(R.string.settings_reset_done)
+                    ) }
+                }) { Text(stringResource(R.string.settings_reset_confirm_btn)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) { Text(stringResource(android.R.string.cancel)) }
+            }
+        )
     }
 
     if (showLanguageDialog) {
@@ -337,14 +398,34 @@ fun SettingsToggleItem(
     title: String,
     description: String,
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    syncState: com.streamlink.shared.util.SettingSyncState? = null
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .minimumInteractiveComponentSize()
+            .toggleable(
+                value = checked,
+                onValueChange = onCheckedChange,
+                role = Role.Switch
+            )
+            .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = title, style = MaterialTheme.typography.titleMedium)
+                if (syncState != null) {
+                    Spacer(Modifier.width(8.dp))
+                    when (syncState) {
+                        com.streamlink.shared.util.SettingSyncState.PENDING -> CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
+                        com.streamlink.shared.util.SettingSyncState.CONFIRMED -> Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp), tint = SemanticColors.Excellent)
+                        com.streamlink.shared.util.SettingSyncState.FAILED -> Text("⚠", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+                        else -> {}
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = description,

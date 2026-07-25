@@ -43,11 +43,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import android.content.Context
+import android.hardware.SensorManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.PowerManager
 import com.streamlink.shared.util.safeSystemService
 import com.streamlink.shared.GlobalStreamState
+import com.streamlink.wear.input.ImuGestureDetector
+import com.streamlink.wear.policy.FeaturePolicyEngine
 import androidx.lifecycle.repeatOnLifecycle
 import android.net.ConnectivityManager
 import android.net.Network
@@ -78,6 +81,43 @@ class WearMainActivity : ComponentActivity() {
         com.streamlink.wear.input.TouchInputController(fallbackOrchestrator)
     }
 
+    // ── Phase 1.5: Feature Policy Engine (IMU + Dynamic FPS) ─────────────────
+    private val featurePolicyEngine = FeaturePolicyEngine()
+    private var imuDetector: ImuGestureDetector? = null
+
+    private fun observePolicyEngine() {
+        // Observe IMU policy → start/stop sensors accordingly
+        lifecycleScope.launch {
+            featurePolicyEngine.imuGesturesActive.collect { active ->
+                if (active) {
+                    val sm = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+                    imuDetector?.stop()
+                    imuDetector = ImuGestureDetector(sm) { gesture ->
+                        when (gesture) {
+                            ImuGestureDetector.GestureType.SCROLL_DOWN ->
+                                touchController.simulateScroll(down = true)
+                            ImuGestureDetector.GestureType.SCROLL_UP ->
+                                touchController.simulateScroll(down = false)
+                            ImuGestureDetector.GestureType.BACK ->
+                                onBackPressedDispatcher.onBackPressed()
+                        }
+                    }.also { it.start() }
+                    Log.i("WearMain", "✅ IMU Air Gestures started")
+                } else {
+                    imuDetector?.stop()
+                    imuDetector = null
+                    Log.i("WearMain", "IMU Air Gestures stopped")
+                }
+            }
+        }
+        // Observe streaming state → policy needs it
+        lifecycleScope.launch {
+            GlobalStreamState.snapshot.collect { snap ->
+                featurePolicyEngine.isStreaming =
+                    snap.state == GlobalStreamState.State.STREAMING
+            }
+        }
+    }
     private var isAmbient = false
 
     private var connectivityManager: ConnectivityManager? = null
@@ -165,6 +205,9 @@ class WearMainActivity : ComponentActivity() {
         lifecycle.addObserver(ambientObserver)
 
         streamPlayer.acquire()
+        // Wire policy engine into the player so JSON messages can drive features
+        streamPlayer.policyEngine = featurePolicyEngine
+        observePolicyEngine()
 
         // Start background service immediately
         WearForegroundService.start(this)
@@ -355,12 +398,14 @@ class WearMainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        featurePolicyEngine.isScreenOn = true
         // Wrist raise restores from ambient — no action needed,
         // AmbientLifecycleObserver.onExitAmbient() handles it
     }
 
     override fun onPause() {
         super.onPause()
+        featurePolicyEngine.isScreenOn = false
     }
 
     override fun onStop() {

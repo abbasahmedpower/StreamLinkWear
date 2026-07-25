@@ -10,6 +10,8 @@ import android.view.Surface
 import com.streamlink.shared.DirectSocketClient
 import com.streamlink.shared.FrameAssembler
 import com.streamlink.shared.StreamProtocol
+import com.streamlink.shared.protocol.ControlMessage
+import com.streamlink.wear.policy.FeaturePolicyEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -32,8 +34,12 @@ class DirectStreamPlayer @Inject constructor(
     private val tag = "DirectStreamPlayer"
 
     private val _discoveryTimedOut = MutableStateFlow(false)
-    /** true = mDNS couldn't find the phone within 15s → UI should offer manual IP entry */
     val discoveryTimedOut: StateFlow<Boolean> = _discoveryTimedOut
+
+    /** Policy engine — wired in by WearMainActivity after DI setup */
+    var policyEngine: FeaturePolicyEngine? = null
+    /** Texture view reference — wired in so ControlMessages can update FPS in real-time */
+    var textureView: com.streamlink.wear.rendering.HardenedStreamTextureView? = null
 
     private var decoder: MediaCodec? = null
     private var surface: Surface? = null
@@ -111,8 +117,28 @@ class DirectStreamPlayer @Inject constructor(
                     }
                 },
                 onControlMessage = { msg ->
+                    // Legacy binary commands (jitter)
                     if (msg.command == StreamProtocol.CMD_SET_BUFFER_JITTER_MS) {
                         setJitterBufferMs(msg.value)
+                    }
+                    // Phase 1.5: JSON settings message
+                    if (msg.command == StreamProtocol.CMD_JSON_SETTINGS) {
+                        try {
+                            val json = String(msg.rawPayload ?: return@connect, Charsets.UTF_8)
+                            val settings = kotlinx.serialization.json.Json.decodeFromString(
+                                ControlMessage.SettingsUpdate.serializer(), json
+                            )
+                            settings.jitterBufferMs?.let { setJitterBufferMs(it) }
+                            policyEngine?.let { engine ->
+                                engine.phonePrefDynamicFps   = settings.dynamicFps
+                                engine.phonePrefImuGestures  = settings.imuGestures
+                                engine.evaluate()
+                                textureView?.isDynamicFpsEnabled = engine.dynamicFpsActive.value
+                            }
+                            Log.i(tag, "✅ ControlMessage.SettingsUpdate applied: $settings")
+                        } catch (e: Exception) {
+                            Log.e(tag, "Failed to parse JSON ControlMessage: ${e.message}")
+                        }
                     }
                 },
                 onDiscoveryTimedOut = {

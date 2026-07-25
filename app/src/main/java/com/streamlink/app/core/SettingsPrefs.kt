@@ -1,38 +1,52 @@
 package com.streamlink.app.core
 
 import android.content.Context
-import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.SharedPreferencesMigration
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import com.streamlink.shared.util.dataStore
 
-class SettingsPrefs private constructor(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences("streamlink_settings", Context.MODE_PRIVATE)
+class SettingsPrefs private constructor(private val context: Context) {
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    private val _quality = MutableStateFlow(
-        com.streamlink.shared.QualityMode.fromName(prefs.getString("quality", null))
-    )
-    val quality: StateFlow<com.streamlink.shared.QualityMode> = _quality
+    private val QUALITY_KEY = stringPreferencesKey("quality")
+    private val BUFFER_JITTER_KEY = intPreferencesKey("buffer_jitter_ms")
 
-    // ✅ FIXED: كان bufferSeconds بمدى 10-60 ثانية — delay حرفي كان هيكسر
-    // أي تفاعل remote-control. بقى bufferJitterMs بمدى واقعي (0-800ms)،
-    // وموصول فعليًا بـ DirectStreamPlayer على الساعة عبر control channel.
-    private val _bufferJitterMs = MutableStateFlow(prefs.getInt("buffer_jitter_ms", 150))
-    val bufferJitterMs: StateFlow<Int> = _bufferJitterMs
+    val quality: StateFlow<com.streamlink.shared.QualityMode> = context.dataStore.data
+        .map { prefs -> com.streamlink.shared.QualityMode.fromName(prefs[QUALITY_KEY]) }
+        .stateIn(scope, SharingStarted.Eagerly, com.streamlink.shared.QualityMode.HD_720P)
 
-    // ✅ BUG-05 FIX: Callback لإرسال CMD_SET_BUFFER_JITTER_MS للساعة عند تغيير القيمة.
-    // يُعيَّن من StreamingOrchestrator / DirectSocketServer عند نجاح الاتصال.
-    @Volatile var onJitterBufferSendRequested: ((Int) -> Unit)? = null
+    val bufferJitterMs: StateFlow<Int> = context.dataStore.data
+        .map { prefs -> prefs[BUFFER_JITTER_KEY] ?: 150 }
+        .stateIn(scope, SharingStarted.Eagerly, 150)
 
     fun setQuality(q: com.streamlink.shared.QualityMode) {
-        _quality.value = q
-        prefs.edit().putString("quality", q.name).apply()
+        scope.launch {
+            context.dataStore.edit { prefs ->
+                prefs[QUALITY_KEY] = q.name
+            }
+        }
     }
 
     fun setBufferJitterMs(ms: Int) {
         val clamped = ms.coerceIn(0, 1000)
-        _bufferJitterMs.value = clamped
-        prefs.edit().putInt("buffer_jitter_ms", clamped).apply()
-        // ✅ BUG-05: إرسال للساعة فوراً إذا كان هناك اتصال نشط
-        onJitterBufferSendRequested?.invoke(clamped)
+        scope.launch {
+            context.dataStore.edit { prefs ->
+                prefs[BUFFER_JITTER_KEY] = clamped
+            }
+        }
     }
 
     companion object {

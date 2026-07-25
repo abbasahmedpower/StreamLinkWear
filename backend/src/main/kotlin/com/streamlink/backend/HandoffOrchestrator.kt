@@ -2,8 +2,11 @@ package com.streamlink.backend
 
 import io.lettuce.core.api.StatefulRedisConnection
 import io.ktor.websocket.*
+import io.ktor.websocket.CloseReason
+import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
 
 @Serializable
 data class SignalEnvelope(
@@ -20,6 +23,7 @@ class HandoffOrchestrator(
     private val nodeId: String
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+    private val logger = LoggerFactory.getLogger(HandoffOrchestrator::class.java)
 
     // ✅ Cross-node routing via Redis Pub/Sub
     suspend fun route(userId: String, senderDevice: PeerRegistry.DeviceType, raw: String) {
@@ -55,9 +59,11 @@ class HandoffOrchestrator(
         if (targetPeer != null) {
             try {
                 targetPeer.wsSession.send(Frame.Text(raw))
+            } catch (e: ClosedSendChannelException) {
+                logger.debug("Peer ${targetPeer.id} already disconnected during handoff — removing from registry")
+                registry.remove(targetPeer.id)
             } catch (e: Exception) {
-                /* intentional: WebSocket send may fail if peer disconnected; remote delivery via Redis fallback */
-                kotlin.io.println("DEBUG: WebSocket send failed: ${e.message}")
+                logger.warn("Unexpected handoff send failure for peer ${targetPeer.id}", e)
             }
             return
         }
@@ -91,11 +97,17 @@ class HandoffOrchestrator(
     suspend fun broadcastToPeer(roomId: String, senderType: String, signal: String) {
         val target = if (senderType == "MOBILE") "WEAR" else "MOBILE"
         val session = legacyRooms[roomId]?.get(target)
+        if (session == null) {
+            logger.debug("Legacy broadcast: no $target peer in room $roomId")
+            return
+        }
         try {
-            session?.send(Frame.Text(signal))
+            session.send(Frame.Text(signal))
+        } catch (e: ClosedSendChannelException) {
+            logger.debug("Legacy broadcast: $target in room $roomId already disconnected")
+            legacyRooms[roomId]?.remove(target)
         } catch (e: Exception) {
-            /* intentional: legacy API broadcast; peer may have disconnected */
-            kotlin.io.println("DEBUG: Legacy broadcast failed: ${e.message}")
+            logger.warn("Legacy broadcast unexpected failure for $target in room $roomId", e)
         }
     }
 }

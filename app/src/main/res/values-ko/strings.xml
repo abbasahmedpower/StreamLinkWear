@@ -57,4 +57,42 @@
     <string name="quality_720p">720p (HD)</string>
     <string name="quality_1080p">1080p (FHD)</string>
     <string name="quality_1440p">1440p (QHD)</string>
+
+    <!-- Advanced System Settings -->
+    <string name="settings_advanced_title">⚙️ 고급 시스템 설정</string>
+    <string name="settings_dynamic_fps_title">적응형 배터리 절약</string>
+    <string name="settings_dynamic_fps_desc">동영상 콘텐츠가 정적일 때 워치 화면 새로 고침을 자동으로 줄여 배터리를 절약합니다. 활성 스트리밍 중에만 작동합니다.</string>
+    <string name="settings_privacy_blackout_title">폰 화면 끄기 (개인 정보 보호 모드)</string>
+    <string name="settings_privacy_blackout_desc">개인 정보 보호와 폰 배터리 절약을 위해 스트리밍 중 폰 화면을 완전히 끕니다.</string>
+    <string name="settings_imu_gestures_title">에어 제스처</string>
+    <string name="settings_imu_gestures_desc">손목 움직임으로 스크롤 및 뒤로 탐색을 제어합니다 — 화면 터치 불필요. 활성 스트리밍 중에만 작동합니다.</string>
+
+    <!-- Watch connection -->
+    <string name="settings_watch_device_name">워치 기기</string>
+    <string name="settings_watch_ip_label">IP</string>
+
+    <!-- About / Info Screen -->
+    <string name="info_about_title">StreamLink 정보</string>
+    <string name="info_follow_us">팔로우</string>
+    <string name="info_community">커뮤니티</string>
+    <string name="info_join_telegram">Telegram 채널 가입</string>
+    <string name="info_join_group">Telegram 그룹 가입</string>
+    <string name="info_github">GitHub (소스 코드)</string>
+    <string name="info_social_title">개발자 소셜</string>
+    <string name="info_privacy_policy">개인 정보 처리 방침</string>
+    <string name="info_open_source">오픈 소스</string>
+    <string name="error_no_browser">이 링크를 열 브라우저를 찾을 수 없습니다.</string>
+    <string name="info_tagline">WearOS 연결의 미래를 만들어갑니다.</string>
+
+    <!-- Settings: Reset / Feedback -->
+    <string name="settings_reset_done">설정이 기본값으로 복원되었습니다.</string>
+    <string name="settings_saved_off">설정 비활성화됨</string>
+    <string name="info_check_updates">업데이트 확인</string>
+    <string name="settings_reset_defaults">초기화</string>
+    <string name="settings_reset_confirm">모든 설정이 기본값으로 복원됩니다. 계속하시겠습니까?</string>
+    <string name="settings_reset_confirm_btn">초기화</string>
+    <string name="settings_about_row_title">StreamLinkWear &amp; 개발자</string>
+    <string name="settings_saved_on">설정 활성화됨 ✓</string>
 </resources>
+
+

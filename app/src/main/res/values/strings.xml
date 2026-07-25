@@ -61,12 +61,12 @@
 
     <!-- Advanced System Settings -->
     <string name="settings_advanced_title">⚙️ Advanced System Settings</string>
-    <string name="settings_dynamic_fps_title">Smart Watch Power Saving (Dynamic FPS)</string>
-    <string name="settings_dynamic_fps_desc">Automatically reduces watch screen refresh to 1 FPS when content is static, saving up to 50% battery life.</string>
+    <string name="settings_dynamic_fps_title">Adaptive Battery Saving</string>
+    <string name="settings_dynamic_fps_desc">Automatically reduces watch screen refresh when video content is static, saving battery life. Works only during active streaming.</string>
     <string name="settings_privacy_blackout_title">Phone Screen Blackout (Privacy Mode)</string>
     <string name="settings_privacy_blackout_desc">Turns off the phone screen completely during streaming to protect your privacy and save phone battery.</string>
-    <string name="settings_imu_gestures_title">Touchless Wrist Gestures (IMU Air Gestures)</string>
-    <string name="settings_imu_gestures_desc">Control scroll and back navigation via hand movement only, without touching the watch screen. (Perfect for engineers and athletes).</string>
+    <string name="settings_imu_gestures_title">Air Gestures</string>
+    <string name="settings_imu_gestures_desc">Control scroll and back navigation via wrist movement — no screen tap needed. Works only during active streaming. (Perfect for engineers and athletes).</string>
 
     <!-- Watch connection -->
     <string name="settings_watch_device_name">Watch Device</string>
@@ -82,4 +82,17 @@
     <string name="info_social_title">Developer Social</string>
     <string name="info_privacy_policy">Privacy Policy</string>
     <string name="info_open_source">Open Source</string>
+    <string name="error_no_browser">No browser found to open this link.</string>
+    <string name="info_tagline">Building the future of WearOS connectivity.</string>
+    <!-- Settings: Reset / Feedback -->
+    <string name="settings_reset_defaults">Reset</string>
+    <string name="settings_reset_confirm">This will restore all settings to their default values. Are you sure?</string>
+    <string name="settings_reset_confirm_btn">Reset</string>
+    <string name="settings_reset_done">Settings restored to defaults.</string>
+    <string name="settings_saved_on">Setting enabled ✓</string>
+    <string name="settings_saved_off">Setting disabled</string>
+    <string name="settings_about_row_title">StreamLinkWear &amp; Developer</string>
+    <!-- Info Screen -->
+    <string name="info_check_updates">Check for Updates</string>
 </resources>
+

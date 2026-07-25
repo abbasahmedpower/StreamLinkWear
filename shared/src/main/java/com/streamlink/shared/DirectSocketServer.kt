@@ -68,6 +68,7 @@ class DirectSocketServer {
     var onChunkDelivered: (() -> Unit)? = null
     var onTouchEvent: ((TouchEvent) -> Unit)? = null
     var onControlMessage: ((ControlCodec.ControlMessage) -> Unit)? = null
+    var onJsonControlMessage: ((com.streamlink.shared.protocol.ControlMessage) -> Unit)? = null
 
     /**
      * Called once per accepted client with the watch's real screen dimensions (px).
@@ -112,15 +113,23 @@ class DirectSocketServer {
                     Log.w(tag, "Decrypt failed, dropping malformed packet: ${e.message}")
                     continue
                 }
-                if (decrypted == null || decrypted.size < StreamProtocol.INPUT_FRAME_SIZE) continue
+                if (decrypted == null || decrypted.size < 4) continue
 
                 try {
                     val buf = java.nio.ByteBuffer.wrap(decrypted).order(java.nio.ByteOrder.BIG_ENDIAN)
                     val magic = buf.getInt()
                     if (magic == StreamProtocol.MAGIC_NUMBER_INPUT) {
-                        TouchCodec.decode(decrypted)?.let { onTouchEvent?.invoke(it) }
+                        if (decrypted.size >= StreamProtocol.INPUT_FRAME_SIZE) {
+                            TouchCodec.decode(decrypted)?.let { onTouchEvent?.invoke(it) }
+                        }
                     } else if (magic == StreamProtocol.MAGIC_NUMBER_CONTROL) {
-                        ControlCodec.decode(decrypted)?.let { onControlMessage?.invoke(it) }
+                        if (decrypted.size >= StreamProtocol.INPUT_FRAME_SIZE) {
+                            ControlCodec.decode(decrypted)?.let { onControlMessage?.invoke(it) }
+                        }
+                    } else if (magic == StreamProtocol.MAGIC_NUMBER_JSON) {
+                        val jsonStr = String(decrypted, 4, decrypted.size - 4, Charsets.UTF_8)
+                        val msg = kotlinx.serialization.json.Json.decodeFromString<com.streamlink.shared.protocol.ControlMessage>(jsonStr)
+                        onJsonControlMessage?.invoke(msg)
                     }
                 } catch (e: Exception) {
                     Log.w(tag, "Malformed input frame ignored: ${e.message}")
@@ -496,6 +505,26 @@ class DirectSocketServer {
         ControlCodec.encodeDirect(command, value, payload)
         if (!controlQueue.offer(ControlTask(payload))) {
             Log.w(tag, "Control queue full — dropping command=$command")
+        }
+    }
+
+    @Synchronized
+    fun sendControlMessage(msg: com.streamlink.shared.protocol.ControlMessage) {
+        if (!isClientConnected) return
+        try {
+            val jsonStr = kotlinx.serialization.json.Json.encodeToString(com.streamlink.shared.protocol.ControlMessage.serializer(), msg)
+            val payloadBytes = jsonStr.toByteArray(Charsets.UTF_8)
+            val packet = java.nio.ByteBuffer.allocate(8 + payloadBytes.size) // 4 for length, 4 for magic
+                .putInt(4 + payloadBytes.size) // Total length of payload sent to DataOutputStream (magic + json)
+                .putInt(StreamProtocol.MAGIC_NUMBER_JSON)
+                .put(payloadBytes)
+                .array()
+                
+            if (!controlQueue.offer(ControlTask(packet))) {
+                Log.w(tag, "Control queue full — dropping message")
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to serialize ControlMessage: ${e.message}")
         }
     }
 
