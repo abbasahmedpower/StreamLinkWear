@@ -120,3 +120,6 @@ crash_reports/
 #ملقات االاختبارات 
 google-services.json
 google-services(1).json
+# Ignore GitLeaks local tool
+gitleaks_tool/
+gitleaks.exe

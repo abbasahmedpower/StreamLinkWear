@@ -1,0 +1,21 @@
+name: GitLeaks Security Scan
+
+on:
+  pull_request:
+    branches: [ main, develop, master, feature/production-hardening ]
+  push:
+    branches: [ main, develop, master, feature/production-hardening ]
+
+jobs:
+  gitleaks-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run GitLeaks Security Action
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

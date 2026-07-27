@@ -1,0 +1,15 @@
+title = "Custom GitLeaks Config for StreamLinkWear"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist for test secrets or safe paths"
+paths = [
+    '''app/src/test/''',
+    '''wear/src/test/'''
+]
+regexes = [
+    '''AIzaSyFakeKeyForTesting123''',
+    '''YOUR_FIREBASE_KEY_HERE'''
+]
