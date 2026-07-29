@@ -40,7 +40,15 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     companion object {
         var instance: RemoteControlAccessibilityService? = null
             private set
-        private const val SEGMENT_MS = 40L // نافذة تجميع الحركة قبل كل dispatch
+        private const val SEGMENT_MS = 40L // window for accumulating motion before dispatch
+
+        // Touch event priority order for the gesture path:
+        // DOWN must always be dispatched first (initiates stroke)
+        // UP/CANCEL must always be dispatched last (terminates stroke)
+        // MOVE events between them can be coalesced/dropped under load
+        private const val PRIORITY_DOWN   = 0  // highest urgency
+        private const val PRIORITY_UP     = 1
+        private const val PRIORITY_MOVE   = 2  // lowest — may be dropped if behind
     }
 
     override fun onServiceConnected() {
@@ -220,28 +228,39 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         s.hasPending = false
         s.pendingPath = Path().apply { moveTo(s.lastX, s.lastY) } // segment القادم يبدأ من نفس النقطة
 
-        val ok = dispatchGesture(gesture, object : GestureResultCallback() {
-            override fun onCompleted(gestureDescription: GestureDescription?) {
-                synchronized(lock) {
-                    s.isDispatchInFlight = false
-                    s.lastStroke = strokeDesc
-                    if (!willContinue) {
-                        sessions.remove(id)
-                    } else if (s.hasPending) {
-                        dispatchNextSegment(id)
+        val ok = try {
+            dispatchGesture(gesture, object : GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) {
+                    synchronized(lock) {
+                        s.isDispatchInFlight = false
+                        s.lastStroke = strokeDesc
+                        if (!willContinue) {
+                            sessions.remove(id)
+                        } else if (s.hasPending) {
+                            dispatchNextSegment(id)
+                        }
+                        Unit
                     }
-                    Unit
                 }
-            }
-            override fun onCancelled(gestureDescription: GestureDescription?) {
-                synchronized(lock) {
-                    s.isDispatchInFlight = false
-                    sessions.remove(id)
+                override fun onCancelled(gestureDescription: GestureDescription?) {
+                    synchronized(lock) {
+                        s.isDispatchInFlight = false
+                        sessions.remove(id)
+                    }
                 }
-            }
-        }, null)
+            }, null)
+        } catch (e: Exception) {
+            // Defensive: dispatchGesture can throw on certain vendor ROMs (e.g. MIUI)
+            // when the service is in a transitional state. Log and recover gracefully.
+            Log.e(tag, "dispatchGesture threw unexpectedly (id=$id): ${e.message}")
+            false
+        }
 
-        if (!ok) { s.isDispatchInFlight = false }
+        if (!ok) {
+            s.isDispatchInFlight = false
+            // If DOWN failed, remove the session entirely — the gesture is unrecoverable.
+            if (!willContinue || strokeDesc == s.lastStroke) sessions.remove(id)
+        }
     }
 
     // ── مسار InputManager السريع (بيشتغل بس لو الـpermission ممنوح فعليًا) ──

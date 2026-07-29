@@ -61,10 +61,10 @@
     <!-- Advanced System Settings -->
     <string name="settings_advanced_title">⚙️ Impostazioni di sistema avanzate</string>
     <string name="settings_dynamic_fps_title">Risparmio energetico adattivo</string>
-    <string name="settings_dynamic_fps_desc">Riduce automaticamente la frequenza di aggiornamento dell'orologio quando il contenuto video è statico. Funziona solo durante lo streaming attivo.</string>
+    <string name="settings_dynamic_fps_desc">Riduce automaticamente la frequenza di aggiornamento dell\'orologio quando il contenuto video è statico. Funziona solo durante lo streaming attivo.</string>
     <string name="settings_privacy_blackout_title">Schermo del telefono spento (modalità privacy)</string>
     <string name="settings_privacy_blackout_desc">Spegne completamente lo schermo del telefono durante lo streaming per proteggere la tua privacy e risparmiare batteria.</string>
-    <string name="settings_imu_gestures_title">Gesti nell'aria</string>
+    <string name="settings_imu_gestures_title">Gesti nell\'aria</string>
     <string name="settings_imu_gestures_desc">Controlla lo scorrimento e la navigazione indietro con movimenti del polso — senza toccare lo schermo. Funziona solo durante lo streaming attivo.</string>
 
     <!-- Watch connection -->

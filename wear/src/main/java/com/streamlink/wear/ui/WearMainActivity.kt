@@ -63,6 +63,7 @@ class WearMainActivity : ComponentActivity() {
     @Inject lateinit var streamPlayer: DirectStreamPlayer
     @Inject lateinit var uxEngine: com.streamlink.wear.ai.SmartWatchUXEngine
     @Inject lateinit var socketClient: com.streamlink.shared.DirectSocketClient
+    @Inject lateinit var discoveryEngine: com.streamlink.wear.discovery.DiscoveryEngine
     
     // Telemetry overlay ViewModel — receives real-time data from the phone
     private val telemetryViewModel: WearTelemetryViewModel by viewModels()
@@ -151,39 +152,12 @@ class WearMainActivity : ComponentActivity() {
         }
     )
 
-    private val manualIpLauncher = registerForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val data = result.data
-        if (data == null) {
-            Log.i("WearMain", "Manual IP entry cancelled (no data)")
-            return@registerForActivityResult
-        }
-        val typed = androidx.core.app.RemoteInput.getResultsFromIntent(data)
-            ?.getCharSequence(EXTRA_IP_INPUT)?.toString()?.trim()
-        when {
-            typed == null -> Log.i("WearMain", "Manual IP entry cancelled")
-            isValidIpv4(typed) -> {
-                streamPlayer.connectManually(typed)
-                Log.i("WearMain", "Manual IP accepted: $typed")
-            }
-            else -> {
-                android.widget.Toast.makeText(this, "IP غير صالح — جرب تاني", android.widget.Toast.LENGTH_SHORT).show()
-                Log.w("WearMain", "Rejected invalid manual IP input: $typed")
-            }
-        }
-    }
-
-    private fun launchManualIpEntry() {
-        val remoteInputs = arrayOf(
-            android.app.RemoteInput.Builder(EXTRA_IP_INPUT)
-                .setLabel("IP بتاع الموبايل")
-                .build()
-        )
-        val intent = android.content.Intent("android.support.wearable.input.action.REMOTE_INPUT")
-        intent.putExtra("android.support.wearable.input.extra.REMOTE_INPUTS", remoteInputs)
-        manualIpLauncher.launch(intent)
-    }
+    // ── Manual connection state (replaces RemoteInput launcher) ───────────────
+    // showManualScreen is set to true when:
+    //   1. DiscoveryEngine.discoveryUiState emits TimedOut
+    //   2. The user taps the DiscoveryFallbackBanner manually
+    // It is cleared when the user navigates back or connects successfully.
+    private val _showManualScreen = androidx.compose.runtime.mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -256,13 +230,46 @@ class WearMainActivity : ComponentActivity() {
         socketClient.pairingCode = generatedPin
         
         setContent {
-            val streamState by GlobalStreamState.snapshot.collectAsState()
-            val discoveryTimedOut by streamPlayer.discoveryTimedOut.collectAsState()
-            var isPinScreen by remember { mutableStateOf(true) }
+            val streamState      by GlobalStreamState.snapshot.collectAsState()
+            val discoveryUiState by discoveryEngine.discoveryUiState.collectAsState()
+            var showManualScreen  by _showManualScreen
+            var isPinScreen      by remember { mutableStateOf(true) }
 
             // Auto-hide PIN screen when successfully connected and streaming
             if (streamState.state == GlobalStreamState.State.STREAMING) {
                 isPinScreen = false
+                showManualScreen = false  // connection succeeded — close manual screen
+            }
+
+            // Auto-show ManualConnectionScreen when discovery times out
+            if (discoveryUiState is com.streamlink.wear.discovery.DiscoveryUiState.TimedOut &&
+                streamState.state != GlobalStreamState.State.STREAMING) {
+                showManualScreen = true
+            }
+
+            // ── ManualConnectionScreen overlay ────────────────────────────────
+            if (showManualScreen) {
+                ManualConnectionScreen(
+                    state     = discoveryUiState,
+                    onConnect = { ip ->
+                        if (isValidIpv4(ip)) {
+                            Log.i("WearMain", "Manual IP accepted: $ip")
+                            // Write-back to DataStore so next session can fast-probe this IP
+                            lifecycleScope.launch {
+                                discoveryEngine.rememberDevice(ip)
+                            }
+                            streamPlayer.connectManually(ip)
+                            showManualScreen = false
+                        } else {
+                            Log.w("WearMain", "Invalid IP rejected by ManualConnectionScreen: $ip")
+                        }
+                    },
+                    onBack = {
+                        showManualScreen = false
+                        discoveryEngine.reset()
+                    }
+                )
+                return@setContent
             }
 
             var surfaceReady by remember { mutableStateOf(false) }
@@ -294,9 +301,10 @@ class WearMainActivity : ComponentActivity() {
                     }
                 )
 
-                if (discoveryTimedOut && streamState.state != GlobalStreamState.State.STREAMING) {
+                if (discoveryUiState is com.streamlink.wear.discovery.DiscoveryUiState.TimedOut &&
+                    streamState.state != GlobalStreamState.State.STREAMING) {
                     DiscoveryFallbackBanner(
-                        onTap = { launchManualIpEntry() },
+                        onTap = { _showManualScreen.value = true },
                         modifier = Modifier.align(Alignment.BottomCenter)
                     )
                 }

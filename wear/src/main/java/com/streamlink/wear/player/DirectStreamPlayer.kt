@@ -106,6 +106,9 @@ class DirectStreamPlayer @Inject constructor(
                         idrReceived.set(false)
                         assembler.reset()
                         resetJitterBuffer()
+                        // Pre-warm: reinitialize decoder in background so the first IDR
+                        // frame after reconnect is decoded immediately (no 2-3s black screen).
+                        decoderHandler.post { preWarmDecoder() }
                     }
                 },
                 onChunk = { chunk ->
@@ -122,23 +125,11 @@ class DirectStreamPlayer @Inject constructor(
                         setJitterBufferMs(msg.value)
                     }
                     // Phase 1.5: JSON settings message
+                    // TODO: implement full JSON settings parsing once kotlinx.serialization
+                    // is added to the wear module and ControlCodec.ControlMessage
+                    // exposes a rawPayload field. Tracked as Phase 3 follow-up.
                     if (msg.command == StreamProtocol.CMD_JSON_SETTINGS) {
-                        try {
-                            val json = String(msg.rawPayload ?: return@connect, Charsets.UTF_8)
-                            val settings = kotlinx.serialization.json.Json.decodeFromString(
-                                ControlMessage.SettingsUpdate.serializer(), json
-                            )
-                            settings.jitterBufferMs?.let { setJitterBufferMs(it) }
-                            policyEngine?.let { engine ->
-                                engine.phonePrefDynamicFps   = settings.dynamicFps
-                                engine.phonePrefImuGestures  = settings.imuGestures
-                                engine.evaluate()
-                                textureView?.isDynamicFpsEnabled = engine.dynamicFpsActive.value
-                            }
-                            Log.i(tag, "✅ ControlMessage.SettingsUpdate applied: $settings")
-                        } catch (e: Exception) {
-                            Log.e(tag, "Failed to parse JSON ControlMessage: ${e.message}")
-                        }
+                        Log.d(tag, "CMD_JSON_SETTINGS received (value=${msg.value}) — JSON parsing not yet implemented in wear module")
                     }
                 },
                 onDiscoveryTimedOut = {
@@ -176,6 +167,26 @@ class DirectStreamPlayer @Inject constructor(
         } catch (e: Exception) {
             Log.e(tag, "Decoder init failed", e)
         }
+    }
+
+    /**
+     * Pre-warm: safely release the current decoder and reinitialize it.
+     * Called on disconnect so the decoder is ready before the next IDR arrives,
+     * eliminating the 2-3s black screen on reconnect.
+     * Must be called on [decoderHandler] thread.
+     */
+    private fun preWarmDecoder() {
+        if (released.get()) return
+        try {
+            decoder?.stop()
+            decoder?.release()
+        } catch (e: Throwable) {
+            Log.w(tag, "preWarmDecoder: release error (${e.message}) — ignored")
+        }
+        decoder = null
+        decoderCallback.clear()
+        initDecoder()
+        Log.i(tag, "Decoder pre-warmed for next connection")
     }
 
     private fun resetJitterBuffer() {

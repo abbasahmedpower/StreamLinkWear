@@ -14,7 +14,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-data class DiscoveredHost(val ip: String, val timestampMs: Long = System.currentTimeMillis())
+data class DiscoveredHost(
+    val ip: String,
+    val timestampMs: Long = System.currentTimeMillis()
+) {
+    /**
+     * TTL: 30 seconds. After this, the host is considered stale and the watch
+     * should re-discover. Prevents silently holding a dead connection.
+     */
+    val isExpired: Boolean
+        get() = (System.currentTimeMillis() - timestampMs) > 30_000L
+}
 
 /**
  * Lifecycle state for the *discovery* side (Watch → looking for the phone).
@@ -88,6 +98,14 @@ class NetworkDiscovery(private val context: Context) {
 
     private val _discoveredHost = MutableStateFlow<DiscoveredHost?>(null)
     val discoveredHost: StateFlow<DiscoveredHost?> = _discoveredHost
+
+    /**
+     * Last successfully resolved IP — persisted in-memory across discovery restarts.
+     * Enables instant reconnect without waiting for mDNS re-resolve on resume.
+     * Cleared only when the service is explicitly lost (onServiceLost).
+     */
+    @Volatile var lastKnownIp: String? = null
+        private set
 
     /** Internal lifecycle scope. Lives for the process lifetime (this class is an
      *  app-scoped Hilt singleton); only used for short watchdog timers, never for
@@ -219,6 +237,8 @@ class NetworkDiscovery(private val context: Context) {
 
         override fun onServiceLost(serviceInfo: NsdServiceInfo) {
             Log.w(tag, "Service lost: ${serviceInfo.serviceName}")
+            // Do NOT clear lastKnownIp here — the phone may still be reachable at
+            // the same address (transient NSD blip). Only expire via TTL.
             if (_discoveredHost.value != null) _discoveredHost.value = null
         }
 
@@ -244,8 +264,9 @@ class NetworkDiscovery(private val context: Context) {
         }
 
         override fun onServiceResolved(info: NsdServiceInfo) {
-            val ip = info.host.hostAddress
+            val ip = info.host.hostAddress ?: return
             Log.i(tag, "✅ Phone found at $ip:${info.port}")
+            lastKnownIp = ip                          // cache for fast-reconnect
             _discoveredHost.value = DiscoveredHost(ip)
         }
     }

@@ -35,10 +35,10 @@ fun main() {
     SecureConfig.redisUrl
     SecureConfig.tlsPassword
 
-    val nodeId  = SecureConfig.nodeId
-    val redisUrl = SecureConfig.redisUrl
+    val nodeId      = SecureConfig.nodeId
+    val redisUrl    = SecureConfig.redisUrl
     val tlsPassword = SecureConfig.tlsPassword
-    
+
     val keystoreFile = File("build/keystore.jks")
     if (!keystoreFile.exists()) {
         keystoreFile.parentFile.mkdirs()
@@ -90,7 +90,10 @@ data class StreamMetricsSnapshot(
     val fps: Int = 0,
     val latencyMs: Long = 0L,
     val bitrateKbps: Int = 0,
-    val packetLossPercent: Float = 0f
+    val packetLossPercent: Float = 0f,
+    // ── Fix 6: relay vs. direct counters for dashboard visibility ─────────
+    val relayCount: Int = 0,
+    val directCount: Int = 0
 )
 
 // ✅ §4.2: Per-user metrics instead of one global object that overwrites all users
@@ -120,10 +123,10 @@ object LiveMetrics {
 
 fun Application.module(nodeId: String, redisUrl: String) {
     install(WebSockets) {
-        pingPeriod = Duration.ofSeconds(15)
-        timeout    = Duration.ofSeconds(60)
+        pingPeriod   = Duration.ofSeconds(15)
+        timeout      = Duration.ofSeconds(60)
         maxFrameSize = 4L * 1024 * 1024 // ✅ FIX #17: Prevent massive frame DoS
-        masking = true                  // ✅ FIX #17: Enforce masking to prevent proxy cache poisoning
+        masking      = true              // ✅ FIX #17: Enforce masking to prevent proxy cache poisoning
     }
     install(ContentNegotiation) { json() }
 
@@ -137,35 +140,41 @@ fun Application.module(nodeId: String, redisUrl: String) {
         log.error("Failed to connect to Redis. Proceeding without cluster sync.", e)
     }
 
-    val registry = PeerRegistry()
+    val registry     = PeerRegistry()
     val orchestrator = HandoffOrchestrator(registry, redis, nodeId)
 
     val expectedToken = SecureConfig.horusSecretToken
+
+    // ── Fix 5: Rate limiters (token bucket) ──────────────────────────────
+    // signalLimiter : 30 messages/sec per userId  — protects WebSocket signaling
+    // registerLimiter: 5 requests/min per client IP — protects /api/v1/register
+    val signalLimiter   = RateLimiter(capacity = 30.0,  refillRatePerSecond = 30.0)
+    val registerLimiter = RateLimiter(capacity =  5.0,  refillRatePerSecond =  5.0 / 60.0)
 
     // Background: broadcast metrics to dashboard every 500ms
     val monitorScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     monitorScope.launch {
         while (isActive) {
             delay(500)
-            
+
             val evicted = registry.evictStale()
             if (evicted.isNotEmpty()) {
                 // Log eviction.
                 // Note: The peers map is cleaned up. Ktor handles timeout and actual WS close.
             }
-            
-            val stats = registry.stats()
+
+            val stats    = registry.stats()
             val snapshot = StreamMetricsSnapshot(
-                nodeId            = nodeId,
-                timestampMs       = System.currentTimeMillis(),
-                activePeers       = (stats["peers"] as? Int) ?: 0,
-                activePairs       = (stats["pairs"] as? Int) ?: 0,
+                nodeId              = nodeId,
+                timestampMs         = System.currentTimeMillis(),
+                activePeers         = (stats["peers"] as? Int) ?: 0,
+                activePairs         = (stats["pairs"] as? Int) ?: 0,
                 totalPairedSessions = (stats["totalPairs"] as? Long) ?: 0L,
                 // ✅ §4.2: Use aggregated metrics from all active users
-                fps               = LiveMetrics.all().map { it.fps }.maxOrNull() ?: 0,
-                latencyMs         = LiveMetrics.all().map { it.latencyMs }.maxOrNull() ?: 0L,
-                bitrateKbps       = LiveMetrics.all().sumOf { it.bitrateKbps },
-                packetLossPercent = LiveMetrics.all().map { it.lossPermille / 10f }.maxOrNull() ?: 0f
+                fps                 = LiveMetrics.all().map { it.fps }.maxOrNull() ?: 0,
+                latencyMs           = LiveMetrics.all().map { it.latencyMs }.maxOrNull() ?: 0L,
+                bitrateKbps         = LiveMetrics.all().sumOf { it.bitrateKbps },
+                packetLossPercent   = LiveMetrics.all().map { it.lossPermille / 10f }.maxOrNull() ?: 0f
             )
             val json = Json.encodeToString(snapshot)
             val dead = mutableListOf<DefaultWebSocketSession>()
@@ -182,8 +191,28 @@ fun Application.module(nodeId: String, redisUrl: String) {
             call.respondText("OK node=$nodeId redis=${redis?.isOpen == true}")
         }
 
-        // ── Device Registration (one-time, rate-limited by Global Token) ────────
+        // ── Fix 6: ICE config endpoint — short-TTL (30s) coturn credentials ──
+        get("/api/v1/ice-config") {
+            val clientToken    = call.request.headers["X-Horus-Identity-Token"] ?: ""
+            val verifiedUserId = ServerIdentityVerifier.verifyClientToken(clientToken)
+            if (verifiedUserId == null) {
+                call.respond(io.ktor.http.HttpStatusCode.Unauthorized, "Unauthorized")
+                return@get
+            }
+            val iceConfig = orchestrator.buildIceConfig(verifiedUserId)
+            call.respond(iceConfig)
+        }
+
+        // ── Device Registration (one-time, rate-limited by Global Token) ────
         post("/api/v1/register") {
+            // ── Fix 5: IP-based rate limit (belt + braces alongside nginx) ──
+            val clientIp = call.request.headers["X-Real-IP"]
+                ?: call.request.local.remoteAddress
+            if (!registerLimiter.tryConsume(clientIp)) {
+                call.respond(io.ktor.http.HttpStatusCode.TooManyRequests, "Rate limit exceeded")
+                return@post
+            }
+
             val globalAuth = call.request.headers["X-Horus-Global-Token"] ?: ""
             if (!java.security.MessageDigest.isEqual(
                     globalAuth.toByteArray(Charsets.UTF_8),
@@ -193,8 +222,8 @@ fun Application.module(nodeId: String, redisUrl: String) {
                 return@post
             }
 
-            val params  = call.receiveParameters()
-            val userId  = params["userId"]?.trim() ?: ""
+            val params = call.receiveParameters()
+            val userId = params["userId"]?.trim() ?: ""
 
             if (userId.isBlank() || userId.length > 64 ||
                 !userId.matches(Regex("^[a-zA-Z0-9_-]+$"))) {
@@ -216,7 +245,8 @@ fun Application.module(nodeId: String, redisUrl: String) {
                 call.respond(io.ktor.http.HttpStatusCode.Unauthorized, "Unauthorized")
                 return@post
             }
-            val userId = call.parameters["userId"] ?: return@post call.respond(io.ktor.http.HttpStatusCode.BadRequest)
+            val userId = call.parameters["userId"]
+                ?: return@post call.respond(io.ktor.http.HttpStatusCode.BadRequest)
             // TTL matches token lifetime (30 days in seconds)
             redis?.async()?.setex("sl:revoked:$userId", 30L * 24 * 60 * 60, "1")
             LiveMetrics.remove(userId)
@@ -254,7 +284,7 @@ fun Application.module(nodeId: String, redisUrl: String) {
 
             // ✅ FIX Critical #1 & #2: Stateless signed-identity verification
             // Replaces the static shared HORUS_SECRET_TOKEN for per-device auth.
-            val clientToken  = call.request.headers["X-Horus-Identity-Token"] ?: ""
+            val clientToken    = call.request.headers["X-Horus-Identity-Token"] ?: ""
             val verifiedUserId = ServerIdentityVerifier.verifyClientToken(clientToken)
             if (verifiedUserId == null || verifiedUserId != routeUserId) {
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Invalid Identity Token"))
@@ -272,7 +302,7 @@ fun Application.module(nodeId: String, redisUrl: String) {
                 return@webSocket
             }
 
-            val peerId     = UUID.randomUUID().toString()
+            val peerId = UUID.randomUUID().toString()
 
             val deviceEnum = try {
                 PeerRegistry.DeviceType.valueOf(deviceType.uppercase())
@@ -282,10 +312,10 @@ fun Application.module(nodeId: String, redisUrl: String) {
             }
 
             val session = PeerRegistry.PeerSession(
-                peerId = peerId,
-                userId = verifiedUserId,
+                peerId     = peerId,
+                userId     = verifiedUserId,
                 deviceType = deviceEnum,
-                wsSession = this
+                wsSession  = this
             )
 
             registry.register(session)
@@ -295,6 +325,11 @@ fun Application.module(nodeId: String, redisUrl: String) {
                 incoming.consumeEach { frame ->
                     registry.updatePing(peerId)
                     if (frame is Frame.Text) {
+                        // ── Fix 5: per-userId rate limit on WebSocket messages ──
+                        if (!signalLimiter.tryConsume(verifiedUserId)) {
+                            close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Rate limit exceeded"))
+                            return@consumeEach
+                        }
                         orchestrator.route(verifiedUserId, deviceEnum, frame.readText())
                     }
                 }
@@ -309,7 +344,7 @@ fun Application.module(nodeId: String, redisUrl: String) {
         webSocket("/stream/handoff/{roomId}/{deviceType}") {
             val roomId     = call.parameters["roomId"]     ?: "default"
             val deviceType = call.parameters["deviceType"] ?: "UNKNOWN"
-            
+
             val authToken = call.request.headers["X-Horus-Authorization"] ?: ""
             if (!java.security.MessageDigest.isEqual(
                     authToken.toByteArray(Charsets.UTF_8),

@@ -10,6 +10,7 @@ plugins {
 android {
     namespace 'com.streamlink.shared'
     compileSdk 36
+    buildToolsVersion '36.0.0'  // ✅ FIX: AGP 8.7.3 defaults to 34.0.0 which is not installed
     defaultConfig {
         minSdk 29
 
@@ -84,10 +85,13 @@ dependencies {
     implementation 'io.getstream:stream-webrtc-android:1.1.0'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     
-    // Testing
+    // Testing — JUnit5 (existing tests) + JUnit4 (Phase2ProtocolTest)
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.0'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.0'
+    // JUnit4 support via JUnit5 vintage engine — runs @Test from org.junit.*
+    testImplementation 'junit:junit:4.13.2'
+    testRuntimeOnly 'org.junit.vintage:junit-vintage-engine:5.10.0'
     testImplementation 'io.mockk:mockk:1.13.8'
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
 }

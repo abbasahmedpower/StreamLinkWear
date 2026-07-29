@@ -24,6 +24,12 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun providePredictiveDecisionEvaluator(): com.streamlink.app.core.predictive.PredictiveDecisionEvaluator {
+        return com.streamlink.app.core.predictive.PredictiveDecisionEvaluator()
+    }
+
+    @Provides
+    @Singleton
     fun provideDirectSocketServer(): DirectSocketServer {
         return DirectSocketServer()
     }

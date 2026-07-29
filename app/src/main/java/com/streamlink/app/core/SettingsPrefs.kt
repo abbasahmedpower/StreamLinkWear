@@ -26,7 +26,7 @@ class SettingsPrefs private constructor(private val context: Context) {
 
     val quality: StateFlow<com.streamlink.shared.QualityMode> = context.dataStore.data
         .map { prefs -> com.streamlink.shared.QualityMode.fromName(prefs[QUALITY_KEY]) }
-        .stateIn(scope, SharingStarted.Eagerly, com.streamlink.shared.QualityMode.HD_720P)
+        .stateIn(scope, SharingStarted.Eagerly, com.streamlink.shared.QualityMode.BALANCED)
 
     val bufferJitterMs: StateFlow<Int> = context.dataStore.data
         .map { prefs -> prefs[BUFFER_JITTER_KEY] ?: 150 }

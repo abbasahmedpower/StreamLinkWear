@@ -316,7 +316,7 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     prefs.setBufferJitterMs(200)
-                    prefs.setQuality(QualityMode.HD_720P)
+                    prefs.setQuality(QualityMode.BALANCED)
                     settingsStore.setDynamicFps(false)
                     settingsStore.setPrivacyBlackout(false)
                     settingsStore.setImuGestures(false)

@@ -62,4 +62,18 @@ object ProductionAnalytics {
         }
         firebaseAnalytics?.logEvent("budget_violation", bundle)
     }
+
+    /**
+     * M-13: Logs a caught exception to Firebase for production monitoring.
+     * Call via safeRun(report=true) for critical system boundary catches.
+     */
+    fun logException(tag: String, context: String, e: Exception) {
+        val bundle = Bundle().apply {
+            putString("tag", tag)
+            putString("context", context)
+            putString("exception_type", e.javaClass.simpleName)
+            putString("message", e.message?.take(100) ?: "unknown")
+        }
+        firebaseAnalytics?.logEvent("caught_exception", bundle)
+    }
 }

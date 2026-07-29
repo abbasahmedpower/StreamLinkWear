@@ -20,15 +20,17 @@ object MemoryBudgetMonitor {
 
     // Global Threshold before panic mode
     private const val CRITICAL_GLOBAL_HEAP_MB = 200
+    private const val NATIVE_LIMIT_MB = 150
+    private const val JVM_LIMIT_MB = 100
 
     fun checkBudgets() {
         val maxMemory = Runtime.getRuntime().maxMemory() / (1024 * 1024)
         val totalMemory = Runtime.getRuntime().totalMemory() / (1024 * 1024)
         val freeMemory = Runtime.getRuntime().freeMemory() / (1024 * 1024)
-        val usedMemory = totalMemory - freeMemory
+        val usedMemory = (totalMemory - freeMemory).toInt()
 
-        val nativeHeap = Debug.getNativeHeapSize() / (1024 * 1024)
-        val nativeAllocated = Debug.getNativeHeapAllocatedSize() / (1024 * 1024)
+        val nativeHeap = (Debug.getNativeHeapSize() / (1024 * 1024)).toInt()
+        val nativeAllocated = (Debug.getNativeHeapAllocatedSize() / (1024 * 1024)).toInt()
 
         if (nativeAllocated > NATIVE_LIMIT_MB) {
             android.util.Log.e("MemoryBudget", "CRITICAL: Native Heap exceeded budget! $nativeAllocated MB > $NATIVE_LIMIT_MB MB")

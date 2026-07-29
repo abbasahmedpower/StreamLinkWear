@@ -16,9 +16,14 @@ import android.content.pm.ServiceInfo
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.streamlink.app.core.StreamingOrchestrator
+import com.streamlink.app.core.safeExec
+import com.streamlink.app.core.safeRun
+import com.streamlink.shared.ThermalMonitor
 import com.streamlink.shared.util.ResourceRegistry
 import com.streamlink.shared.util.safeSystemService
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -29,6 +34,7 @@ class CaptureService : Service() {
     @Inject lateinit var hardwareEncoder: HardwareEncoder
     @Inject lateinit var directSocketServer: com.streamlink.shared.DirectSocketServer
     @Inject lateinit var audioCaptureEngine: AudioCaptureEngine
+    @Inject lateinit var thermalMonitor: ThermalMonitor
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -70,60 +76,82 @@ class CaptureService : Service() {
     }
 
     private fun startCapture(resultCode: Int, data: Intent) {
-        try {
-            val mpm = safeSystemService<MediaProjectionManager>(Context.MEDIA_PROJECTION_SERVICE)
-            if (mpm == null) {
-                com.streamlink.shared.diagnostics.StartupDiagnostics.warn("CaptureService", "MediaProjectionManager is null")
-                stopSelf()
-                return
-            }
-
-            mediaProjection = mpm.getMediaProjection(resultCode, data)
-            if (mediaProjection == null) {
-                com.streamlink.shared.diagnostics.StartupDiagnostics.warn("CaptureService", "MediaProjection is null")
-                stopSelf()
-                return
-            }
-
-            com.streamlink.shared.diagnostics.StartupDiagnostics.ok("CaptureService MediaProjection started")
-        } catch (e: Exception) {
-            android.util.Log.e(tag, "Failed to start MediaProjection", e)
-            com.streamlink.shared.diagnostics.StartupDiagnostics.warn("CaptureService", "MediaProjection failed: ${e.message}")
-            stopSelf()
-            return
+        // ── MediaProjection setup ────────────────────────────────────────────────
+        val mpm = safeRun(tag, "getMediaProjectionManager") {
+            safeSystemService<MediaProjectionManager>(Context.MEDIA_PROJECTION_SERVICE)
+        } ?: run {
+            com.streamlink.shared.diagnostics.StartupDiagnostics.warn(tag, "MediaProjectionManager is null")
+            stopSelf(); return
         }
 
-        mediaProjection?.registerCallback(projectionCallback, android.os.Handler(mainLooper))
+        val projection = safeRun(tag, "getMediaProjection", report = true) {
+            mpm.getMediaProjection(resultCode, data)
+        } ?: run {
+            com.streamlink.shared.diagnostics.StartupDiagnostics.warn(tag, "MediaProjection is null")
+            stopSelf(); return
+        }
+        mediaProjection = projection
+        com.streamlink.shared.diagnostics.StartupDiagnostics.ok("CaptureService MediaProjection started")
 
+        projection.registerCallback(projectionCallback, android.os.Handler(mainLooper))
+
+        // ── Encoder error self-healing ───────────────────────────────────────────
         hardwareEncoder.onEncoderError = {
             Log.e(tag, "Encoder error detected. Initiating Self-Healing (MICRO-10)...")
             autoRestartEncoder()
         }
 
         hardwareEncoder.onSurfaceChanged = { newSurface ->
-            try {
+            safeExec(tag, "hotSwapVirtualDisplaySurface", report = true) {
                 virtualDisplay?.setSurface(newSurface)
                 virtualDisplay?.resize(
-                    hardwareEncoder.currentWidth, 
-                    hardwareEncoder.currentHeight, 
+                    hardwareEncoder.currentWidth,
+                    hardwareEncoder.currentHeight,
                     resources.displayMetrics.densityDpi
                 )
                 Log.i(tag, "VirtualDisplay surface hot-swapped to new Encoder surface")
-            } catch (e: Exception) {
-                Log.e(tag, "Failed to hot-swap VirtualDisplay surface: ${e.message}")
-                autoRestartEncoder()
+            }.also { success ->
+                if (success == null) autoRestartEncoder()
             }
         }
 
-        // Ensure encoder is initialized
+        // ── Encoder initialisation ───────────────────────────────────────────────
         if (!hardwareEncoder.initialize()) {
             Log.e(tag, "Failed to initialize HardwareEncoder")
-            stopSelf()
-            return
+            stopSelf(); return
+        }
+
+        // ── Thermal throttling: early response before OS steps in ────────────────
+        // SEVERE  (level 7): halve bitrate to shed heat immediately
+        // CRITICAL (level 9): pause stream entirely until cool-down
+        safeExec(tag, "thermalMonitor.start") { thermalMonitor.start() }
+
+        kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.Dispatchers.Main + kotlinx.coroutines.SupervisorJob()
+        ).also { scope ->
+            thermalMonitor.thermalLevel.onEach { level ->
+                when {
+                    level >= 9 -> {
+                        Log.w(tag, "Thermal CRITICAL ($level/10) — pausing stream")
+                        safeExec(tag, "pauseVideoForThermal", report = true) {
+                            orchestrator.pauseVideo()
+                        }
+                    }
+                    level >= 7 -> {
+                        Log.w(tag, "Thermal SEVERE ($level/10) — halving bitrate")
+                        safeExec(tag, "setBitrateForThermal", report = true) {
+                            hardwareEncoder.setBitrate(
+                                (hardwareEncoder.currentBitrateKbps() * 0.5).toInt().coerceAtLeast(200)
+                            )
+                        }
+                    }
+                    else -> { /* nominal — no action */ }
+                }
+            }.launchIn(scope)
         }
 
         setupVirtualDisplay()
-        mediaProjection?.let { audioCaptureEngine.start(it) }
+        projection.let { audioCaptureEngine.start(it) }
 
         Log.i(tag, "Screen capture started successfully")
     }
@@ -171,12 +199,11 @@ class CaptureService : Service() {
 
     private fun stopCapture() {
         audioCaptureEngine.stop()
+        safeExec(tag, "thermalMonitor.stop") { thermalMonitor.stop() }
         virtualDisplay?.release()
         virtualDisplay = null
-
         mediaProjection?.stop()
         mediaProjection = null
-
         hardwareEncoder.release()
         Log.i(tag, "Screen capture stopped")
     }
@@ -212,13 +239,8 @@ class CaptureService : Service() {
         // ✅ N2 FIX: User swiped the app from Recents — force clean teardown
         // so the foreground service and MediaProjection don't linger in the background.
         Log.i(tag, "Task removed by user — forcing stopCapture and self-destruction")
-        try {
-            stopCapture()
-        } catch (e: Exception) {
-            Log.e(tag, "Error during stopCapture on task removal: ${e.message}")
-        } finally {
-            stopSelf()
-        }
+        safeExec(tag, "stopCaptureOnTaskRemoved") { stopCapture() }
+        stopSelf()
         super.onTaskRemoved(rootIntent)
     }
 

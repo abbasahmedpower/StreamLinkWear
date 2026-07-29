@@ -4,6 +4,9 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReferenceArray
 
 class CacheAlignedFramePacket {
+    // Pre-state padding: 7 × Long (56 bytes) + state (4 bytes) = 60 bytes
+    // followed by 7 × Long post-state padding = covers 64-byte ARM64 cache line.
+    @Suppress("unused") @JvmField @Volatile var _p0: Long = 0
     @Suppress("unused") private var _p1 = 0L; @Suppress("unused") private var _p2 = 0L
     @Suppress("unused") private var _p3 = 0L; @Suppress("unused") private var _p4 = 0L
     @Suppress("unused") private var _p5 = 0L; @Suppress("unused") private var _p6 = 0L

@@ -78,7 +78,7 @@ class StreamingOrchestrator @Inject constructor(
     
     // Active Channel Keys
     @Volatile
-    private var videoCryptoContext: com.streamlink.app.core.crypto.ChannelKeys? = null
+    private var videoCryptoContext: com.streamlink.app.core.crypto.ChannelCryptoContext? = null
 
     fun onPairingHandshakeComplete(realSessionKey: ByteArray) {
         cryptoManager = com.streamlink.app.core.crypto.FastCryptoResumptionManager(
@@ -185,9 +185,7 @@ class StreamingOrchestrator @Inject constructor(
                 val currentBitrateKbps = com.streamlink.shared.GlobalStreamState.snapshot.value.bitrateKbps
                 val thermalLvl = thermalMonitor.thermalLevel.value
 
-                if (isFuzzyOptimizationEnabled) {
-                    qualityController.onMetricsUpdated(rttMs, packetLossPercent, jitterMs, currentBitrateKbps)
-                }
+                // Metrics are already polled inside QualityController.intelEngine loop
                 
                 snapshotCounter++
                 

@@ -148,6 +148,9 @@ class DirectSocketServer {
             serverSocket = ServerSocket(StreamProtocol.DIRECT_SOCKET_PORT).apply {
                 reuseAddress = true
                 soTimeout = 0
+                // Pre-allocate a large accept backlog and OS-level buffer to avoid
+                // client connections being dropped on burst reconnects.
+                receiveBufferSize = 65_536
             }
             Log.i(tag, "Listening on :${StreamProtocol.DIRECT_SOCKET_PORT}")
 
@@ -168,13 +171,14 @@ class DirectSocketServer {
                 }
 
                 try {
-                    newClient.tcpNoDelay = true
+                    newClient.tcpNoDelay = true       // Disable Nagle's algorithm — critical for latency
                     newClient.keepAlive = true
                     newClient.reuseAddress = true
-                    newClient.trafficClass = 0x10
-                    newClient.sendBufferSize = 32 * 1024
-                    newClient.receiveBufferSize = 32 * 1024
-                    newClient.setPerformancePreferences(0, 1, 2)
+                    newClient.trafficClass = 0x10      // IPTOS_LOWDELAY
+                    newClient.sendBufferSize    = 65_536  // 64KB — fits ~16 × 3900-byte chunks
+                    newClient.receiveBufferSize = 65_536  // symmetric for ACK path
+                    // 0=connection-time, 1=latency, 2=bandwidth — latency wins for interactive mirror
+                    newClient.setPerformancePreferences(0, 2, 0)
                     newClient.soTimeout = 8_000
 
                     val remote = newClient.inetAddress.hostAddress ?: "unknown"
@@ -377,7 +381,8 @@ class DirectSocketServer {
                 // ✅ NULL-SAFE: task.wire is guaranteed non-null here by the enqueue contract
                 // (enqueue always assigns wire before adding to queue), but we guard
                 // defensively to avoid NPE under memory pressure.
-                val wire = task.wire ?: run {
+                val wire = task.wire
+                if (wire == null) {
                     freeTasks.offer(task)
                     Log.e(tag, "Dequeued task with null wire — skipping (pool integrity issue)")
                     continue

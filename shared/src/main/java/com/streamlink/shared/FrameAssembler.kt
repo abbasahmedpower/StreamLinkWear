@@ -35,6 +35,8 @@ class FrameAssembler {
         val buf = ByteArray(totalChunks * StreamProtocol.CHUNK_MTU + 4)
         var writePos = 4           // Reserve first 4 bytes for start code
         var chunksReceived = 0
+        /** Wall-clock insertion time for TTL-based eviction (prevents OOM on 30-min sessions) */
+        val insertionMs: Long = System.currentTimeMillis()
     }
 
     private val pending = LinkedHashMap<Int, PendingNal>(32)
@@ -99,16 +101,20 @@ class FrameAssembler {
             )
         }
 
-        // ✅ Stale frame cleanup based on time, not just count, to prevent memory leaks
+        // ── Stale frame eviction (prevents OOM over long sessions) ────────────────
+        // Primary: deadline-based eviction (nanosecond accuracy)
+        // Secondary: wall-clock TTL (500ms) for entries without a valid deadline
+        //            — this is the critical fix for OOM after 30 minutes.
+        val nowNs = System.nanoTime()
         val nowMs = System.currentTimeMillis()
         val it = pending.entries.iterator()
         while (it.hasNext()) {
             val entry = it.next()
-            // Assume timestampUs is closely tied to current time if network is fast.
-            // But to be robust against monotonic/wall clock diffs, we can use 500ms since insertion.
-            // Since we don't have insertion time, and deadlineUs is present, let's use deadlineUs.
-            if (entry.value.deadlineUs > 0 && System.nanoTime() / 1000 > entry.value.deadlineUs) {
-                Log.w(tag, "Evicting stale NAL seq=${entry.key} (deadline passed)")
+            val v = entry.value
+            val deadlineExpired = v.deadlineUs > 0 && nowNs / 1000 > v.deadlineUs
+            val ageExpired      = (nowMs - v.insertionMs) > 500L
+            if (deadlineExpired || ageExpired) {
+                Log.w(tag, "Evicting stale NAL seq=${entry.key} (deadline=$deadlineExpired age=$ageExpired)")
                 it.remove()
             }
         }

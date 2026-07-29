@@ -227,6 +227,7 @@ fun InfoScreen(onBack: () -> Unit) {
     }
 }
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun SocialButton(modifier: Modifier = Modifier, title: String, icon: String, containerColor: Color, textColor: Color = Color.White, onClick: () -> Unit) {
     Surface(

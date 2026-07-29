@@ -185,7 +185,8 @@ class WebRtcTransport(
                         LockSupport.parkNanos(100_000)
                         continue
                     }
-                    val wire = task.wire ?: run {
+                    val wire = task.wire
+                    if (wire == null) {
                         freeTasks.offer(task)
                         continue
                     }

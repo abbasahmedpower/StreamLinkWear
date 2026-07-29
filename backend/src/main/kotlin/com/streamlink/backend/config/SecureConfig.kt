@@ -12,4 +12,6 @@ object SecureConfig {
     val redisUrl: String by lazy { requireEnv("REDIS_URL") }
     val tlsPassword: String by lazy { requireEnv("HORUS_TLS_PASSWORD") }
     val nodeId: String = System.getenv("NODE_ID") ?: "NODE_1"
+    /** Shared REST API secret for self-hosted coturn short-TTL credentials. */
+    val coturnSecret: String by lazy { requireEnv("COTURN_SECRET") }
 }

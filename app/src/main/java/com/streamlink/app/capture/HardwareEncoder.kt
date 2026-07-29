@@ -15,6 +15,8 @@ import com.streamlink.shared.EncodingProfile
 import com.streamlink.shared.FramePacket
 import com.streamlink.shared.StreamObservability
 import com.streamlink.shared.StreamProtocol
+import com.streamlink.app.core.safeExec
+import com.streamlink.app.core.safeRun
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
@@ -60,15 +62,13 @@ class HardwareEncoder(
      * Useful for recovering from packet loss or providing immediate video on fresh connections.
      */
     fun forceInstantKeyFrame() {
-        try {
-            if (released.get()) return
+        if (released.get()) return
+        safeExec(tag, "forceInstantKeyFrame") {
             val bundle = android.os.Bundle().apply {
                 putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
             }
             codec?.setParameters(bundle)
             Log.i(tag, "Requested Instant KeyFrame")
-        } catch (e: Exception) {
-            Log.e(tag, "Failed to request Instant KeyFrame: ${e.message}")
         }
     }
 
@@ -103,7 +103,7 @@ class HardwareEncoder(
             Log.w(tag, "initialize() on released encoder")
             return false
         }
-        return try {
+        return safeRun(tag, "initialize", report = true, fallback = false) {
             val format = MediaFormat.createVideoFormat(
                 MediaFormat.MIMETYPE_VIDEO_AVC, width, height
             ).apply {
@@ -142,10 +142,7 @@ class HardwareEncoder(
             consecutiveErrors.set(0)
             Log.i(tag, "Encoder ready: ${width}x${height}@${targetFps}fps ${currentBitrateKbps}Kbps")
             true
-        } catch (e: Exception) {
-            Log.e(tag, "initialize failed: ${e.message}", e)
-            false
-        }
+        } ?: false
     }
 
     // ─── Unified Entry Point (C-5 Fix) ──────────────────────────────────────────
@@ -228,10 +225,10 @@ class HardwareEncoder(
      */
     private fun rebuildCodecInternal(profile: EncodingProfile) {
         Log.i(tag, "rebuildCodec: ${profile.label} (${profile.width}x${profile.height}@${profile.fps}fps ${profile.bitrateKbps}kbps)")
-        try { mediaCodec?.stop()    } catch (e: Exception) { Log.w(tag, "stop error: ${e.message}") }
-        try { mediaCodec?.release() } catch (e: Exception) { Log.w(tag, "release error: ${e.message}") }
+        safeExec(tag, "rebuildCodec.stop")  { mediaCodec?.stop() }
+        safeExec(tag, "rebuildCodec.release") { mediaCodec?.release() }
         mediaCodec = null
-        try { inputSurface?.release() } catch (e: Exception) { Log.w(tag, "surface release error: ${e.message}") }
+        safeExec(tag, "rebuildCodec.surfaceRelease") { inputSurface?.release() }
         inputSurface = null
 
         width             = profile.width
@@ -250,12 +247,10 @@ class HardwareEncoder(
         val clamped = kbps.coerceIn(200, 4000)
         if (clamped == currentBitrateKbps) return
         currentBitrateKbps = clamped
-        try {
+        safeExec(tag, "setBitrateInternal") {
             bitrateBundle.putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, clamped * 1000)
             mediaCodec?.setParameters(bitrateBundle)
             Log.d(tag, "setBitrateInternal → ${clamped}kbps")
-        } catch (e: Exception) {
-            Log.w(tag, "setBitrateInternal failed: ${e.message}")
         }
     }
 
@@ -381,32 +376,24 @@ class HardwareEncoder(
         val clamped = kbps.coerceIn(200, 4000)
         if (clamped == currentBitrateKbps) return
         currentBitrateKbps = clamped
-        try {
+        safeExec(tag, "setBitrate", report = true) {
             bitrateBundle.putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, clamped * 1000)
             mediaCodec?.setParameters(bitrateBundle)
             Log.d(tag, "Bitrate → ${clamped}Kbps")
-        } catch (e: Exception) {
-            Log.w(tag, "setBitrate failed: ${e.message}")
         }
     }
 
     fun forceKeyframe() {
         if (released.get()) return
-        try {
+        safeExec(tag, "forceKeyframe") {
             mediaCodec?.setParameters(syncFrameBundle)
-        } catch (e: Exception) {
-            Log.w(tag, "forceKeyframe failed: ${e.message}")
         }
     }
 
     fun release() {
         if (!released.compareAndSet(false, true)) return
-        try {
-            mediaCodec?.stop()
-            mediaCodec?.release()
-        } catch (e: Exception) {
-            Log.w(tag, "release error: ${e.message}")
-        }
+        safeExec(tag, "release.stop")    { mediaCodec?.stop() }
+        safeExec(tag, "release.release") { mediaCodec?.release() }
         mediaCodec = null
         inputSurface?.release()
         inputSurface = null
@@ -433,24 +420,23 @@ class HardwareEncoder(
      */
     fun flushAndRestart() {
         if (released.get()) return
-        try {
+        val flushed = safeRun(tag, "flushAndRestart", report = true) {
             Log.w(tag, "Hardware Watchdog triggered flushAndRestart()")
             mediaCodec?.flush()
             forceKeyframe()
-        } catch (e: Exception) {
-            Log.e(tag, "Failed to flush media codec: ${e.message}", e)
-            // If flush fails, signal a hard crash so the orchestrator rebuilds it.
+            true
+        }
+        if (flushed == null) {
+            // flush itself failed — signal orchestrator to do a full rebuild
             onEncoderError?.invoke()
         }
     }
 
     fun setThermalThrottled(throttled: Boolean) {
         val priority = if (throttled) Process.THREAD_PRIORITY_DISPLAY else Process.THREAD_PRIORITY_URGENT_DISPLAY
-        try {
+        safeExec(tag, "setThermalThrottled") {
             Process.setThreadPriority(encoderThread.threadId, priority)
             Log.i(tag, "Encoder thread priority updated (throttled=$throttled)")
-        } catch (e: Exception) {
-            Log.w(tag, "Failed to update thread priority: ${e.message}")
         }
     }
 

@@ -1,6 +1,7 @@
 package com.streamlink.wear.ai
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import com.streamlink.shared.StreamProtocol
 import com.streamlink.wear.sensor.WristMotionSensor
@@ -17,6 +18,7 @@ import android.content.res.AssetFileDescriptor
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
+import kotlin.math.exp
 
 /**
  * On-device TFLite inference for proactive stream adaptation on the watch.
@@ -24,6 +26,12 @@ import kotlin.math.abs
  * It consumes the same stream_predictor.tflite contract as the phone-side
  * ContextIntelligenceEngine. If the model is absent, it still logs Room events
  * so ai_training/export_from_room.py can build a real dataset later.
+ *
+ * Enhancements (Layer-6 fixes):
+ *  • ClassBiasAdapter  — lightweight EMA bias correction that personalises
+ *    predictions to each user without sending any data off-device (Fix 2).
+ *  • MotionCalibrator  — hourly rolling-mean drift correction for the
+ *    gyroscope/accelerometer readings (Fix 3).
  */
 @Singleton
 class LocalPredictiveEngine @Inject constructor(
@@ -40,6 +48,17 @@ class LocalPredictiveEngine @Inject constructor(
     private var currentBitrate = 0f
     private var afd: AssetFileDescriptor? = null
     private var channel: FileChannel? = null
+
+    // ── Fix 2: Local EMA bias adapter ────────────────────────────────────────
+    private val biasAdapter = ClassBiasAdapter(
+        numClasses = DEFAULT_MODEL_OUTPUT_CLASSES,
+        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    )
+
+    // ── Fix 3: Motion sensor drift calibrator ────────────────────────────────
+    private val motionCalibrator = MotionCalibrator(
+        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    )
 
     init {
         for (assetName in MODEL_ASSET_NAMES) {
@@ -59,7 +78,12 @@ class LocalPredictiveEngine @Inject constructor(
                 tflite = Interpreter(buffer)
                 modelOutputClasses = tflite?.getOutputTensor(0)?.shape()?.lastOrNull() ?: 0
                 Log.i(tag, "TFLite model loaded successfully: $assetName outputs=$modelOutputClasses")
-                
+
+                // Resize adapter if model reports different class count
+                if (modelOutputClasses > 0 && modelOutputClasses != DEFAULT_MODEL_OUTPUT_CLASSES) {
+                    biasAdapter.resize(modelOutputClasses)
+                }
+
                 afd = currentAfd
                 channel = currentChannel
                 break
@@ -82,12 +106,25 @@ class LocalPredictiveEngine @Inject constructor(
     ) {
         job?.cancel()
         job = scope.launch {
+            var calibrationTick = 0L
+
             while (isActive) {
                 delay(1_000L)
+                calibrationTick++
 
-                val motion = motionProvider()
+                // ── Fix 3: feed raw motion into calibrator every second ───────
+                val rawMotion = motionProvider()
+                motionCalibrator.feed(rawMotion)
+
+                // Trigger hourly drift recalibration
+                if (calibrationTick % CALIBRATION_INTERVAL_SEC == 0L) {
+                    motionCalibrator.recalibrate()
+                    Log.i(tag, "[Calibrate] driftOffset=${motionCalibrator.driftOffset}")
+                }
+
+                val correctedMotion = motionCalibrator.correct(rawMotion)
                 val rttMs = networkProvider().toLong().coerceAtLeast(0L)
-                val recommendedBitrate = inferBitrate(motion, rttMs)
+                val recommendedBitrate = inferBitrate(correctedMotion, rttMs)
 
                 if (recommendedBitrate > 0f &&
                     (currentBitrate == 0f || abs(recommendedBitrate - currentBitrate) / currentBitrate >= 0.1f)
@@ -100,7 +137,7 @@ class LocalPredictiveEngine @Inject constructor(
                 logger.log(
                     "inference_tick",
                     mapOf(
-                        "motionIntensity" to motion,
+                        "motionIntensity" to correctedMotion,
                         "rttMs" to rttMs,
                         "recommendedBitrate" to recommendedBitrate
                     )
@@ -114,9 +151,16 @@ class LocalPredictiveEngine @Inject constructor(
         job = null
     }
 
+    /** Force an immediate drift recalibration (e.g. triggered by a watch face tap). */
+    fun forceCalibrate() {
+        motionCalibrator.recalibrate()
+        Log.i(tag, "[Calibrate] Forced — driftOffset=${motionCalibrator.driftOffset}")
+    }
+
     override fun close() {
         stop()
         try {
+            biasAdapter.persist()
             tflite?.close()
             tflite = null
             channel?.close()
@@ -127,6 +171,8 @@ class LocalPredictiveEngine @Inject constructor(
             Log.e(tag, "Error closing resources: ${e.message}")
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     private fun inferBitrate(motion: Float, rttMs: Long): Float {
         val interpreter = tflite ?: return 0f
@@ -139,13 +185,15 @@ class LocalPredictiveEngine @Inject constructor(
                 DEFAULT_THERMAL_NORM
             )
         )
-        val output = Array(1) {
-            FloatArray(modelOutputClasses.takeIf { it > 0 } ?: DEFAULT_MODEL_OUTPUT_CLASSES)
-        }
+        val numOut = modelOutputClasses.takeIf { it > 0 } ?: DEFAULT_MODEL_OUTPUT_CLASSES
+        val output = Array(1) { FloatArray(numOut) }
 
         return try {
             interpreter.run(input, output)
-            bitrateFromModelOutput(output[0])
+            // ── Fix 2: apply EMA bias correction before class selection ──────
+            val adjusted = biasAdapter.adjust(output[0])
+            biasAdapter.observe(adjusted)
+            bitrateFromModelOutput(adjusted)
         } catch (e: Exception) {
             Log.e(tag, "Inference error: ${e.message}")
             0f
@@ -157,11 +205,11 @@ class LocalPredictiveEngine @Inject constructor(
         val bitrate = when {
             probs.size == 3 && maxIdx == 2 -> StreamProtocol.WEAR_BPS_ECO.toFloat()
             probs.size == 3 && maxIdx == 1 -> (StreamProtocol.WEAR_BPS_FULL * 0.75f)
-            probs.size == 3 -> StreamProtocol.WEAR_BPS_FULL.toFloat()
-            maxIdx == 3 -> StreamProtocol.WEAR_BPS_ECO.toFloat()
-            maxIdx == 1 -> (StreamProtocol.WEAR_BPS_FULL * 0.75f)
-            maxIdx == 2 -> StreamProtocol.WEAR_BPS_FULL.toFloat()
-            else -> 0f
+            probs.size == 3               -> StreamProtocol.WEAR_BPS_FULL.toFloat()
+            maxIdx == 3                   -> StreamProtocol.WEAR_BPS_ECO.toFloat()
+            maxIdx == 1                   -> (StreamProtocol.WEAR_BPS_FULL * 0.75f)
+            maxIdx == 2                   -> StreamProtocol.WEAR_BPS_FULL.toFloat()
+            else                          -> 0f
         }
 
         return if (bitrate <= 0f) {
@@ -171,11 +219,151 @@ class LocalPredictiveEngine @Inject constructor(
         }
     }
 
+    // =========================================================================
+    // Fix 2 — ClassBiasAdapter (Local EMA personalisation)
+    // =========================================================================
+    /**
+     * Lightweight per-user bias correction using Exponential Moving Averages.
+     *
+     * Maintains an EMA of observed class probabilities. If the model consistently
+     * over-predicts a class relative to the running average, the correction factor
+     * pulls the output back towards the user's actual distribution.
+     *
+     * All state is stored in [SharedPreferences] — no model weights leave the device.
+     * Complexity: O(numClasses) per inference call.
+     */
+    private inner class ClassBiasAdapter(
+        numClasses: Int,
+        private val prefs: SharedPreferences
+    ) {
+        // Smoothing factor: 0.05 = slow adapt (stable), 0.20 = fast adapt (reactive)
+        private val alpha = 0.05f
+        private val resetThreshold = 0.40f   // Reset if accumulated error > 40 %
+        private val tag = "BiasAdapter"
+
+        private var emaProbs: FloatArray = loadOrDefault(numClasses)
+
+        /** Restore persisted EMA or start uniform. */
+        private fun loadOrDefault(n: Int): FloatArray {
+            val stored = prefs.getString(PREFS_BIAS_KEY, null)
+            return if (stored != null) {
+                try {
+                    stored.split(",").map { it.toFloat() }.toFloatArray()
+                        .takeIf { it.size == n } ?: FloatArray(n) { 1f / n }
+                } catch (_: Exception) { FloatArray(n) { 1f / n } }
+            } else {
+                FloatArray(n) { 1f / n }
+            }
+        }
+
+        fun resize(newSize: Int) {
+            emaProbs = FloatArray(newSize) { 1f / newSize }
+        }
+
+        /**
+         * Returns a bias-corrected probability vector.
+         * Applies per-class multiplicative correction then re-normalises.
+         */
+        fun adjust(probs: FloatArray): FloatArray {
+            val n = minOf(probs.size, emaProbs.size)
+            val corrected = FloatArray(probs.size)
+            var sum = 0f
+            for (i in 0 until n) {
+                // Suppress over-predicted classes; boost under-predicted ones
+                val correction = if (emaProbs[i] > 0f) (1f / emaProbs[i]).coerceIn(0.5f, 2.0f) else 1f
+                corrected[i] = probs[i] * correction
+                sum += corrected[i]
+            }
+            if (sum <= 0f) return probs
+            // Re-normalise to valid probability simplex
+            return FloatArray(probs.size) { corrected[it] / sum }
+        }
+
+        /** Update EMA with latest adjusted output vector. */
+        fun observe(probs: FloatArray) {
+            val n = minOf(probs.size, emaProbs.size)
+            var totalError = 0f
+            for (i in 0 until n) {
+                totalError += abs(probs[i] - emaProbs[i])
+                emaProbs[i] = alpha * probs[i] + (1f - alpha) * emaProbs[i]
+            }
+            // If accumulated error is very high, the user's pattern changed — reset
+            if (totalError > resetThreshold) {
+                Log.i(tag, "Pattern shift detected (error=${"%.2f".format(totalError)}), resetting EMA")
+                val uniform = 1f / n
+                emaProbs = FloatArray(emaProbs.size) { uniform }
+            }
+        }
+
+        /** Persist EMA to SharedPreferences for survival across restarts. */
+        fun persist() {
+            prefs.edit().putString(PREFS_BIAS_KEY, emaProbs.joinToString(",")).apply()
+        }
+    }
+
+    // =========================================================================
+    // Fix 3 — MotionCalibrator (Hourly sensor drift correction)
+    // =========================================================================
+    /**
+     * Rolling-window drift corrector for wrist motion sensor readings.
+     *
+     * Maintains a circular buffer of the last [WINDOW_SIZE] raw motion samples
+     * (1 sample/second ≈ 1 minute of history). Every [recalibrate] call computes
+     * the mean of the buffer as the current drift offset and persists it to
+     * [SharedPreferences].
+     *
+     * Usage:
+     *   feed(rawValue) every second
+     *   recalibrate() every hour (or on demand)
+     *   correct(raw) → calibrated value before inference
+     */
+    private inner class MotionCalibrator(private val prefs: SharedPreferences) {
+        private val tag = "MotionCalibrator"
+        private val buffer = FloatArray(WINDOW_SIZE)
+        private var head = 0
+        private var count = 0
+
+        var driftOffset: Float = prefs.getFloat(PREFS_DRIFT_KEY, 0f)
+            private set
+
+        /** Add one raw motion sample to the rolling window. */
+        fun feed(raw: Float) {
+            buffer[head % WINDOW_SIZE] = raw
+            head++
+            if (count < WINDOW_SIZE) count++
+        }
+
+        /**
+         * Compute drift offset from the current window and persist.
+         * Called every [CALIBRATION_INTERVAL_SEC] seconds by the inference loop.
+         */
+        fun recalibrate() {
+            if (count == 0) return
+            val n = minOf(count, WINDOW_SIZE)
+            val mean = buffer.take(n).sum() / n
+            driftOffset = mean
+            prefs.edit().putFloat(PREFS_DRIFT_KEY, driftOffset).apply()
+            Log.i(tag, "Recalibrated: window=$n samples, driftOffset=$driftOffset")
+        }
+
+        /** Return drift-corrected motion value (clamped to ≥ 0). */
+        fun correct(raw: Float): Float = (raw - driftOffset).coerceAtLeast(0f)
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
     companion object {
         private const val DEFAULT_MODEL_OUTPUT_CLASSES = 4
-        private const val DEFAULT_BATTERY_NORM = 1f
-        private const val DEFAULT_THERMAL_NORM = 0f
-        private const val MOTION_THRESHOLD = 0.15f
+        private const val DEFAULT_BATTERY_NORM         = 1f
+        private const val DEFAULT_THERMAL_NORM         = 0f
+        private const val MOTION_THRESHOLD             = 0.15f
+        private const val CALIBRATION_INTERVAL_SEC     = 3600L  // 1 hour
+        private const val WINDOW_SIZE                  = 60      // 60 s rolling window
+
+        private const val PREFS_NAME      = "streamlink_ai"
+        private const val PREFS_BIAS_KEY  = "ai_bias_v1"
+        private const val PREFS_DRIFT_KEY = "motion_drift_v1"
+
         private val MODEL_ASSET_NAMES = listOf(
             "stream_predictor.tflite",
             "stream_predict_model.tflite",

@@ -92,4 +92,24 @@ class TouchInputController(
             pointerSlots[slot] = -1
         }
     }
+
+    /**
+     * Synthesizes a vertical scroll event — called by ImuGestureDetector when
+     * an air-gesture wrist-flick is detected. Dispatches a normalized UP/DOWN
+     * touch swipe via the fallback orchestrator.
+     *
+     * @param down true = scroll down (swipe up gesture), false = scroll up
+     */
+    fun simulateScroll(down: Boolean) {
+        val timeUs = System.nanoTime() / 1000L
+        val centerX = 0.5f
+        val startY  = if (down) 0.3f else 0.7f
+        val endY    = if (down) 0.7f else 0.3f
+
+        // Synthesize a quick swipe: DOWN → MOVE → UP
+        processEvent(pointerId = Long.MAX_VALUE, phase = TouchPhase.DOWN,   x = centerX, y = startY, timestampUs = timeUs)
+        processEvent(pointerId = Long.MAX_VALUE, phase = TouchPhase.MOVE,   x = centerX, y = (startY + endY) / 2f, timestampUs = timeUs + 8_000L)
+        processEvent(pointerId = Long.MAX_VALUE, phase = TouchPhase.UP,     x = centerX, y = endY,    timestampUs = timeUs + 16_000L)
+    }
 }
+

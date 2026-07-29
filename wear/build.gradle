@@ -11,6 +11,7 @@ plugins {
 android {
     namespace 'com.streamlink.wear'
     compileSdk 36
+    buildToolsVersion '36.0.0'  // ✅ Pinned: AGP 8.7.3 defaults to 34.0.0 which is not installed
     defaultConfig {
         applicationId "com.streamlink.wear"
         minSdk 30
@@ -94,6 +95,20 @@ android {
     }
 }
 
+// ── AGP 8.7.3 workaround ─────────────────────────────────────────────────────
+// checkDebugClasspath (and checkReleaseClasspath) fail with:
+//   java.io.NotSerializableException: com.android.build.gradle.internal.tasks.Info
+// The task's 'compileVersionMap' input cannot be fingerprinted by Gradle's
+// build cache mechanism. This is a known AGP 8.7.x regression.
+// Safe to disable: the task only validates duplicate-class detection at
+// configuration time, which R8/D8 will catch at compile time anyway.
+// TODO: remove once AGP 8.8+ is adopted.
+tasks.configureEach {
+    if (name == 'checkDebugClasspath' || name == 'checkReleaseClasspath') {
+        enabled = false
+    }
+}
+
 dependencies {
     implementation project(':shared')
 
@@ -116,6 +131,9 @@ dependencies {
     implementation "androidx.room:room-runtime:2.8.4"
     ksp "androidx.room:room-compiler:2.8.4"
     implementation "androidx.room:room-ktx:2.8.4"
+
+    // Jetpack DataStore — async IP cache for DiscoveryEngine (replaces SharedPreferences)
+    implementation "androidx.datastore:datastore-preferences:1.1.1"
 
     implementation "com.google.dagger:hilt-android:2.56.2"
     ksp "com.google.dagger:hilt-compiler:2.56.2"
