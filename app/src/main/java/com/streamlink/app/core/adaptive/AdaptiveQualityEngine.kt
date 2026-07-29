@@ -35,10 +35,9 @@ class AdaptiveQualityEngine(
 
         val now = System.currentTimeMillis()
 
-        // 2. Cooldown check: Prevent flapping, except for severe downgrades
         val profile = currentProfile
         val isDowngrade = profile != null && targetProfile.ordinal > profile.ordinal
-        val isEmergency = decision.immediateActionRequired || isSevereDowngrade(profile, targetProfile)
+        val isEmergency = decision.immediateActionRequired || isDowngrade || isSevereDowngrade(profile, targetProfile)
         
         if (!isEmergency && (now - lastTransitionTimeMs) < COOLDOWN_MS) {
             return // Still in cooldown, ignore non-emergency transitions

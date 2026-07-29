@@ -87,56 +87,78 @@ class DirectStreamPlayer @Inject constructor(
         Log.i(tag, "Jitter Buffer dynamically updated to: ${this.jitterBufferMs} ms")
     }
 
+    private val isStarting = AtomicBoolean(false)
+
     fun start(scope: CoroutineScope) {
         if (surface == null) {
             Log.e(tag, "Cannot start — no Surface set")
             return
         }
+        if (!isStarting.compareAndSet(false, true)) {
+            Log.w(tag, "start() re-entrant call ignored — session already active/starting")
+            return
+        }
+
+        // Clean up any existing connection job and decoder instance before starting anew
+        connectJob?.cancel()
+        connectJob = null
+
+        decoderHandler.post {
+            try {
+                decoder?.stop()
+            } catch (_: Exception) {}
+            try {
+                decoder?.release()
+            } catch (_: Exception) {}
+            decoder = null
+        }
+
         released.set(false)
         resetJitterBuffer()
         initDecoder()
         audioEngine.start()
         connectJob = scope.launch(Dispatchers.IO) {
-            client.connect(
-                onStateChange = { connected ->
-                    Log.i(tag, "Socket connected=$connected")
-                    if (connected) {
-                        _discoveryTimedOut.value = false
-                    } else {
-                        idrReceived.set(false)
-                        assembler.reset()
-                        resetJitterBuffer()
-                        // Pre-warm: reinitialize decoder in background so the first IDR
-                        // frame after reconnect is decoded immediately (no 2-3s black screen).
-                        decoderHandler.post { preWarmDecoder() }
+            try {
+                client.connect(
+                    onStateChange = { connected ->
+                        Log.i(tag, "Socket connected=$connected")
+                        if (connected) {
+                            _discoveryTimedOut.value = false
+                        } else {
+                            idrReceived.set(false)
+                            assembler.reset()
+                            resetJitterBuffer()
+                            // Pre-warm: reinitialize decoder in background so the first IDR
+                            // frame after reconnect is decoded immediately (no 2-3s black screen).
+                            decoderHandler.post { preWarmDecoder() }
+                        }
+                    },
+                    onChunk = { chunk ->
+                        if (chunk.nalType.toInt() == StreamProtocol.PAYLOAD_TYPE_AUDIO_PCM16.toInt()) {
+                            audioEngine.onAudioChunk(chunk.data, chunk.dataSize, chunk.timestampUs)
+                        } else {
+                            val assembled = assembler.onChunk(chunk) ?: return@connect
+                            feedDecoder(assembled)
+                        }
+                    },
+                    onControlMessage = { msg ->
+                        // Legacy binary commands (jitter)
+                        if (msg.command == StreamProtocol.CMD_SET_BUFFER_JITTER_MS) {
+                            setJitterBufferMs(msg.value)
+                        }
+                        // Phase 1.5: JSON settings message
+                        if (msg.command == StreamProtocol.CMD_JSON_SETTINGS) {
+                            Log.d(tag, "CMD_JSON_SETTINGS received (value=${msg.value}) — JSON parsing not yet implemented in wear module")
+                        }
+                    },
+                    onDiscoveryTimedOut = {
+                        Log.w(tag, "Auto-discovery timed out — signaling UI for manual IP entry")
+                        _discoveryTimedOut.value = true
                     }
-                },
-                onChunk = { chunk ->
-                    if (chunk.nalType.toInt() == StreamProtocol.PAYLOAD_TYPE_AUDIO_PCM16.toInt()) {
-                        audioEngine.onAudioChunk(chunk.data, chunk.dataSize, chunk.timestampUs)
-                    } else {
-                        val assembled = assembler.onChunk(chunk) ?: return@connect
-                        feedDecoder(assembled)
-                    }
-                },
-                onControlMessage = { msg ->
-                    // Legacy binary commands (jitter)
-                    if (msg.command == StreamProtocol.CMD_SET_BUFFER_JITTER_MS) {
-                        setJitterBufferMs(msg.value)
-                    }
-                    // Phase 1.5: JSON settings message
-                    // TODO: implement full JSON settings parsing once kotlinx.serialization
-                    // is added to the wear module and ControlCodec.ControlMessage
-                    // exposes a rawPayload field. Tracked as Phase 3 follow-up.
-                    if (msg.command == StreamProtocol.CMD_JSON_SETTINGS) {
-                        Log.d(tag, "CMD_JSON_SETTINGS received (value=${msg.value}) — JSON parsing not yet implemented in wear module")
-                    }
-                },
-                onDiscoveryTimedOut = {
-                    Log.w(tag, "Auto-discovery timed out — signaling UI for manual IP entry")
-                    _discoveryTimedOut.value = true
-                }
-            )
+                )
+            } finally {
+                isStarting.set(false)
+            }
         }
     }
 

@@ -10,7 +10,10 @@ import android.util.Log
  * within the given timeout (e.g. 5 seconds), it means the main thread is blocked.
  */
 class ANRWatchDog(
-    private val timeoutMs: Long = 5000L
+    private val timeoutMs: Long = 5000L,
+    private val onAnrDetected: (ANRException) -> Unit = { e ->
+        Log.e("ANRWatchDog", "ANR detected on main thread — reporting only, preserving app process", e)
+    }
 ) : Thread("ANRWatchDog") {
 
     @Volatile
@@ -54,14 +57,8 @@ class ANRWatchDog(
                     val stackTrace = mainThread.stackTrace
                     val e = ANRException("ANR Confirmed! Main thread is blocked for >${timeoutMs + 2000}ms", stackTrace)
                     
-                    Log.e("ANRWatchDog", "Application Not Responding (ANR)", e)
-                    
-                    if (com.streamlink.shared.BuildConfig.DEBUG) {
-                        Log.e("ANRWatchDog", "Crashing app due to ANR in DEBUG build.")
-                        throw e
-                    } else {
-                        Log.w("ANRWatchDog", "RELEASE build: Skipping forced crash to preserve crash-free metrics.")
-                    }
+                    Log.e("ANRWatchDog", "Application Not Responding (ANR) detected", e)
+                    onAnrDetected(e)
                 }
             } else {
                 anrDetectedCount = 0

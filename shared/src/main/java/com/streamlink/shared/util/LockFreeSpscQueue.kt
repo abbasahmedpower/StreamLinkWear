@@ -21,7 +21,15 @@ class LockFreeSpscQueue<T : Any>(capacity: Int) {
     private val head = AtomicLong(0)
     private val tail = AtomicLong(0)
 
+    @Volatile private var producerTid = -1L
+    @Volatile private var consumerTid = -1L
+
     fun offer(item: T): Boolean {
+        if (com.streamlink.shared.BuildConfig.DEBUG) {
+            val tid = Thread.currentThread().id
+            if (producerTid == -1L) producerTid = tid
+            check(producerTid == tid) { "SPSC contract violated: offer() from thread $tid, expected $producerTid" }
+        }
         val t = tail.get()
         val h = head.get() // Producer reads consumer's head to check if full
         if (t - h > mask) {
@@ -34,22 +42,23 @@ class LockFreeSpscQueue<T : Any>(capacity: Int) {
     }
 
     fun poll(): T? {
-        while (true) {
-            val h = head.get()
-            val t = tail.get() // Consumer reads producer's tail to check if empty
-            if (h == t) {
-                return null // Empty
-            }
-            val idx = (h and mask).toInt()
-            val item = buffer.get(idx) ?: return null
-            
-            // CAS بدل lazySet — لو thread تاني سبقك ياخد نفس الـ slot، حاول تاني
-            if (head.compareAndSet(h, h + 1)) {
-                buffer.set(idx, null)
-                return item
-            }
-            // فشل الـ CAS = thread تاني ياخد نفس العنصر بالظبط قبلك، جرب مرة تانية
+        if (com.streamlink.shared.BuildConfig.DEBUG) {
+            val tid = Thread.currentThread().id
+            if (consumerTid == -1L) consumerTid = tid
+            check(consumerTid == tid) { "SPSC contract violated: poll() from thread $tid, expected $consumerTid" }
         }
+        val h = head.get()
+        val t = tail.get() // Consumer reads producer's tail to check if empty
+        if (h == t) {
+            return null // Empty
+        }
+        val idx = (h and mask).toInt()
+        val item = buffer.get(idx) ?: return null
+        
+        // Single-consumer contract: no CAS loop needed.
+        head.lazySet(h + 1)
+        buffer.set(idx, null)
+        return item
     }
 
     fun clear() {
