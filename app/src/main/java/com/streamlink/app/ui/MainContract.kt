@@ -18,6 +18,8 @@ sealed interface MainIntent {
         val resultCode: Int,
         val projectionData: Intent
     ) : MainIntent
+    /** Dispatched when the MediaProjection permission is denied or returns null data. */
+    object StreamPermissionDenied : MainIntent
     object StopStream : MainIntent
     data class SetAiOptimizer(val enabled: Boolean) : MainIntent
     object RequestOverlayPermission : MainIntent

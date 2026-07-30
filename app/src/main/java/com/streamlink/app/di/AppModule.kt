@@ -3,13 +3,15 @@ package com.streamlink.app.di
 import android.content.Context
 import com.streamlink.app.capture.HardwareEncoder
 import com.streamlink.app.control.RemoteControlAccessibilityService
+import com.streamlink.app.core.decision.PredictiveStreamingDecisionEngine
 import com.streamlink.app.stream.BackpressureController
 import com.streamlink.app.stream.MirrorDataPlane
 import com.streamlink.shared.DirectSocketServer
-import com.streamlink.shared.MetricsCollector
+import com.streamlink.shared.StreamQualityRuleEngine
 import com.streamlink.shared.ThermalMonitor
 import com.streamlink.shared.telemetry.FuzzyDecisionEngine
-import com.streamlink.shared.telemetry.MetricsCollector as TelemetryMetricsCollector
+import com.streamlink.shared.telemetry.MetricsCollector
+import com.streamlink.shared.telemetry.StreamMetricsSource
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -44,7 +46,6 @@ object AppModule {
     @Singleton
     fun provideHardwareEncoder(@ApplicationContext context: Context): HardwareEncoder {
         val quality = com.streamlink.app.core.SettingsPrefs.get(context).quality.value
-        // targetBitrateKbps is defined directly on QualityMode — no switch needed here.
         return HardwareEncoder(initialBitrateKbps = quality.targetBitrateKbps)
     }
 
@@ -61,33 +62,35 @@ object AppModule {
         )
     }
 
-    /**
-     * Provides the richer telemetry.MetricsCollector (distinct from shared.MetricsCollector
-     * which is already provided by SharedModule). Used by QualityController and FuzzyDecisionEngine.
-     */
     @Provides
     @Singleton
-    fun provideTelemetryMetricsCollector(
-        @ApplicationContext context: Context,
-        scope: CoroutineScope
-    ): TelemetryMetricsCollector {
-        return TelemetryMetricsCollector(context, scope)
+    fun provideStreamMetricsSource(
+        collector: MetricsCollector
+    ): StreamMetricsSource {
+        return collector
+    }
+
+    @Provides
+    @Singleton
+    fun provideStreamQualityRuleEngine(): StreamQualityRuleEngine {
+        return StreamQualityRuleEngine()
+    }
+
+    @Provides
+    @Singleton
+    fun providePredictiveStreamingDecisionEngine(): PredictiveStreamingDecisionEngine {
+        return PredictiveStreamingDecisionEngine()
     }
 
     @Provides
     @Singleton
     fun provideFuzzyDecisionEngine(
-        metricsCollector: TelemetryMetricsCollector,
+        metricsCollector: MetricsCollector,
         scope: CoroutineScope
     ): FuzzyDecisionEngine {
         return FuzzyDecisionEngine(metricsCollector, scope)
     }
 
-    /**
-     * RemoteControlAccessibilityService is instantiated by the Android OS, not by Hilt.
-     * We expose it as a nullable provider so TouchPipeline can access the singleton
-     * instance at dispatch time without creating a hard dependency at injection time.
-     */
     @Provides
     fun provideRemoteControlAccessibilityService(): RemoteControlAccessibilityService? {
         return RemoteControlAccessibilityService.instance

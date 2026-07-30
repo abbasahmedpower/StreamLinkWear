@@ -1,0 +1,29 @@
+name: Architecture & Convention Guard
+
+on:
+  push:
+    branches: [ main, master, dev ]
+  pull_request:
+    branches: [ main, master, dev ]
+
+jobs:
+  check-duplicate-types:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Verify Unique Kotlin Type Names
+        run: |
+          echo "Scanning Kotlin files for colliding type declarations..."
+          DUPS=$(grep -rhoE '^(object|class|data class|sealed class|interface|enum class) [A-Za-z0-9_]+' --include="*.kt" . \
+            | awk '{print $2}' | sort | uniq -d)
+          
+          if [ -n "$DUPS" ]; then
+            echo "❌ Duplicate Kotlin type names detected in project:"
+            echo "$DUPS"
+            echo "Please rename colliding types to prevent split-brain states."
+            exit 1
+          else
+            echo "✅ No duplicate Kotlin type names found."
+          fi

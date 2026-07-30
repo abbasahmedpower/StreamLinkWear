@@ -52,8 +52,19 @@ object SharedModule {
 
     @Provides
     @Singleton
-    fun provideMetricsCollector(scope: CoroutineScope): MetricsCollector {
-        return MetricsCollector(scope)
+    fun provideMetricsCollector(
+        @ApplicationContext context: Context,
+        scope: CoroutineScope
+    ): com.streamlink.shared.telemetry.MetricsCollector {
+        return com.streamlink.shared.telemetry.MetricsCollector(context, scope)
+    }
+
+    @Provides
+    @Singleton
+    fun provideStreamMetricsSource(
+        metricsCollector: com.streamlink.shared.telemetry.MetricsCollector
+    ): com.streamlink.shared.telemetry.StreamMetricsSource {
+        return metricsCollector
     }
 
     // NANO-FIX: TrustedDeviceStore was fully implemented (Keystore-backed,

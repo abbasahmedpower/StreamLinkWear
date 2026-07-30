@@ -52,8 +52,11 @@ class MainActivity : BaseActivity() {
     private val captureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == RESULT_OK && result.data != null) {
-            mainViewModel.processIntent(MainIntent.StreamResultReceived(result.resultCode, result.data!!))
+        val data = result.data
+        if (result.resultCode == RESULT_OK && data != null) {
+            mainViewModel.processIntent(MainIntent.StreamResultReceived(result.resultCode, data))
+        } else {
+            mainViewModel.processIntent(MainIntent.StreamPermissionDenied)
         }
     }
 

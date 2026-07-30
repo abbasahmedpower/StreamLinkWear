@@ -121,6 +121,11 @@ class MainViewModel @Inject constructor(
             is MainIntent.ResetPairing -> {
                 PairingManager.reset()
             }
+            is MainIntent.StreamPermissionDenied -> {
+                viewModelScope.launch {
+                    _effect.emit(MainEffect.ShowToast("Screen capture permission denied.", isLong = false))
+                }
+            }
         }
     }
 }
