@@ -106,7 +106,9 @@ object NalChunker {
     ): Int {
         // Reuse ThreadLocal header buffer — no heap allocation on hot path.
         // hdr is a direct ByteBuffer pre-sized to WIRE_HEADER_SIZE (25 bytes).
-        val hdr = headerEncoder.get()!!.clear() as java.nio.ByteBuffer
+        val hdr = checkNotNull(headerEncoder.get()) {
+            "headerEncoder ThreadLocal failed to initialize — ByteBuffer.allocateDirect() returned null"
+        }.clear() as java.nio.ByteBuffer
 
         // MAGIC(4) | VERSION(1) | nalSeq(4) | chunkIdx(2) | totalChunks(2)
         hdr.putInt(StreamProtocol.MAGIC_NUMBER)

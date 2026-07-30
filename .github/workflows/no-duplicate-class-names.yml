@@ -1,29 +1,46 @@
-name: Architecture & Convention Guard
+name: No Duplicate Class Names
+
+# Prevents "AI Conway's Law": two AI sessions proposing identically-named classes
+# in different packages, causing silent split-brain and ambiguous injection.
+# Fails the PR if any two .kt files define a type with the same simple name.
 
 on:
   push:
-    branches: [ main, master, dev ]
+    branches: [ main, master, dev, feature/** ]
   pull_request:
     branches: [ main, master, dev ]
 
 jobs:
-  check-duplicate-types:
+  check-duplicate-class-names:
     runs-on: ubuntu-latest
+    name: Scan for duplicate Kotlin type names
+
     steps:
-      - name: Checkout Codebase
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify Unique Kotlin Type Names
+      - name: Extract top-level type declarations
+        id: extract
         run: |
-          echo "Scanning Kotlin files for colliding type declarations..."
-          DUPS=$(grep -rhoE '^(object|class|data class|sealed class|interface|enum class) [A-Za-z0-9_]+' --include="*.kt" . \
-            | awk '{print $2}' | sort | uniq -d)
-          
-          if [ -n "$DUPS" ]; then
-            echo "❌ Duplicate Kotlin type names detected in project:"
-            echo "$DUPS"
-            echo "Please rename colliding types to prevent split-brain states."
+          # Collect: class/object/interface/enum/data class simple names from all .kt files.
+          # Output: "SimpleName  FilePath" per line, sorted.
+          grep -rn --include="*.kt" \
+            -E '^\s*(public |internal |private |protected )?(sealed |data |abstract |open |enum )?(class|object|interface)\s+[A-Z][A-Za-z0-9_]+' \
+            . \
+            | grep -v '/build/' \
+            | sed 's/.*\(class\|object\|interface\) \([A-Za-z0-9_]*\).*/\2/' \
+            | sort > /tmp/all_names.txt
+
+          # Find names that appear more than once
+          duplicates=$(sort /tmp/all_names.txt | uniq -d)
+
+          if [ -n "$duplicates" ]; then
+            echo "::error::Duplicate Kotlin type names found across modules:"
+            echo "$duplicates"
+            echo ""
+            echo "Each type name must be unique project-wide to prevent ambiguous injection"
+            echo "and AI session conflicts. Rename one of the colliding types."
             exit 1
-          else
-            echo "✅ No duplicate Kotlin type names found."
           fi
+
+          echo "No duplicate type names found."

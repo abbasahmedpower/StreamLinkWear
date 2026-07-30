@@ -92,13 +92,21 @@ object ExtensibleHeader {
         buffer.putShort(h.payloadLength.toShort())
         buffer.put(h.flags.toByte())
 
-        // Extensions in fixed order — the order must match decode()
-        if (h.flags and Flags.HAS_STREAM_ID  != 0) buffer.putInt(h.streamId!!.toInt())
-        if (h.flags and Flags.HAS_FRAME_ID   != 0) buffer.putInt(h.frameId!!.toInt())
-        if (h.flags and Flags.HAS_TIMESTAMP  != 0) buffer.putInt(h.timestampUs!!.toInt())
+        // Extensions in fixed order — the order must match decode().
+        // Invariant: if a flag bit is set, the corresponding field MUST be non-null.
+        // requireNotNull provides a clear protocol-violation message instead of a raw NPE.
+        if (h.flags and Flags.HAS_STREAM_ID  != 0) {
+            buffer.putInt(requireNotNull(h.streamId)  { "Protocol violation: HAS_STREAM_ID flag set but streamId is null" }.toInt())
+        }
+        if (h.flags and Flags.HAS_FRAME_ID   != 0) {
+            buffer.putInt(requireNotNull(h.frameId)   { "Protocol violation: HAS_FRAME_ID flag set but frameId is null" }.toInt())
+        }
+        if (h.flags and Flags.HAS_TIMESTAMP  != 0) {
+            buffer.putInt(requireNotNull(h.timestampUs) { "Protocol violation: HAS_TIMESTAMP flag set but timestampUs is null" }.toInt())
+        }
         if (h.flags and Flags.HAS_NAL_INFO   != 0) {
-            buffer.put(h.nalType!!.toByte())
-            buffer.put(h.priority!!.toByte())
+            buffer.put(requireNotNull(h.nalType)   { "Protocol violation: HAS_NAL_INFO flag set but nalType is null" }.toByte())
+            buffer.put(requireNotNull(h.priority)  { "Protocol violation: HAS_NAL_INFO flag set but priority is null" }.toByte())
         }
         // HAS_CRC32C: caller appends AFTER payload via writeCrc32c()
     }

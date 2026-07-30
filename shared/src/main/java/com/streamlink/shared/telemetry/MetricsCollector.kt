@@ -42,8 +42,13 @@ class MetricsCollector(
     private val _metricsSnapshotFlow = MutableStateFlow(MetricsSnapshot())
     override val metricsSnapshotFlow: StateFlow<MetricsSnapshot> = _metricsSnapshotFlow.asStateFlow()
 
-    override val fps: Int
-        get() = (framesDecodedCounter.get() % 60).toInt()
+    // Sliding-window FPS: timestamps of frames seen in the last 1 second.
+    // Guarded by frameTimestampLock (not a coroutine Mutex — called from hot encoder thread).
+    private val frameTimestamps = ArrayDeque<Long>(128)
+    private val frameTimestampLock = Any()
+    @Volatile private var _liveFps = 0
+
+    override val fps: Int get() = _liveFps
 
     override val dropRate: Float
         get() {
@@ -52,7 +57,11 @@ class MetricsCollector(
         }
 
     override val bandwidthMbps: Float
-        get() = (bytesSentCounter.get() * 8f) / 1_000_000f
+        get() {
+            // Return instantaneous rate: bytes accumulated in last second × 8 ÷ 1M.
+            // bytesSentCounter is reset each second in the sliding-window calculation below.
+            return (bytesSentCounter.get() * 8f) / 1_000_000f
+        }
 
     override val currentRttMs: Long
         get() = currentRtt.get()
@@ -60,6 +69,15 @@ class MetricsCollector(
     override fun recordFrame(bytes: Int) {
         framesDecodedCounter.incrementAndGet()
         bytesSentCounter.addAndGet(bytes.toLong())
+        // Sliding-window FPS: keep only timestamps within the last 1000ms.
+        val now = System.currentTimeMillis()
+        synchronized(frameTimestampLock) {
+            frameTimestamps.addLast(now)
+            while (frameTimestamps.isNotEmpty() && now - frameTimestamps.first() > 1000L) {
+                frameTimestamps.removeFirst()
+            }
+            _liveFps = frameTimestamps.size
+        }
         updateSnapshot()
     }
 
@@ -78,6 +96,10 @@ class MetricsCollector(
         framesDroppedCounter.set(0L)
         bytesSentCounter.set(0L)
         currentRtt.set(0L)
+        synchronized(frameTimestampLock) {
+            frameTimestamps.clear()
+            _liveFps = 0
+        }
         updateSnapshot()
     }
 

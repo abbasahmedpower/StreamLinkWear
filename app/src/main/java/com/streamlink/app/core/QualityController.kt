@@ -47,6 +47,26 @@ class QualityController @Inject constructor(
 
     private val hardwareActuator = HardwareActuator(hardwareEncoder, unifiedQualityAuthority)
 
+    /**
+     * Process-scoped CPU usage sampler using delta between successive
+     * [android.os.Process.getElapsedCpuTime] readings.
+     * Single-core normalized (0–100%). No root or /proc/stat required.
+     */
+    private val cpuUsageSampler = object {
+        private var lastCpuMs = android.os.Process.getElapsedCpuTime()
+        private var lastWallMs = System.currentTimeMillis()
+
+        fun sample(): Float {
+            val cpuNow = android.os.Process.getElapsedCpuTime()
+            val wallNow = System.currentTimeMillis()
+            val cpuDelta = (cpuNow - lastCpuMs).coerceAtLeast(0)
+            val wallDelta = (wallNow - lastWallMs).coerceAtLeast(1)
+            lastCpuMs = cpuNow
+            lastWallMs = wallNow
+            return (cpuDelta.toFloat() / wallDelta.toFloat() * 100f).coerceIn(0f, 100f)
+        }
+    }
+
     @Volatile var isFuzzyOptimizationEnabled = true
 
     val intelEngine = StreamingIntelligenceEngine(
@@ -121,14 +141,14 @@ class QualityController @Inject constructor(
                     intelEngine.currentRttMs = report.avgE2EMs
                     intelEngine.jitterMs = report.jitterMs
                     intelEngine.packetLossRate = report.lateFramePct / 100f
-                    intelEngine.currentFps = currentFps
+                    intelEngine.currentFps = metricsCollector.fps  // Live measured FPS, not target
                     intelEngine.thermalLevel = thermalMonitor.thermalLevel.value
                     val bm = runCatching {
                         context.getSystemService(android.content.Context.BATTERY_SERVICE)
                             as? android.os.BatteryManager
                     }.getOrNull()
                     intelEngine.batteryLevel = bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 100
-                    intelEngine.cpuUsagePercent = 10f
+                    intelEngine.cpuUsagePercent = cpuUsageSampler.sample()
                 }
             }
         }
