@@ -34,8 +34,6 @@ class DirectSocketServer {
     
     @Volatile var isTransportPaused = false
     private val pacer = com.streamlink.shared.pacer.TokenBucketPacer(targetBytesPerSecond = 2_000_000) // 16 Mbps pacing
-    /** Counts detected replay attempts in the current session — used to trigger session teardown. */
-    private val replayCounter = AtomicLong(0L)
     
     /** True once the server socket is bound and listening. Used by orchestrator startup sequencing. */
     val isRunning: Boolean get() = running.get()
@@ -109,29 +107,13 @@ class DirectSocketServer {
                 dis.readFully(encryptedBuf)
 
                 val ec = encryptedChannel
-                // Use decryptSafe to distinguish replay attacks from ordinary packet loss.
-                val decrypted: ByteArray = if (ec != null) {
-                    when (val r = ec.decryptSafe(encryptedBuf)) {
-                        is EncryptedChannel.DecryptResult.Success -> r.plaintext
-                        is EncryptedChannel.DecryptResult.ReplayDetected -> {
-                            val count = replayCounter.incrementAndGet()
-                            Log.w(tag, "SECURITY: replay detected seq=${r.seq} (window=${r.window}, total=$count)")
-                            if (count >= REPLAY_THRESHOLD) {
-                                Log.e(tag, "SECURITY: replay threshold exceeded — closing session")
-                                socket.close()
-                            }
-                            continue
-                        }
-                        is EncryptedChannel.DecryptResult.AuthenticationFailed -> {
-                            Log.e(tag, "SECURITY: AES-GCM auth tag mismatch — possible tampering: ${r.cause.message}")
-                            continue
-                        }
-                        is EncryptedChannel.DecryptResult.Malformed -> {
-                            continue // Normal network noise — no log needed on hot path
-                        }
-                    }
-                } else encryptedBuf
-                if (decrypted.size < 4) continue
+                val decrypted = try {
+                    if (ec != null) ec.decrypt(encryptedBuf) else encryptedBuf
+                } catch (e: Exception) {
+                    Log.w(tag, "Decrypt failed, dropping malformed packet: ${e.message}")
+                    continue
+                }
+                if (decrypted == null || decrypted.size < 4) continue
 
                 try {
                     val buf = java.nio.ByteBuffer.wrap(decrypted).order(java.nio.ByteOrder.BIG_ENDIAN)
@@ -640,9 +622,5 @@ class DirectSocketServer {
             Log.e(tag, "Failed to migrate socket to $newHost", e)
             false
         }
-    }
-    companion object {
-        /** Number of replay-attack packets that trigger session teardown. */
-        private const val REPLAY_THRESHOLD = 5L
     }
 }

@@ -11,6 +11,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -33,34 +34,37 @@ class MetricsCollector(
     private val metricsMutex = Mutex()
     private val _networkMetricsFlow = MutableStateFlow(NetworkMetrics())
 
-    // StreamMetricsSource counters
+    // ── StreamMetricsSource counters (cumulative — never reset except by reset()) ──
     private val framesDecodedCounter = AtomicLong(0L)
     private val framesDroppedCounter = AtomicLong(0L)
     private val bytesSentCounter = AtomicLong(0L)
+    private val reconnectsCounter = AtomicLong(0L)
     private val currentRtt = AtomicLong(0L)
+
+    // ── Windowed-rate counters (absorbed from the old telemetry.TelemetryCollector) ──
+    // Zero-allocation, primitive atomics, recomputed at most every 500ms — same
+    // philosophy as the collector this replaces, so hot-path cost is unchanged.
+    private val windowFrameCount = AtomicInteger(0)
+    private val windowByteCount = AtomicLong(0)
+    private val windowDecodeSumMs = AtomicLong(0L) // stored as micros-of-Float bits would lose precision; use ms*1000 int accumulation instead
+    private val windowRenderSumMs = AtomicLong(0L)
+    private val windowTimingSamples = AtomicInteger(0)
+    @Volatile private var lastWindowTimeMs = System.currentTimeMillis()
+
+    @Volatile override var fps: Int = 0
+        private set
+    @Volatile override var bandwidthMbps: Float = 0f
+        private set
+    @Volatile private var decodeTimeMs: Float = 0f
+    @Volatile private var renderTimeMs: Float = 0f
 
     private val _metricsSnapshotFlow = MutableStateFlow(MetricsSnapshot())
     override val metricsSnapshotFlow: StateFlow<MetricsSnapshot> = _metricsSnapshotFlow.asStateFlow()
-
-    // Sliding-window FPS: timestamps of frames seen in the last 1 second.
-    // Guarded by frameTimestampLock (not a coroutine Mutex — called from hot encoder thread).
-    private val frameTimestamps = ArrayDeque<Long>(128)
-    private val frameTimestampLock = Any()
-    @Volatile private var _liveFps = 0
-
-    override val fps: Int get() = _liveFps
 
     override val dropRate: Float
         get() {
             val total = framesDecodedCounter.get() + framesDroppedCounter.get()
             return if (total == 0L) 0f else framesDroppedCounter.get().toFloat() / total.toFloat()
-        }
-
-    override val bandwidthMbps: Float
-        get() {
-            // Return instantaneous rate: bytes accumulated in last second × 8 ÷ 1M.
-            // bytesSentCounter is reset each second in the sliding-window calculation below.
-            return (bytesSentCounter.get() * 8f) / 1_000_000f
         }
 
     override val currentRttMs: Long
@@ -69,20 +73,27 @@ class MetricsCollector(
     override fun recordFrame(bytes: Int) {
         framesDecodedCounter.incrementAndGet()
         bytesSentCounter.addAndGet(bytes.toLong())
-        // Sliding-window FPS: keep only timestamps within the last 1000ms.
-        val now = System.currentTimeMillis()
-        synchronized(frameTimestampLock) {
-            frameTimestamps.addLast(now)
-            while (frameTimestamps.isNotEmpty() && now - frameTimestamps.first() > 1000L) {
-                frameTimestamps.removeFirst()
-            }
-            _liveFps = frameTimestamps.size
-        }
+        windowFrameCount.incrementAndGet()
+        windowByteCount.addAndGet(bytes.toLong())
+        recomputeWindowedRatesIfDue()
         updateSnapshot()
     }
 
     override fun recordDrop() {
         framesDroppedCounter.incrementAndGet()
+        updateSnapshot()
+    }
+
+    override fun recordReconnect() {
+        reconnectsCounter.incrementAndGet()
+        updateSnapshot()
+    }
+
+    override fun recordFrameTiming(decodeMs: Float, renderMs: Float) {
+        windowDecodeSumMs.addAndGet((decodeMs * 1000).toLong())
+        windowRenderSumMs.addAndGet((renderMs * 1000).toLong())
+        windowTimingSamples.incrementAndGet()
+        recomputeWindowedRatesIfDue()
         updateSnapshot()
     }
 
@@ -95,27 +106,70 @@ class MetricsCollector(
         framesDecodedCounter.set(0L)
         framesDroppedCounter.set(0L)
         bytesSentCounter.set(0L)
+        reconnectsCounter.set(0L)
         currentRtt.set(0L)
-        synchronized(frameTimestampLock) {
-            frameTimestamps.clear()
-            _liveFps = 0
-        }
+        windowFrameCount.set(0)
+        windowByteCount.set(0L)
+        windowDecodeSumMs.set(0L)
+        windowRenderSumMs.set(0L)
+        windowTimingSamples.set(0)
+        fps = 0
+        bandwidthMbps = 0f
+        decodeTimeMs = 0f
+        renderTimeMs = 0f
         updateSnapshot()
     }
 
     fun start() {
-        // Telemetry collection lifecycle hook
+        // This collector is the single canonical StreamMetricsSource. Publishing
+        // it here lets plain Android Views (e.g. HardenedStreamTextureView, built
+        // via AndroidView { } factories with no Hilt access) reach it through
+        // StreamMetricsSource.active without a parallel singleton per concern.
+        StreamMetricsSource.active = this
     }
 
     fun stop() {
+        if (StreamMetricsSource.active === this) {
+            StreamMetricsSource.active = null
+        }
         reset()
+    }
+
+    /**
+     * Recomputes fps / bandwidth / decode / render rates from the current window,
+     * then resets window accumulators. Runs at most once every 500ms — called
+     * opportunistically from the hot path (recordFrame/recordFrameTiming) instead
+     * of a dedicated timer thread, exactly like the collector it replaces.
+     */
+    private fun recomputeWindowedRatesIfDue() {
+        val now = System.currentTimeMillis()
+        val elapsedMs = now - lastWindowTimeMs
+        if (elapsedMs < 500) return
+        val elapsedSeconds = elapsedMs / 1000f
+
+        val frames = windowFrameCount.getAndSet(0)
+        val bytes = windowByteCount.getAndSet(0)
+        val decodeSum = windowDecodeSumMs.getAndSet(0L)
+        val renderSum = windowRenderSumMs.getAndSet(0L)
+        val timingSamples = windowTimingSamples.getAndSet(0)
+
+        fps = (frames / elapsedSeconds).toInt()
+        bandwidthMbps = (bytes * 8) / (elapsedSeconds * 1_000_000f)
+        if (timingSamples > 0) {
+            decodeTimeMs = (decodeSum / 1000f) / timingSamples
+            renderTimeMs = (renderSum / 1000f) / timingSamples
+        }
+        lastWindowTimeMs = now
     }
 
     private fun updateSnapshot() {
         _metricsSnapshotFlow.value = MetricsSnapshot(
             decoded = framesDecodedCounter.get(),
             dropped = framesDroppedCounter.get(),
-            rtt = currentRtt.get()
+            rtt = currentRtt.get(),
+            reconnects = reconnectsCounter.get(),
+            decodeTimeMs = decodeTimeMs,
+            renderTimeMs = renderTimeMs
         )
     }
 

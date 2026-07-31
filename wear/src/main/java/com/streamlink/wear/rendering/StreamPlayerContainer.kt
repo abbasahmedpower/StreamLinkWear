@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.util.Log
 import androidx.compose.ui.viewinterop.AndroidView
+import com.streamlink.shared.telemetry.MetricsSnapshot
+import com.streamlink.shared.telemetry.StreamMetricsSource
 import com.streamlink.shared.util.safeSystemService
 import kotlinx.coroutines.delay
 
@@ -27,7 +29,12 @@ fun StreamPlayerContainer(modifier: Modifier = Modifier) {
     val powerManager = remember { context.safeSystemService<PowerManager>(Context.POWER_SERVICE) }
     
     var thermalStatus by remember { mutableStateOf(PowerManager.THERMAL_STATUS_NONE) }
-    var liveStats by remember { mutableStateOf(LiveFrameStats()) }
+    // Phase 3: this used to poll FrameMetricsCollector.currentStats, an object whose
+    // recordFrame() was never called from anywhere in the codebase — the DECODE/RENDER/
+    // P99 LATENCY rows below were permanently stuck at 0. HardenedStreamTextureView now
+    // feeds real numbers into the canonical StreamMetricsSource, so this overlay is live.
+    var liveFps by remember { mutableStateOf(0) }
+    var liveStats by remember { mutableStateOf(MetricsSnapshot()) }
 
     LaunchedEffect(Unit) {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
@@ -39,7 +46,8 @@ fun StreamPlayerContainer(modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) {
         while (true) {
-            liveStats = FrameMetricsCollector.currentStats
+            liveFps = StreamMetricsSource.active?.fps ?: 0
+            liveStats = StreamMetricsSource.active?.metricsSnapshotFlow?.value ?: MetricsSnapshot()
             delay(100) // Poll telemetry every 100ms
         }
     }
@@ -95,7 +103,7 @@ fun StreamPlayerContainer(modifier: Modifier = Modifier) {
                 fontFamily = FontFamily.Monospace
             )
             Spacer(modifier = Modifier.height(4.dp))
-            TelemetryRow("FPS", "${liveStats.fps}", if (liveStats.fps >= 24) Color(0xFF00F0FF) else Color.Red)
+            TelemetryRow("FPS", "$liveFps", if (liveFps >= 24) Color(0xFF00F0FF) else Color.Red)
             TelemetryRow("DECODE", String.format("%.2f ms", liveStats.decodeTimeMs), Color.White)
             TelemetryRow("RENDER", String.format("%.2f ms", liveStats.renderTimeMs), Color.White)
             TelemetryRow(

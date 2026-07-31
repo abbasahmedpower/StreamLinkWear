@@ -213,6 +213,8 @@ class NetworkDiscovery(private val context: Context) {
         }
     }
 
+    private val resolveInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
+
     private fun buildDiscoveryListener(generation: Int) = object : NsdManager.DiscoveryListener {
         override fun onDiscoveryStarted(type: String) {
             Log.i(tag, "Discovery started (gen=$generation)")
@@ -230,8 +232,16 @@ class NetworkDiscovery(private val context: Context) {
 
         override fun onServiceFound(serviceInfo: NsdServiceInfo) {
             Log.i(tag, "Service found: ${serviceInfo.serviceName}")
-            if (serviceInfo.serviceType.contains("_streamlink")) {
-                nsdManager?.resolveService(serviceInfo, buildResolveListener())
+            if (!serviceInfo.serviceType.contains("_streamlink")) return
+            if (!resolveInFlight.compareAndSet(false, true)) {
+                Log.d(tag, "Resolve already in-flight — ignoring duplicate onServiceFound")
+                return
+            }
+            try {
+                nsdManager?.resolveService(serviceInfo, buildResolveListener(generation))
+            } catch (e: Exception) {
+                Log.w(tag, "resolveService() threw synchronously: ${e.message}")
+                resolveInFlight.set(false)
             }
         }
 
@@ -239,7 +249,9 @@ class NetworkDiscovery(private val context: Context) {
             Log.w(tag, "Service lost: ${serviceInfo.serviceName}")
             // Do NOT clear lastKnownIp here — the phone may still be reachable at
             // the same address (transient NSD blip). Only expire via TTL.
-            if (_discoveredHost.value != null) _discoveredHost.value = null
+            if (generation == discoveryGeneration && _discoveredHost.value != null) {
+                _discoveredHost.value = null
+            }
         }
 
         override fun onStartDiscoveryFailed(type: String, code: Int) {
@@ -258,12 +270,18 @@ class NetworkDiscovery(private val context: Context) {
         }
     }
 
-    private fun buildResolveListener() = object : NsdManager.ResolveListener {
+    private fun buildResolveListener(generation: Int) = object : NsdManager.ResolveListener {
         override fun onResolveFailed(info: NsdServiceInfo, code: Int) {
-            Log.e(tag, "Resolve failed: $code")
+            Log.e(tag, "Resolve failed: $code (gen=$generation)")
+            resolveInFlight.set(false)
         }
 
         override fun onServiceResolved(info: NsdServiceInfo) {
+            resolveInFlight.set(false)
+            if (generation != discoveryGeneration) {
+                Log.d(tag, "Ignoring stale resolve from gen=$generation (current=$discoveryGeneration)")
+                return
+            }
             val ip = info.host.hostAddress ?: return
             Log.i(tag, "✅ Phone found at $ip:${info.port}")
             lastKnownIp = ip                          // cache for fast-reconnect

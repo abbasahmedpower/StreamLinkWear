@@ -10,7 +10,6 @@ import com.streamlink.shared.HardenedFrame
 import com.streamlink.shared.HardenedFrameProcessor
 import com.streamlink.shared.MetricsCollector
 import com.streamlink.shared.NalChunker
-import com.streamlink.shared.StreamObservability
 import com.streamlink.shared.WireBufferPool
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -110,7 +109,6 @@ class MirrorDataPlane(
 
             // GOP-aware drop — never drops I-frames
             if (GopFrameDropper.shouldDrop(hardened.isKeyframe, queueDepth)) {
-                StreamObservability.recordDrop()
                 metrics?.recordDrop()
                 return
             }
@@ -121,12 +119,10 @@ class MirrorDataPlane(
                 if (sent) {
                     backpressure?.onChunkEnqueued(wireSize)
                     metrics?.recordFrame(payloadSize)
-                    StreamObservability.recordFrameSent()
                 } else {
                     // sendPooledWire releases wire on failure — no double-release
                     backpressure?.onChunkDropped(wireSize)
                     metrics?.recordDrop()
-                    StreamObservability.recordDrop()
                 }
             }
 

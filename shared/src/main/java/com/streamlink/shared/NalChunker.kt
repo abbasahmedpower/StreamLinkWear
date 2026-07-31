@@ -1,5 +1,6 @@
 package com.streamlink.shared
 
+import com.streamlink.shared.protocol.ExtensibleHeader
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -106,9 +107,7 @@ object NalChunker {
     ): Int {
         // Reuse ThreadLocal header buffer — no heap allocation on hot path.
         // hdr is a direct ByteBuffer pre-sized to WIRE_HEADER_SIZE (25 bytes).
-        val hdr = checkNotNull(headerEncoder.get()) {
-            "headerEncoder ThreadLocal failed to initialize — ByteBuffer.allocateDirect() returned null"
-        }.clear() as java.nio.ByteBuffer
+        val hdr = headerEncoder.get()!!.clear() as java.nio.ByteBuffer
 
         // MAGIC(4) | VERSION(1) | nalSeq(4) | chunkIdx(2) | totalChunks(2)
         hdr.putInt(StreamProtocol.MAGIC_NUMBER)
@@ -144,6 +143,53 @@ object NalChunker {
         dup.get(wire, StreamProtocol.WIRE_HEADER_SIZE, payloadSize)
 
         return StreamProtocol.WIRE_HEADER_SIZE + payloadSize
+    }
+
+    // ── V3 (ExtensibleHeader) — EXPERIMENTAL, sender-side only ──────────────
+    //
+    // See StreamProtocol.V3_EXTENSIBLE_HEADER_ENABLED for the full reasoning.
+    // Deliberately NOT called from chunkFramePipeline() above: there is no
+    // matching receiver-side decode path yet (DirectSocketClient still parses
+    // the fixed V2 layout at hardcoded offsets), so wiring this into the
+    // default pipeline would break every existing phone → watch stream.
+    // This function exists so the V3 header format can be exercised and
+    // benchmarked in isolation (e.g. from tests or a future experimental
+    // transport) without touching the production path at all.
+
+    /**
+     * Encodes one NAL chunk using the V3 [ExtensibleHeader] format instead of the
+     * production V2 fixed layout. Throws if [StreamProtocol.V3_EXTENSIBLE_HEADER_ENABLED]
+     * is false, so an accidental call site can't silently ship V3 frames to a V2-only
+     * receiver.
+     */
+    fun encodeWireFrameV3Experimental(
+        wire: ByteArray, src: ByteBuffer, srcOffset: Int, payloadSize: Int,
+        sequence: Int, chunkIdx: Int, totalChunks: Int,
+        timestampUs: Long, isKey: Boolean, nalType: Int
+    ): Int {
+        check(StreamProtocol.V3_EXTENSIBLE_HEADER_ENABLED) {
+            "V3 ExtensibleHeader is experimental and not wired to any receiver — " +
+                "see StreamProtocol.V3_EXTENSIBLE_HEADER_ENABLED for why."
+        }
+        val header = ExtensibleHeader.FrameHeader(
+            sequence = sequence.toUInt(),
+            chunkIndex = chunkIdx.toUShort(),
+            chunkCount = totalChunks.toUShort(),
+            payloadLength = payloadSize.toUShort(),
+            flags = ExtensibleHeader.Flags.STANDARD_VIDEO,
+            frameId = sequence.toUInt(),
+            nalType = nalType.toUByte(),
+            priority = (if (isKey) 0 else 1).toUByte()
+        )
+        val wireBuf = ByteBuffer.wrap(wire)
+        ExtensibleHeader.encode(wireBuf, header)
+        val headerSize = header.wireSize()
+
+        val dup = src.duplicate()
+        dup.position(srcOffset)
+        dup.get(wire, headerSize, payloadSize)
+
+        return headerSize + payloadSize
     }
 }
 

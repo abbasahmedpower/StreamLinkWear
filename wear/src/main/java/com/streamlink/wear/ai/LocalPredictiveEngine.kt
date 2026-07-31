@@ -20,6 +20,10 @@ import javax.inject.Singleton
 import kotlin.math.abs
 import kotlin.math.exp
 
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.Executors
+
 /**
  * On-device TFLite inference for proactive stream adaptation on the watch.
  *
@@ -32,6 +36,7 @@ import kotlin.math.exp
  *    predictions to each user without sending any data off-device (Fix 2).
  *  • MotionCalibrator  — hourly rolling-mean drift correction for the
  *    gyroscope/accelerometer readings (Fix 3).
+ *  • Thread Offloading — inference runs on [inferenceDispatcher] off UI thread.
  */
 @Singleton
 class LocalPredictiveEngine @Inject constructor(
@@ -42,6 +47,13 @@ class LocalPredictiveEngine @Inject constructor(
 ) : Closeable {
     private val tag = "PredictiveEngine"
 
+    private val inferenceDispatcher = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "SL-WearPredictive").also { it.priority = Thread.NORM_PRIORITY - 1; it.isDaemon = true }
+    }.asCoroutineDispatcher()
+
+    private val INFERENCE_TIMEOUT_MS = 200L
+
+    @Volatile private var isClosed = false
     private var job: Job? = null
     private var tflite: Interpreter? = null
     private var modelOutputClasses: Int = 0
@@ -105,15 +117,15 @@ class LocalPredictiveEngine @Inject constructor(
         networkProvider: () -> Float
     ) {
         job?.cancel()
-        job = scope.launch {
+        job = scope.launch(inferenceDispatcher) {
             var calibrationTick = 0L
 
-            while (isActive) {
+            while (isActive && !isClosed) {
                 delay(1_000L)
                 calibrationTick++
 
                 // ── Fix 3: feed raw motion into calibrator every second ───────
-                val rawMotion = motionProvider()
+                val rawMotion = motionProvider().let { if (it.isFinite()) it else 0f }
                 motionCalibrator.feed(rawMotion)
 
                 // Trigger hourly drift recalibration
@@ -123,8 +135,15 @@ class LocalPredictiveEngine @Inject constructor(
                 }
 
                 val correctedMotion = motionCalibrator.correct(rawMotion)
-                val rttMs = networkProvider().toLong().coerceAtLeast(0L)
-                val recommendedBitrate = inferBitrate(correctedMotion, rttMs)
+                val rttRaw = networkProvider()
+                val rttMs = (if (rttRaw.isFinite()) rttRaw else 0f).toLong().coerceAtLeast(0L)
+
+                val recommendedBitrate = withTimeoutOrNull(INFERENCE_TIMEOUT_MS) {
+                    inferBitrate(correctedMotion, rttMs)
+                } ?: run {
+                    Log.w(tag, "Inference watchdog triggered — skipping tick")
+                    0f
+                }
 
                 if (recommendedBitrate > 0f &&
                     (currentBitrate == 0f || abs(recommendedBitrate - currentBitrate) / currentBitrate >= 0.1f)
@@ -146,18 +165,23 @@ class LocalPredictiveEngine @Inject constructor(
         }
     }
 
+    @Synchronized
     fun stop() {
         job?.cancel()
         job = null
     }
 
     /** Force an immediate drift recalibration (e.g. triggered by a watch face tap). */
+    @Synchronized
     fun forceCalibrate() {
         motionCalibrator.recalibrate()
         Log.i(tag, "[Calibrate] Forced — driftOffset=${motionCalibrator.driftOffset}")
     }
 
+    @Synchronized
     override fun close() {
+        if (isClosed) return
+        isClosed = true
         stop()
         try {
             biasAdapter.persist()
@@ -167,6 +191,7 @@ class LocalPredictiveEngine @Inject constructor(
             channel = null
             afd?.close()
             afd = null
+            inferenceDispatcher.close()
         } catch (e: Exception) {
             Log.e(tag, "Error closing resources: ${e.message}")
         }
@@ -174,7 +199,9 @@ class LocalPredictiveEngine @Inject constructor(
 
     // ─────────────────────────────────────────────────────────────────────────
 
+    @Synchronized
     private fun inferBitrate(motion: Float, rttMs: Long): Float {
+        if (isClosed) return 0f
         val interpreter = tflite ?: return 0f
 
         val input = arrayOf(

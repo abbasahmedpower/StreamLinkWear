@@ -8,7 +8,7 @@ import android.os.SystemClock
 import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import com.streamlink.shared.telemetry.TelemetryCollector
+import com.streamlink.shared.telemetry.StreamMetricsSource
 
 class HardenedStreamTextureView(context: Context) : TextureView(context), TextureView.SurfaceTextureListener {
 
@@ -78,13 +78,16 @@ class HardenedStreamTextureView(context: Context) : TextureView(context), Textur
                 if (!shouldRender) {
                     // تخطي تسجيل المقاييس وتحديث الـ overlay لتوفير المعالجة
                     lastFrameTimestamp = now
-                    TelemetryCollector.recordFrameDrop()
+                    StreamMetricsSource.active?.recordDrop()
                     return
                 }
             }
 
-            TelemetryCollector.recordFrame()
-            TelemetryCollector.recordLatency(renderTimeMs.toLong())
+            // recordFrame(bytes=0): payload size isn't known at the render layer —
+            // MirrorDataPlane/DirectSocketClient already record wire bytes for
+            // bandwidth. This call's job is fps + render timing only.
+            StreamMetricsSource.active?.recordFrame(0)
+            StreamMetricsSource.active?.recordFrameTiming(decodeMs = 0f, renderMs = renderTimeMs)
             // In a real implementation, we would also record bytes here based on the network payload size
         }
         lastFrameTimestamp = now

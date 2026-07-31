@@ -164,8 +164,10 @@ object KeyExchange {
     /**
      * Wrap derived bytes into a SecretKey usable with AES/GCM/NoPadding.
      */
-    fun toAesKey(keyBytes: ByteArray): SecretKey =
-        SecretKeySpec(keyBytes.copyOf(32), "AES")
+    fun toAesKey(keyBytes: ByteArray): SecretKey {
+        require(keyBytes.size >= 32) { "Session key must be >= 32 bytes, got ${keyBytes.size}" }
+        return SecretKeySpec(keyBytes.copyOf(32), "AES")
+    }
 
     // ── Encrypted Auth Block ──────────────────────────────────────────────────
     // Protocol step after ECDH:

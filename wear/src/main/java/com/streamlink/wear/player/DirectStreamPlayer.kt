@@ -41,7 +41,7 @@ class DirectStreamPlayer @Inject constructor(
     /** Texture view reference — wired in so ControlMessages can update FPS in real-time */
     var textureView: com.streamlink.wear.rendering.HardenedStreamTextureView? = null
 
-    private var decoder: MediaCodec? = null
+    @Volatile private var decoder: MediaCodec? = null
     private var surface: Surface? = null
     private var connectJob: Job? = null
     private val released = AtomicBoolean(false)
@@ -52,11 +52,19 @@ class DirectStreamPlayer @Inject constructor(
     private var firstFrameSystemTimeUs = -1L
     private var firstFramePtsUs = -1L
 
-    private val decoderThread = HandlerThread(
-        "SL-Decoder",
-        Process.THREAD_PRIORITY_URGENT_DISPLAY
-    ).also { it.start() }
-    private val decoderHandler = Handler(decoderThread.looper)
+    private var decoderThread: HandlerThread? = null
+    private var decoderHandler: Handler? = null
+
+    private fun ensureDecoderThreadAlive() {
+        val existing = decoderThread
+        if (existing != null && existing.isAlive) return
+        val newThread = HandlerThread(
+            "SL-Decoder",
+            Process.THREAD_PRIORITY_URGENT_DISPLAY
+        ).also { it.start() }
+        decoderThread = newThread
+        decoderHandler = Handler(newThread.looper)
+    }
 
     private val assembler = FrameAssembler()
     private val idrReceived = AtomicBoolean(false)
@@ -99,18 +107,28 @@ class DirectStreamPlayer @Inject constructor(
             return
         }
 
+        ensureDecoderThreadAlive()
+
         // Clean up any existing connection job and decoder instance before starting anew
         connectJob?.cancel()
         connectJob = null
 
-        decoderHandler.post {
+        val handler = decoderHandler
+        if (handler != null) {
+            val latch = java.util.concurrent.CountDownLatch(1)
+            handler.post {
+                try {
+                    decoder?.stop()
+                } catch (_: Exception) {}
+                try {
+                    decoder?.release()
+                } catch (_: Exception) {}
+                decoder = null
+                latch.countDown()
+            }
             try {
-                decoder?.stop()
+                latch.await(500, java.util.concurrent.TimeUnit.MILLISECONDS)
             } catch (_: Exception) {}
-            try {
-                decoder?.release()
-            } catch (_: Exception) {}
-            decoder = null
         }
 
         released.set(false)
@@ -130,7 +148,7 @@ class DirectStreamPlayer @Inject constructor(
                             resetJitterBuffer()
                             // Pre-warm: reinitialize decoder in background so the first IDR
                             // frame after reconnect is decoded immediately (no 2-3s black screen).
-                            decoderHandler.post { preWarmDecoder() }
+                            decoderHandler?.post { preWarmDecoder() }
                         }
                     },
                     onChunk = { chunk ->
@@ -169,17 +187,20 @@ class DirectStreamPlayer @Inject constructor(
         Log.i(tag, "Manual IP override accepted: $host")
     }
 
+    private fun buildCurrentFormat(): MediaFormat {
+        return MediaFormat.createVideoFormat(
+            MediaFormat.MIMETYPE_VIDEO_AVC,
+            StreamProtocol.WEAR_W_FULL,
+            StreamProtocol.WEAR_H_FULL
+        ).apply {
+            setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+            setInteger(MediaFormat.KEY_OPERATING_RATE, StreamProtocol.WEAR_FPS_FULL)
+        }
+    }
+
     private fun initDecoder() {
         try {
-            val format = MediaFormat.createVideoFormat(
-                MediaFormat.MIMETYPE_VIDEO_AVC,
-                StreamProtocol.WEAR_W_FULL,
-                StreamProtocol.WEAR_H_FULL
-            ).apply {
-                setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
-                setInteger(MediaFormat.KEY_OPERATING_RATE, StreamProtocol.WEAR_FPS_FULL)
-            }
-
+            val format = buildCurrentFormat()
             val codec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
             codec.setCallback(decoderCallback, decoderHandler)
             codec.configure(format, surface, null, 0)
@@ -235,7 +256,7 @@ class DirectStreamPlayer @Inject constructor(
             synchronized(this) {
                 freeInputBuffers.addLast(index)
             }
-            decoderHandler.post(processQueueRunnable)
+            decoderHandler?.post(processQueueRunnable)
         }
 
         override fun onOutputBufferAvailable(codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
@@ -243,8 +264,29 @@ class DirectStreamPlayer @Inject constructor(
         }
 
         override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
-            Log.e(tag, "Decoder error: ${e.message} recoverable=${e.isRecoverable}")
-            if (e.isRecoverable) codec.reset()
+            Log.e(tag, "Decoder error: ${e.message} recoverable=${e.isRecoverable} transient=${e.isTransient}")
+            when {
+                e.isTransient -> {
+                    Log.w(tag, "Transient decoder error — waiting for auto-recovery")
+                }
+                e.isRecoverable -> {
+                    decoderHandler?.post {
+                        try {
+                            codec.reset()
+                            codec.configure(buildCurrentFormat(), surface, null, 0)
+                            codec.start()
+                            Log.i(tag, "Decoder recovered from recoverable error")
+                        } catch (fatal: Exception) {
+                            Log.e(tag, "Recovery failed — forcing full reinit: ${fatal.message}")
+                            preWarmDecoder()
+                        }
+                    }
+                }
+                else -> {
+                    Log.e(tag, "Fatal decoder error — full reinit required")
+                    decoderHandler?.post { preWarmDecoder() }
+                }
+            }
         }
 
         override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {
@@ -300,12 +342,12 @@ class DirectStreamPlayer @Inject constructor(
             
             if (next != null) {
                 val delayMs = ((next.targetSystemTimeUs - nowUs) / 1000).coerceAtLeast(0)
-                decoderHandler.removeCallbacks(processQueueRunnable)
+                decoderHandler?.removeCallbacks(processQueueRunnable)
                 if (delayMs <= 0) {
-                    decoderHandler.post(processQueueRunnable)
+                    decoderHandler?.post(processQueueRunnable)
                 } else {
                     // جدولة ذكية عبر نظام الميقاتي الخاص بالخيط لتوفير البطارية والـ CPU
-                    decoderHandler.postDelayed(processQueueRunnable, delayMs)
+                    decoderHandler?.postDelayed(processQueueRunnable, delayMs)
                 }
             }
         }
@@ -394,7 +436,10 @@ class DirectStreamPlayer @Inject constructor(
             decoder = null
             assembler.reset()
             resetJitterBuffer()
-            decoderThread.quit()
+            decoderThread?.quitSafely()
+            decoderThread = null
+            decoderHandler = null
+            refCount.set(0)
             Log.i(tag, "Player released (refCount reached 0)")
         } else {
             Log.d(tag, "Player release skipped (refCount: ${refCount.get()})")

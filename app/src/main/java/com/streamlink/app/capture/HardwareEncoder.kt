@@ -13,8 +13,8 @@ import android.view.Surface
 import com.streamlink.shared.AdaptiveBufferChannel
 import com.streamlink.shared.EncodingProfile
 import com.streamlink.shared.FramePacket
-import com.streamlink.shared.StreamObservability
 import com.streamlink.shared.StreamProtocol
+import com.streamlink.shared.telemetry.StreamMetricsSource
 import com.streamlink.app.core.safeExec
 import com.streamlink.app.core.safeRun
 import kotlinx.coroutines.channels.BufferOverflow
@@ -53,7 +53,7 @@ class HardwareEncoder(
         capacity = 64,
         onDropped = { packet ->
             packet.release()
-            StreamObservability.recordDrop()
+            StreamMetricsSource.active?.recordDrop()
         }
     )
 

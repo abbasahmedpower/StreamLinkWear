@@ -44,11 +44,7 @@ class EncryptedChannel(
     }
 
     private fun getCipher(mode: Int, nonce: ByteArray, aad: ByteArray): Cipher {
-        // ThreadLocal.get() is non-null because initialValue() always returns a Cipher.
-        // checkNotNull documents this invariant and gives a meaningful message on failure.
-        val cipher = checkNotNull(cipherThreadLocal.get()) {
-            "cipherThreadLocal.initialValue() failed to produce a Cipher — JCA provider unavailable"
-        }
+        val cipher = cipherThreadLocal.get()!!
         cipher.init(mode, key, GCMParameterSpec(128, nonce))
         cipher.updateAAD(aad)
         return cipher
@@ -94,53 +90,7 @@ class EncryptedChannel(
         return 21 + encLen
     }
 
-    // ── Typed decrypt result — separates security events from network noise ─────
-
-    /**
-     * Typed result for [decryptSafe]. Callers should handle each case explicitly
-     * rather than treating all failures as generic packet loss.
-     */
-    sealed class DecryptResult {
-        data class Success(val plaintext: ByteArray) : DecryptResult()
-        /** A packet whose sequence number falls outside the replay window. Security event. */
-        data class ReplayDetected(val seq: Long, val window: Long) : DecryptResult()
-        /** AES-GCM auth tag mismatch — possible active tampering or wrong key. */
-        data class AuthenticationFailed(val cause: Throwable) : DecryptResult()
-        /** Packet is structurally malformed (too short, bad padding, etc.) — normal network noise. */
-        data class Malformed(val cause: Throwable) : DecryptResult()
-    }
-
-    /**
-     * Type-safe variant of [decrypt] for the simple (fully encrypted) call path.
-     * Distinguishes replay attacks from authentication failures from ordinary packet corruption.
-     * Use this in preference to [decrypt] at new call sites.
-     */
-    fun decryptSafe(cipherData: ByteArray): DecryptResult {
-        if (cipherData.size < 21) {
-            return DecryptResult.Malformed(IllegalArgumentException("Packet too short: ${cipherData.size} bytes"))
-        }
-        val buf = ByteBuffer.wrap(cipherData)
-        val seq = buf.long
-        val prev = lastAcceptedSeq.get()
-        if (seq < prev - 1024) return DecryptResult.ReplayDetected(seq, prev)
-
-        return try {
-            val nonce = ByteArray(12).also { buf.get(it) }
-            buf.get() // isKeyframe flag
-            val ciphertext = ByteArray(buf.remaining()).also { buf.get(it) }
-            val cipher = getCipher(Cipher.DECRYPT_MODE, nonce, buildAad(seq, expectedRecvLabel))
-            val plaintext = cipher.doFinal(ciphertext)
-            if (seq > lastAcceptedSeq.get()) lastAcceptedSeq.updateAndGet { kotlin.math.max(it, seq) }
-            DecryptResult.Success(plaintext)
-        } catch (e: AEADBadTagException) {
-            DecryptResult.AuthenticationFailed(e)
-        } catch (e: Exception) {
-            DecryptResult.Malformed(e)
-        }
-    }
-
-    /** Decrypt a chunk received from the wire (for fully encrypted chunks allocated anew).
-     *  Prefer [decryptSafe] for new call sites — this legacy variant swallows security events. */
+    /** Decrypt a chunk received from the wire (for fully encrypted chunks allocated anew). */
     @Throws(AEADBadTagException::class, ReplayDetectedException::class)
     fun decrypt(cipherData: ByteArray): ByteArray? {
         return try {

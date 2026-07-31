@@ -8,13 +8,16 @@ import android.util.Log
  */
 class SystemWatchdog(
     private val staleThresholdMs: Long = 3000L,
-    private val pollIntervalMs: Long = 1000L
+    private val pollIntervalMs: Long = 1000L,
+    private val alertCooldownMs: Long = 10_000L
 ) : Thread("SystemWatchdog") {
 
     @Volatile
     private var isRunning = true
 
     var onSubsystemDead: ((Int, String) -> Unit)? = null
+
+    private val lastAlertAtMs = LongArray(HealthMonitor.getSubsystemIds().count())
 
     init {
         isDaemon = true
@@ -25,17 +28,18 @@ class SystemWatchdog(
         while (isRunning && !isInterrupted) {
             try {
                 sleep(pollIntervalMs)
+                val now = System.currentTimeMillis()
                 
                 for (id in HealthMonitor.getSubsystemIds()) {
                     val staleness = HealthMonitor.getStalenessMs(id)
-                    // If staleness > 3s, consider it DEAD
-                    if (staleness > staleThresholdMs) {
+                    // If staleness > 3s and alert cooldown passed, trigger notification
+                    if (staleness > staleThresholdMs && (id >= lastAlertAtMs.size || (now - lastAlertAtMs[id]) > alertCooldownMs)) {
                         val name = HealthMonitor.getSubsystemName(id)
                         Log.e("SystemWatchdog", "💀 Subsystem DEAD: $name (stale by ${staleness}ms)")
+                        if (id < lastAlertAtMs.size) {
+                            lastAlertAtMs[id] = now
+                        }
                         onSubsystemDead?.invoke(id, name)
-                        
-                        // To avoid spamming, we reset its heartbeat to give it a chance to recover
-                        HealthMonitor.ping(id)
                     }
                 }
             } catch (e: InterruptedException) {

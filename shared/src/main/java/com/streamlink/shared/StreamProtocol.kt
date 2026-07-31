@@ -15,6 +15,25 @@ object StreamProtocol {
     const val MAGIC_NUMBER = 0x484F5255 // "HORU"
     const val PROTOCOL_VERSION: Byte = 2   // bumped: new header layout, CRC16 added
 
+    /**
+     * Phase 3 decision — protocol.ExtensibleHeader (V3) stays EXPERIMENTAL, not wired
+     * into the production DirectSocketClient/Server transport. Reasoning:
+     *  1. DirectSocketClient (receiver) only decodes the fixed 25-byte V2 header at
+     *     hardcoded offsets (HDR_MAGIC..HDR_TIMESTAMP_US). Flipping NalChunker's sender
+     *     side to V3 without a matching receiver rewrite would silently corrupt every
+     *     phone → watch stream — a wire-format break, not a safe incremental step.
+     *  2. V3's own value proposition — multi-stream StreamId, out-of-order ACK bitmap
+     *     piggyback (protocol.FrameWindow / protocol.AckBitmap) — targets a UDP-like,
+     *     possibly-reordering transport. The current transport is TCP, which already
+     *     guarantees in-order delivery (see FrameAssembler's own doc comment), so V3's
+     *     main advantages don't apply yet.
+     *  3. FrameWindow and AckBitmap are fully implemented and unit-tested but have zero
+     *     production call sites — they were built ahead of the transport that needs them.
+     * Flip this to true only after DirectSocketClient/Server gain a matching V3 decode
+     * path and FrameWindow/AckBitmap are wired to a transport that benefits from them.
+     */
+    const val V3_EXTENSIBLE_HEADER_ENABLED = false
+
     // Header field offsets (for receiver)
     const val HDR_MAGIC         = 0   // Int   (4 bytes)
     const val HDR_VERSION       = 4   // Byte  (1 byte)

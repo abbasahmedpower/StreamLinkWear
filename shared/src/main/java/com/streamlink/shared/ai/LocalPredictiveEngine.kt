@@ -10,7 +10,7 @@ import org.tensorflow.lite.Interpreter
 
 class LocalPredictiveEngine(assetManager: AssetManager, modelPath: String) {
     
-    private val interpreter: Interpreter
+    private var interpreter: Interpreter? = null
     
     // Allocate ByteBuffers natively to avoid Allocations during streaming
     private val inputBuffer: ByteBuffer
@@ -22,16 +22,20 @@ class LocalPredictiveEngine(assetManager: AssetManager, modelPath: String) {
     private val outputSize = 2 * 4 // 2 floats * 4 bytes
 
     init {
-        val modelBuffer = loadModelFile(assetManager, modelPath)
-        // Initialize TFLite engine and dedicate 2 threads for blazing fast execution
-        val options = Interpreter.Options().apply {
-            setNumThreads(2)
-            setUseNNAPI(true) // Enable Hardware acceleration on watch if available
-        }
-        interpreter = Interpreter(modelBuffer, options)
-
         inputBuffer = ByteBuffer.allocateDirect(inputSize).order(ByteOrder.nativeOrder())
         outputBuffer = ByteBuffer.allocateDirect(outputSize).order(ByteOrder.nativeOrder())
+
+        interpreter = try {
+            val modelBuffer = loadModelFile(assetManager, modelPath)
+            val options = Interpreter.Options().apply {
+                setNumThreads(2)
+                setUseNNAPI(true)
+            }
+            Interpreter(modelBuffer, options)
+        } catch (e: Exception) {
+            android.util.Log.w("SharedPredictiveEngine", "Model load failed ($modelPath): ${e.message}")
+            null
+        }
     }
 
     /**
@@ -43,6 +47,12 @@ class LocalPredictiveEngine(assetManager: AssetManager, modelPath: String) {
         currentJitter: Float,
         imuVariance: Float
     ): PredictionResult {
+        require(last5FrameSizes.size == 5) {
+            "predictNextFrameMetrics expects exactly 5 frame sizes, got ${last5FrameSizes.size}"
+        }
+
+        val interp = interpreter ?: return PredictionResult(0f, 0f)
+
         inputBuffer.clear()
         
         // Pump inputs directly into Native Buffer
@@ -55,7 +65,7 @@ class LocalPredictiveEngine(assetManager: AssetManager, modelPath: String) {
         outputBuffer.clear()
         
         // Run mathematical processing on the CPU
-        interpreter.run(inputBuffer, outputBuffer)
+        interp.run(inputBuffer, outputBuffer)
         
         outputBuffer.rewind()
         val predictedSize = outputBuffer.float
@@ -73,8 +83,10 @@ class LocalPredictiveEngine(assetManager: AssetManager, modelPath: String) {
         return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
     }
 
+    @Synchronized
     fun close() {
-        interpreter.close()
+        interpreter?.close()
+        interpreter = null
     }
 }
 
