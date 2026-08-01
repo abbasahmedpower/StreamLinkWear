@@ -219,3 +219,18 @@ gradle.taskGraph.whenReady { graph ->
         println "✅ HORUS_SECRET_TOKEN validated for Release build"
     }
 }
+
+// ✅ AGP 8.7.x WORKAROUND — checkDebugClasspath / checkReleaseClasspath
+// These tasks fail with:
+//   java.io.NotSerializableException: com.android.build.gradle.internal.tasks.Info
+// The task's 'compileVersionMap' input cannot be fingerprinted by Gradle's value
+// snapshotter (even without build caching). This is a known AGP 8.7.x regression.
+// Safe to disable: duplicate-class detection at configuration time is redundant since
+// R8/D8 will catch true classpath conflicts at compile time anyway.
+// TODO: remove once AGP 8.8+ is adopted.
+// Same workaround is applied in wear/build.gradle.
+tasks.configureEach {
+    if (name == 'checkDebugClasspath' || name == 'checkReleaseClasspath') {
+        enabled = false
+    }
+}
