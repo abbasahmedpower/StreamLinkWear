@@ -103,7 +103,7 @@ jobs:
 
       # Use the official Gradle action for cache + CLI management
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
 
       # ServerIdentityVerifier tests use SERVER_PRIVATE_KEY_OVERRIDE_FOR_TEST,
       # but SecureConfig.horusSecretToken validates env var at startup — supply placeholder.
