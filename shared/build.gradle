@@ -97,7 +97,7 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.0'
     // JUnit4 support via JUnit5 vintage engine — runs @Test from org.junit.*
     testImplementation 'junit:junit:4.13.2'
-    testRuntimeOnly 'org.junit.vintage:junit-vintage-engine:5.10.0'
+    testRuntimeOnly 'org.junit.vintage:junit-vintage-engine:5.14.4'
     testImplementation 'io.mockk:mockk:1.13.8'
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
 }
