@@ -69,13 +69,13 @@ jobs:
         run: ./gradlew cyclonedxBom
 
       - name: Upload AAB
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: StreamLinkWear-Release-AAB
           path: app/build/outputs/bundle/release/*.aab
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: StreamLinkWear-SBOM
           path: build/reports/bom.json
