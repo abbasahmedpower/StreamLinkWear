@@ -6,10 +6,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.webrtc.*
 import java.nio.ByteBuffer
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.LockSupport
 import com.streamlink.shared.util.LockFreeMpmcQueue
 import com.streamlink.shared.util.LockFreeSpscQueue
@@ -35,6 +37,10 @@ class WebRtcTransport(
         repeat(256) { offer(SendTask()) }
     }
     
+    // ✅ 4.2: Track sender thread for proper lifecycle management
+    private var senderThread: Thread? = null
+    private val senderRunning = AtomicBoolean(true)
+
     @Volatile var isConnected = false
     var onChunkDelivered: (() -> Unit)? = null
     var onChunkReceived: ((ByteArray, Int) -> Unit)? = null
@@ -111,8 +117,13 @@ class WebRtcTransport(
                     signalingClient.sendMessage("OFFER", "broadcast", desc.description)
                 }
                 override fun onSetSuccess() {}
-                override fun onCreateFailure(error: String) {}
-                override fun onSetFailure(error: String) {}
+                // ✅ 5.2: SDP failure callbacks must log — silent failure blocks connection forever
+                override fun onCreateFailure(error: String) {
+                    Log.e(tag, "SDP offer create failed: $error")
+                }
+                override fun onSetFailure(error: String) {
+                    Log.e(tag, "SDP offer set failed: $error")
+                }
             }, MediaConstraints())
         }
         
@@ -177,8 +188,9 @@ class WebRtcTransport(
     }
 
     private fun startSenderThread() {
-        Thread({
-            while (!Thread.currentThread().isInterrupted) {
+        // ✅ 4.2: Thread is tracked for lifecycle management; errors are logged, not fatal
+        senderThread = Thread({
+            while (senderRunning.get() && !Thread.currentThread().isInterrupted) {
                 try {
                     val task = sendQueue.poll()
                     if (task == null) {
@@ -191,7 +203,7 @@ class WebRtcTransport(
                         continue
                     }
                     val size = task.size
-                    
+
                     val dc = dataChannel
                     if (dc != null && dc.state() == DataChannel.State.OPEN) {
                         val buffer = ByteBuffer.wrap(wire, 0, size)
@@ -202,11 +214,19 @@ class WebRtcTransport(
                     WireBufferPool.release(wire)
                     task.wire = null
                     freeTasks.offer(task)
-                } catch (e: Exception) {
+                } catch (e: InterruptedException) {
+                    // ✅ Clean, intentional shutdown — not an error
                     break
+                } catch (e: Exception) {
+                    // ✅ 4.2: Log and CONTINUE — a transient error must not kill the sender permanently
+                    Log.e(tag, "Sender loop error (recovered): ${e.javaClass.simpleName}: ${e.message}")
                 }
             }
-        }, "SL-WebRtcSender").start()
+            Log.i(tag, "Sender thread exiting cleanly")
+        }, "SL-WebRtcSender").apply {
+            isDaemon = true
+            start()
+        }
     }
 
     fun sendPooledWire(wire: ByteArray, size: Int): Boolean {
@@ -233,6 +253,19 @@ class WebRtcTransport(
     val queueDepth: Int get() = sendQueue.size
 
     fun close() {
+        // ✅ 4.3: Stop background resources in correct order to prevent leaks
+        // 1. Signal the sender loop to stop
+        senderRunning.set(false)
+        // 2. Interrupt the thread + unpark it immediately.
+        //    LockSupport.parkNanos() does NOT respond to interrupt() the way Thread.sleep() does
+        //    (it doesn't throw InterruptedException). unpark() wakes it immediately from the park.
+        senderThread?.let { t ->
+            t.interrupt()
+            LockSupport.unpark(t) // ✅ Nano fix: instant wake from parkNanos(100_000)
+        }
+        // 3. Cancel the coroutine scope collecting signaling messages
+        scope.cancel()
+        // 4. Then tear down WebRTC resources
         dataChannel?.close()
         peerConnection?.close()
         peerConnectionFactory?.dispose()
@@ -241,7 +274,12 @@ class WebRtcTransport(
     open inner class CustomSdpObserver : SdpObserver {
         override fun onCreateSuccess(desc: SessionDescription) {}
         override fun onSetSuccess() {}
-        override fun onCreateFailure(error: String) {}
-        override fun onSetFailure(error: String) {}
+        // ✅ 5.2: Log SDP failures — silent failure here causes "stuck connecting" with no trace
+        override fun onCreateFailure(error: String) {
+            Log.e(tag, "SDP create failed: $error")
+        }
+        override fun onSetFailure(error: String) {
+            Log.e(tag, "SDP set failed: $error")
+        }
     }
 }

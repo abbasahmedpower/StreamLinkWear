@@ -32,6 +32,12 @@ android {
         }
         buildConfigField "String", "TURN_PASSWORD", "\"${turnPassword}\""
 
+        // ✅ 5.3: TURN URL via buildConfigField — was hardcoded constant before, making
+        // isTurnConfigured() always return false. No fail-fast here: TURN is optional
+        // for LAN-only deployments (app works via direct socket without TURN).
+        def turnUrl = secrets.getProperty('TURN_URL') ?: ''
+        buildConfigField "String", "TURN_URL", "\"${turnUrl}\""
+
         def horusToken = secrets.getProperty('HORUS_SECRET_TOKEN')
         if (horusToken == null || horusToken.isEmpty()) {
             throw new GradleException(

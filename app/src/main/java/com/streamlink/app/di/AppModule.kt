@@ -104,7 +104,12 @@ object AppModule {
         metrics: MetricsCollector,
         backpressure: BackpressureController
     ): MirrorDataPlane {
-        return MirrorDataPlane(encoder, streamRouter, metrics, backpressure)
+        return MirrorDataPlane(encoder, streamRouter, metrics, backpressure).also { plane ->
+            // ✅ 5.1: Wire the per-session HardenedFrameProcessor owned by MirrorDataPlane into
+            // encoder so CODEC_CONFIG frames (encoder) and data frames (data plane) share the
+            // same SPS/PPS state. Both are @Singleton within the same Hilt component.
+            encoder.frameProcessor = plane.frameProcessor
+        }
     }
 
     @Provides

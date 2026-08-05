@@ -8,7 +8,9 @@ object SecureConfig {
                 "Refusing to start with an insecure default."
             )
 
-    val horusSecretToken: String by lazy { requireEnv("HORUS_SECRET") }
+    // ✅ 5.4: Renamed from HORUS_SECRET → HORUS_SECRET_TOKEN to match client-side naming
+    // (secrets.properties, app/build.gradle, shared/build.gradle all use HORUS_SECRET_TOKEN).
+    val horusSecretToken: String by lazy { requireEnv("HORUS_SECRET_TOKEN") }
     val redisUrl: String by lazy { requireEnv("REDIS_URL") }
     val tlsPassword: String by lazy { requireEnv("HORUS_TLS_PASSWORD") }
     val nodeId: String = System.getenv("NODE_ID") ?: "NODE_1"

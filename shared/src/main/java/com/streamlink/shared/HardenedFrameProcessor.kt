@@ -6,10 +6,40 @@ import java.nio.ByteBuffer
 /**
  * Validates, SPS/PPS-injects and prepares frames for chunking.
  * Ensures I-frames always carry codec parameter sets.
+ *
+ * ✅ 5.1: Converted from `object` (process-global singleton) to `class` (per-session instance).
+ *
+ * Why this matters:
+ *  - As an `object`, cachedParams was shared across all sessions in the process. In a
+ *    multi-session scenario (NEXUS TITAN multi-device) or when the encoder is restarted
+ *    mid-session (e.g., resolution change), stale SPS/PPS from a previous session/config
+ *    could contaminate the new stream.
+ *  - Vendor encoders sometimes emit SPS and PPS in *separate* CODEC_CONFIG callbacks
+ *    (observed on Qualcomm/Exynos). The old code required both to arrive in a single
+ *    callback or it would cache nothing. The new pendingSps/pendingPps handles partial arrival.
+ *
+ * Ownership: instantiate one HardenedFrameProcessor per MediaCodec lifecycle. Call reset()
+ * whenever the encoder is restarted (e.g., resolution change, bitrate reconfigure).
  */
-object HardenedFrameProcessor {
+class HardenedFrameProcessor {
     private data class SpsPpsPair(val sps: ByteArray, val pps: ByteArray)
+
     private val cachedParams = java.util.concurrent.atomic.AtomicReference<SpsPpsPair>()
+
+    // ✅ 5.1: Partial-arrival support — some vendor encoders send SPS and PPS separately
+    @Volatile private var pendingSps: ByteArray? = null
+    @Volatile private var pendingPps: ByteArray? = null
+
+    /**
+     * Call when the encoder is restarted (resolution change, bitrate reconfigure, etc.)
+     * to clear stale codec parameters before the new CODEC_CONFIG frames arrive.
+     */
+    fun reset() {
+        cachedParams.set(null)
+        pendingSps = null
+        pendingPps = null
+    }
+
     fun processAndObtain(buf: ByteBuffer, info: MediaCodec.BufferInfo): HardenedFrame? {
         if (info.size <= 0) return null
 
@@ -80,8 +110,19 @@ object HardenedFrameProcessor {
                 i++
             }
         }
-        if (newSps != null && newPps != null) {
-            cachedParams.set(SpsPpsPair(newSps, newPps))
+
+        // ✅ 5.1: Merge newly parsed NALs with any pending ones from a previous partial delivery
+        val sps = newSps ?: pendingSps
+        val pps = newPps ?: pendingPps
+
+        if (sps != null && pps != null) {
+            cachedParams.set(SpsPpsPair(sps, pps))
+            pendingSps = null
+            pendingPps = null
+        } else {
+            // Partial arrival — save what we got for the next CODEC_CONFIG callback
+            if (newSps != null) pendingSps = newSps
+            if (newPps != null) pendingPps = newPps
         }
     }
 
@@ -89,7 +130,7 @@ object HardenedFrameProcessor {
         val sps = params.sps
         val pps = params.pps
         val totalSize = sps.size + pps.size + info.size
-        
+
         val combined = com.streamlink.shared.pool.DynamicByteBufferPool.acquire(totalSize)
         combined.put(sps)
         combined.put(pps)
@@ -98,11 +139,11 @@ object HardenedFrameProcessor {
         view.limit(info.offset + info.size)
         combined.put(view)
         combined.flip()
-        
+
         val releaseCallback = {
             com.streamlink.shared.pool.DynamicByteBufferPool.release(combined)
         }
-        
+
         return Pair(combined, releaseCallback)
     }
 

@@ -39,6 +39,9 @@ class MirrorDataPlane(
 ) {
     private val tag = "MirrorDataPlane"
 
+    // ✅ 5.1: Per-session instance (not global object) — isolates SPS/PPS state per stream session
+    val frameProcessor = HardenedFrameProcessor()
+
     // Dedicated single thread — eliminates coroutine context switch overhead
     private val planeDispatcher = Executors.newSingleThreadExecutor { r ->
         Thread({
@@ -99,7 +102,7 @@ class MirrorDataPlane(
             packet.buffer.position(packet.offset)
             packet.buffer.limit(packet.offset + packet.size)
 
-            hardened = HardenedFrameProcessor.processAndObtain(
+            hardened = frameProcessor.processAndObtain(
                 packet.buffer, info
             )
             if (hardened == null) return  // Config frame — skip

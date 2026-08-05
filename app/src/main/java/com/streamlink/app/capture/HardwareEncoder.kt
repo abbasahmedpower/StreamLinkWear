@@ -46,6 +46,12 @@ class HardwareEncoder(
 ) {
     private val tag = "HardwareEncoder"
 
+    // ✅ 5.1: Per-session HardenedFrameProcessor — declared as var so AppModule can
+    // inject the shared instance (from MirrorDataPlane) post-construction.
+    // Falls back to a local instance for standalone usage (tests, preview, etc.).
+    var frameProcessor: com.streamlink.shared.HardenedFrameProcessor =
+        com.streamlink.shared.HardenedFrameProcessor()
+
     // ✅ FIX N1: Explicit capacity + onUndeliveredElement prevents MediaCodec deadlock.
     // When channel drops a FramePacket via DROP_OLDEST, the callback calls packet.release()
     // which returns the buffer index to MediaCodec, preventing buffer starvation.
@@ -288,7 +294,8 @@ class HardwareEncoder(
 
             // Config frames contain SPS/PPS, must be passed to HardenedFrameProcessor
             if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
-                com.streamlink.shared.HardenedFrameProcessor.processAndObtain(buffer, info)
+                // ✅ 5.1: Use per-session instance, not global object
+                frameProcessor.processAndObtain(buffer, info)
                 codec.releaseOutputBuffer(index, false)
                 return
             }

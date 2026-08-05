@@ -128,20 +128,28 @@ object StreamProtocol {
 
     val TURN_SERVERS: List<TurnServer> = listOf(
         TurnServer(
-            url        = "turn:turn.streamlink.local:3478",
+            // ✅ 5.3: URL from BuildConfig (populated via secrets.properties) — not a hardcoded constant
+            url        = BuildConfig.TURN_URL.ifBlank { "turn:turn.streamlink.local:3478" },
             username   = BuildConfig.TURN_USERNAME,
             credential = BuildConfig.TURN_PASSWORD
         ),
         TurnServer(
-            url        = "turn:turn.streamlink.local:3478?transport=tcp",
+            url        = BuildConfig.TURN_URL.ifBlank { "turn:turn.streamlink.local:3478?transport=tcp" }.let {
+                if (it.contains("?")) it else "$it?transport=tcp"
+            },
             username   = BuildConfig.TURN_USERNAME,
             credential = BuildConfig.TURN_PASSWORD
         )
     )
 
-    fun isTurnConfigured(): Boolean =
-        TURN_SERVERS.isNotEmpty() &&
-        TURN_SERVERS.first().url != "turn:turn.streamlink.local:3478"
+    // ✅ 5.3: Checks BOTH URL (not the placeholder) AND credentials (non-blank).
+    // Previously always returned false because the URL was a hardcoded constant.
+    // Checks only the primary server — the TCP variant is always derived from the same URL.
+    fun isTurnConfigured(): Boolean {
+        val primary = TURN_SERVERS.firstOrNull() ?: return false
+        return primary.url != "turn:turn.streamlink.local:3478" &&
+               primary.credential.isNotBlank()
+    }
 
     // ── Security constants ────────────────────────────────────────────────
     const val AES_KEY_BITS       = 256
