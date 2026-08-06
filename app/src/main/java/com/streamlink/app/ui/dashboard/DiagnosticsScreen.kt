@@ -15,6 +15,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.streamlink.shared.GlobalStreamState
 import com.streamlink.app.core.telemetry.BatteryPredictor
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Share
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DiagnosticsScreen(batteryPredictor: BatteryPredictor) {
@@ -50,9 +53,12 @@ fun DiagnosticsScreen(batteryPredictor: BatteryPredictor) {
                     putExtra(Intent.EXTRA_TEXT, report)
                     type = "text/plain"
                 }
-                context.startActivity(Intent.createChooser(sendIntent, "Export Diagnostics"))
+                context.startActivity(Intent.createChooser(sendIntent, context.getString(com.streamlink.app.R.string.export_diagnostics)))
             }) {
-                Text("Export")
+                Icon(
+                    imageVector = Icons.Default.Share,
+                    contentDescription = androidx.compose.ui.res.stringResource(com.streamlink.app.R.string.export_diagnostics)
+                )
             }
         }
     ) { padding ->

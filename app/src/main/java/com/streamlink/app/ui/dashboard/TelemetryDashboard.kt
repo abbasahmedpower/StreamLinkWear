@@ -33,7 +33,7 @@ fun TelemetryDashboard(viewModel: com.streamlink.app.ui.viewmodel.TelemetryViewM
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
-                text = "🛡️ مؤشرات الأداء الفولاذي (Real-time Telemetry)",
+                text = androidx.compose.ui.res.stringResource(com.streamlink.app.R.string.dashboard_telemetry_title),
                 color = Color.White,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,

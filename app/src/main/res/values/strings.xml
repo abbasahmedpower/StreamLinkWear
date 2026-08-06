@@ -94,5 +94,24 @@
     <string name="settings_about_row_title">StreamLinkWear &amp; Developer</string>
     <!-- Info Screen -->
     <string name="info_check_updates">Check for Updates</string>
+
+    <!-- Bottom Navigation -->
+    <string name="nav_console">Console</string>
+    <string name="nav_settings">Settings</string>
+    <string name="nav_diagnostics">Diagnostics</string>
+
+    <!-- Dashboard Header -->
+    <string name="dashboard_telemetry_title">🛡️ Performance Indicators (Real-time Telemetry)</string>
+
+    <!-- Quality Modes -->
+    <string name="quality_battery_saver_title">Battery Saver 🔋</string>
+    <string name="quality_battery_saver_desc">Smooth at low power. Best for all-day use.</string>
+    <string name="quality_balanced_title">Balanced ⚖️</string>
+    <string name="quality_balanced_desc">Sharp and fluid. Recommended for most use cases.</string>
+    <string name="quality_high_quality_title">High Quality ✨</string>
+    <string name="quality_high_quality_desc">Maximum fidelity. Requires strong Wi-Fi and battery.</string>
+
+    <!-- Diagnostics FAB -->
+    <string name="export_diagnostics">Export Diagnostics</string>
 </resources>
 

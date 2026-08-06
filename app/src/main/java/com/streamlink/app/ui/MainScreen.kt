@@ -44,20 +44,20 @@ fun MainScreenLayout(
                 NavigationBarItem(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    icon = { Icon(Icons.Default.Info, contentDescription = "Console") },
-                    label = { Text("الكونسول") }
+                    icon = { Icon(Icons.Default.Info, contentDescription = androidx.compose.ui.res.stringResource(com.streamlink.app.R.string.nav_console)) },
+                    label = { Text(androidx.compose.ui.res.stringResource(com.streamlink.app.R.string.nav_console)) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                    label = { Text("الإعدادات") }
+                    icon = { Icon(Icons.Default.Settings, contentDescription = androidx.compose.ui.res.stringResource(com.streamlink.app.R.string.nav_settings)) },
+                    label = { Text(androidx.compose.ui.res.stringResource(com.streamlink.app.R.string.nav_settings)) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Default.Info, contentDescription = "Diagnostics") },
-                    label = { Text("الفحص") }
+                    icon = { Icon(Icons.Default.Info, contentDescription = androidx.compose.ui.res.stringResource(com.streamlink.app.R.string.nav_diagnostics)) },
+                    label = { Text(androidx.compose.ui.res.stringResource(com.streamlink.app.R.string.nav_diagnostics)) }
                 )
             }
         }

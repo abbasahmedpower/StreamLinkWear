@@ -93,6 +93,25 @@
     <string name="settings_reset_confirm_btn">Restablecer</string>
     <string name="settings_about_row_title">StreamLinkWear &amp; Desarrollador</string>
     <string name="settings_saved_on">Ajuste activado ✓</string>
+
+    <!-- Bottom Navigation -->
+    <string name="nav_console">Consola</string>
+    <string name="nav_settings">Configuración</string>
+    <string name="nav_diagnostics">Diagnóstico</string>
+
+    <!-- Dashboard Header -->
+    <string name="dashboard_telemetry_title">🛡️ Indicadores de Rendimiento (Telemetría en tiempo real)</string>
+
+    <!-- Quality Modes -->
+    <string name="quality_battery_saver_title">Ahorro de batería 🔋</string>
+    <string name="quality_battery_saver_desc">Fluido con bajo consumo. Ideal para todo el día.</string>
+    <string name="quality_balanced_title">Equilibrado ⚖️</string>
+    <string name="quality_balanced_desc">Nítido y fluido. Recomendado para la mayoría de uso.</string>
+    <string name="quality_high_quality_title">Alta calidad ✨</string>
+    <string name="quality_high_quality_desc">Máxima fidelidad. Requiere Wi-Fi estable y buena batería.</string>
+
+    <!-- Diagnostics FAB -->
+    <string name="export_diagnostics">Exportar diagnóstico</string>
 </resources>
 
 

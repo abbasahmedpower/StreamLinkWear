@@ -125,25 +125,11 @@ fun SettingsScreen(
                 SettingsSectionLabel(stringResource(R.string.settings_streaming_settings))
                 Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
                     Column {
-                        Box {
-                            SettingsRow(
-                                title = stringResource(R.string.settings_default_quality),
-                                value = quality.label,
-                                onClick = { showQualityMenu = true }
-                            )
-                            DropdownMenu(expanded = showQualityMenu, onDismissRequest = { showQualityMenu = false }) {
-                                com.streamlink.shared.QualityMode.entries.forEach { q ->
-                                    DropdownMenuItem(
-                                        text = { Column {
-                                            Text(q.label, style = MaterialTheme.typography.bodyMedium)
-                                            Text(q.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        } },
-                                        onClick = { prefs.setQuality(q); showQualityMenu = false },
-                                        trailingIcon = { if (q == quality) Icon(Icons.Default.Check, contentDescription = null) }
-                                    )
-                                }
-                            }
-                        }
+                        SettingsRow(
+                            title = stringResource(R.string.settings_default_quality),
+                            value = stringResource(quality.labelRes),
+                            onClick = { showQualityMenu = true }
+                        )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         Row(
                             modifier = Modifier.padding(16.dp).fillMaxWidth(),
@@ -219,17 +205,33 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(stringResource(R.string.settings_watch_connection), style = MaterialTheme.typography.bodyLarge)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = stringResource(R.string.settings_watch_connection),
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Column(
+                                horizontalAlignment = Alignment.End,
+                                modifier = Modifier.padding(start = 8.dp)
+                            ) {
                                 Text(
-                                    stringResource(R.string.settings_status_label) + ": " +
+                                    text = stringResource(R.string.settings_status_label) + ": " +
                                         (if (isStreaming) stringResource(R.string.settings_connected) else stringResource(R.string.settings_not_connected)),
                                     color = if (isStreaming) SemanticColors.Excellent else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    style = MaterialTheme.typography.bodySmall
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                                 if (connectedWatchName.isNotEmpty()) {
-                                    Spacer(Modifier.width(8.dp))
-                                    ForceLtr { Text("${connectedWatchName} (${connectedWatchIp})", style = MaterialTheme.typography.bodySmall) }
+                                    ForceLtr {
+                                        Text(
+                                            text = "${connectedWatchName} (${connectedWatchIp})",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -363,7 +365,84 @@ fun SettingsScreen(
             confirmButton = { TextButton(onClick = { showLanguageDialog = false }) { Text("OK") } }
         )
     }
+
+    if (showQualityMenu) {
+        ModalBottomSheet(
+            onDismissRequest = { showQualityMenu = false }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_default_quality),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(8.dp))
+                QualityMode.entries.forEach { q ->
+                    val selected = q == quality
+                    Surface(
+                        onClick = {
+                            prefs.setQuality(q)
+                            showQualityMenu = false
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .padding(16.dp)
+                                .fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(q.labelRes),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = stringResource(q.descriptionRes),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (selected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(32.dp))
+            }
+        }
+    }
 }
+
+val QualityMode.labelRes: Int
+    get() = when (this) {
+        QualityMode.BATTERY_SAVER -> R.string.quality_battery_saver_title
+        QualityMode.BALANCED -> R.string.quality_balanced_title
+        QualityMode.HIGH_QUALITY -> R.string.quality_high_quality_title
+    }
+
+val QualityMode.descriptionRes: Int
+    get() = when (this) {
+        QualityMode.BATTERY_SAVER -> R.string.quality_battery_saver_desc
+        QualityMode.BALANCED -> R.string.quality_balanced_desc
+        QualityMode.HIGH_QUALITY -> R.string.quality_high_quality_desc
+    }
 
 @Composable
 private fun SettingsSectionLabel(text: String) {

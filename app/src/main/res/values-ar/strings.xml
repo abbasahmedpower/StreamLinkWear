@@ -93,6 +93,25 @@
     <string name="settings_reset_confirm_btn">إعادة تعيين</string>
     <string name="settings_about_row_title">StreamLinkWear والمطور</string>
     <string name="settings_saved_on">تم تفعيل الإعداد ✓</string>
+
+    <!-- Bottom Navigation -->
+    <string name="nav_console">الكونسول</string>
+    <string name="nav_settings">الإعدادات</string>
+    <string name="nav_diagnostics">الفحص</string>
+
+    <!-- Dashboard Header -->
+    <string name="dashboard_telemetry_title">🛡️ مؤشرات الأداء الفولاذي (Real-time Telemetry)</string>
+
+    <!-- Quality Modes -->
+    <string name="quality_battery_saver_title">توفير البطارية 🔋</string>
+    <string name="quality_battery_saver_desc">سلس مع استهلاك طاقة منخفض. مثالي للاستخدام طوال اليوم.</string>
+    <string name="quality_balanced_title">متوازن ⚖️</string>
+    <string name="quality_balanced_desc">واضح وسلس. موصى به لمعظم حالات الاستخدام.</string>
+    <string name="quality_high_quality_title">جودة عالية ✨</string>
+    <string name="quality_high_quality_desc">أقصى دقة. يتطلب شبكة Wi-Fi قوية وبطارية جيدة.</string>
+
+    <!-- Diagnostics FAB -->
+    <string name="export_diagnostics">تصدير نتائج الفحص</string>
 </resources>
 
 

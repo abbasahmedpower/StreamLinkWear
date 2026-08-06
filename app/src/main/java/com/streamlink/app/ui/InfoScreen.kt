@@ -71,10 +71,10 @@ fun InfoScreen(onBack: () -> Unit) {
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         },
-        containerColor = Color.Transparent
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Box(
             modifier = Modifier
@@ -181,7 +181,7 @@ fun InfoScreen(onBack: () -> Unit) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         SocialButton(Modifier.weight(1f), stringResource(R.string.info_join_telegram), "📢", Color(0xFF0088CC)) { openUrlSafely(context, "https://t.me/HoruselfardosTech") }
-                        SocialButton(Modifier.weight(1f), stringResource(R.string.info_join_group), "👥", Color(0xFF0088CC)) { openUrlSafely(context, "https://t.me/+YqkCX65xYhQxNDQ0") }
+                        SocialButton(Modifier.weight(1f), stringResource(R.string.info_join_group), "👥", Color(0xFF229ED9)) { openUrlSafely(context, "https://t.me/+YqkCX65xYhQxNDQ0") }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         SocialButton(Modifier.weight(1f), "Facebook", "📘", Color(0xFF1877F2)) { openUrlSafely(context, "https://facebook.com/AbbasAhmedpower") }

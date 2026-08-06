@@ -20,6 +20,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.Text
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import com.streamlink.shared.GlobalStreamState
 import kotlinx.coroutines.delay
 
@@ -337,4 +340,41 @@ private fun OverlayDivider() {
             .height(20.dp)
             .background(Color(0x44FFFFFF))
     )
+}
+
+/**
+ * Hardware-accelerated Pan & Zoom Container for Wear OS screen mirroring.
+ * Uses pointerInput(detectTransformGestures) and graphicsLayer for 60 FPS transform gestures
+ * without recomposition overhead. Accommodates Foldable and Ultra-Wide aspect ratios seamlessly.
+ */
+@Composable
+fun PanZoomMirrorContainer(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offsetX by remember { mutableFloatStateOf(0f) }
+    var offsetY by remember { mutableFloatStateOf(0f) }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    scale = (scale * zoom).coerceIn(1f, 4f)
+                    val maxOffsetX = (scale - 1f) * size.width / 2f
+                    val maxOffsetY = (scale - 1f) * size.height / 2f
+                    offsetX = if (scale > 1f) (offsetX + pan.x).coerceIn(-maxOffsetX, maxOffsetX) else 0f
+                    offsetY = if (scale > 1f) (offsetY + pan.y).coerceIn(-maxOffsetY, maxOffsetY) else 0f
+                }
+            }
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                translationX = offsetX
+                translationY = offsetY
+            }
+    ) {
+        content()
+    }
 }
